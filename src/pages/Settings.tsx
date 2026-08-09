@@ -313,7 +313,7 @@ export default function SettingsPage() {
                       （或<a className="mx-1 text-indigo-400 underline decoration-dotted hover:text-indigo-300" href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">经典 Token<ExternalLink size={10} /></a>）
                     </li>
                     <li>Repository access → Only select repositories → 勾选你的简历私有仓</li>
-                    <li>Permissions → Contents → <span className="text-zinc-200">Read and write</span>（GitHub 编译开关另需 Workflows: Read and write）</li>
+                    <li>Permissions → Contents → <span className="text-zinc-200">Read and write</span>（GitHub 编译开关另需 Workflows: Read and write；从 CI 同步 PDF 预览需 Actions: Read and write）</li>
                     <li>Generate token → 复制 <code className="text-zinc-300">github_pat_</code> / <code className="text-zinc-300">ghp_</code> 开头的 Token，粘贴到上方输入框</li>
                   </ol>
                 </div>

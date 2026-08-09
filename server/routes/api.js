@@ -9,6 +9,8 @@ import * as compose from '../lib/compose.js'
 import * as builder from '../lib/builder.js'
 import * as gitSvc from '../lib/git-service.js'
 import { detectGithubAuth, maskToken } from '../lib/github-auth.js'
+import { ghApi, ghDownload, parseRemoteUrl } from '../lib/github-api.js'
+import AdmZip from 'adm-zip'
 
 const router = express.Router()
 const TEMPLATE_DIR = path.resolve('templates/private-repo')
@@ -362,6 +364,76 @@ router.post('/repo/pdf-config', async (req, res) => {
       }
     }
     res.json({ ok: true, committed, pushed, value, file: PDF_CONFIG_FILE })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+/* ---------- GitHub 编译产物同步（github 编译方式的 PDF 预览） ---------- */
+// 从私有仓 GitHub Actions 最近成功运行中拉取 resume-pdfs artifact，
+// 解压出各方向 PDF 写入本地 resumes/ 目录，供 /api/pdf/:name 预览。
+router.post('/github/pdf-sync', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const settings = getSettings()
+  if (!settings.token) return res.json({ ok: false, error: '未配置 GitHub Token，无法拉取 CI 产物' })
+  try {
+    const remoteUrl = await gitSvc.getRemoteUrl(repo)
+    const parsed = parseRemoteUrl(remoteUrl)
+    if (!parsed) return res.json({ ok: false, error: '无法从远程地址解析仓库（仅支持 github.com）' })
+    const { owner, repo: repoName } = parsed
+    const branch = (await gitSvc.currentBranchSafe(repo)) || 'main'
+
+    // 1. 最近一次成功运行
+    const runs = await ghApi(
+      `/repos/${owner}/${repoName}/actions/runs?branch=${encodeURIComponent(branch)}&status=success&per_page=1`,
+      settings.token,
+    )
+    const run = runs.workflow_runs?.[0]
+    if (!run) {
+      return res.json({ ok: false, error: `还没有成功的 CI 运行（分支 ${branch}）。推送代码或手动触发 workflow 后重试` })
+    }
+
+    // 2. 该运行的 artifacts
+    const arts = await ghApi(`/repos/${owner}/${repoName}/actions/runs/${run.id}/artifacts`, settings.token)
+    const art = arts.artifacts?.find((a) => a.name === 'resume-pdfs') || arts.artifacts?.[0]
+    if (!art) {
+      return res.json({
+        ok: false,
+        error: `最近成功运行（#${run.run_number}）没有产出 PDF artifact——可能是 GitHub 编译开关未开启或构建被跳过。请在设置页开启「GitHub 编译 PDF」并同步推送`,
+        runId: run.id,
+        runNumber: run.run_number,
+      })
+    }
+
+    // 3. 下载 zip
+    const zipBuf = await ghDownload(`/repos/${owner}/${repoName}/actions/artifacts/${art.id}/zip`, settings.token)
+
+    // 4. 解压，提取 PDF 写入 repo/resumes/
+    const zip = new AdmZip(zipBuf)
+    const entries = zip.getEntries().filter((e) => e.entryName.toLowerCase().endsWith('.pdf'))
+    if (entries.length === 0) {
+      return res.json({ ok: false, error: 'artifact 中未找到 PDF 文件' })
+    }
+    fs.mkdirSync(path.join(repo, 'resumes'), { recursive: true })
+    const pdfs = []
+    for (const e of entries) {
+      const base = path.basename(e.entryName)
+      const target = path.join(repo, 'resumes', base)
+      fs.writeFileSync(target, e.getData())
+      pdfs.push(base)
+    }
+
+    res.json({
+      ok: true,
+      pdfs,
+      source: 'github',
+      runId: run.id,
+      runNumber: run.run_number,
+      artifactId: art.id,
+      createdAt: art.created_at,
+      branch,
+    })
   } catch (err) {
     sendError(res, err)
   }

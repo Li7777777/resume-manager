@@ -87,6 +87,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | PUT | `/api/yaml` | 写文件（先做 YAML 语法校验） |
 | POST | `/api/build` | `{variant}` → 组合 + 构建 → `{pdf: "/api/pdf/<v>.pdf"}`；**受 `localPdfBuild` 开关门控（服务端强制）** |
 | GET | `/api/pdf/:name` | 流式返回 PDF |
+| POST | `/api/github/pdf-sync` | 从私有仓 GitHub Actions 最近成功运行拉取 `resume-pdfs` artifact，解压 PDF 写入 `resumes/` 供预览（GitHub 编译方式的预览链路） |
 
 ### GitHub 编译开关（私有数据仓配置同步）
 | 方法 | 路径 | 说明 |

@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { Play, RefreshCw, Download, ZoomIn, ZoomOut, FileText, AlertTriangle, CheckCircle2, Hammer } from 'lucide-react'
+import { Play, RefreshCw, Download, ZoomIn, ZoomOut, FileText, AlertTriangle, CheckCircle2, Hammer, CloudDownload, Clock3, ServerCog } from 'lucide-react'
 import { api } from '../api'
 import type { Variant, Settings } from '../types'
 import { loadSettings, subscribeSettings } from '../settings'
@@ -21,6 +21,13 @@ export default function PdfPreview() {
   const [output, setOutput] = useState('')
   const [numPages, setNumPages] = useState(0)
   const [scale, setScale] = useState(1.3)
+  const [githubSyncing, setGithubSyncing] = useState(false)
+  const [githubSync, setGithubSync] = useState<{
+    pdfs?: string[]
+    runNumber?: number
+    createdAt?: string
+    branch?: string
+  } | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
 
   useEffect(() => {
@@ -56,24 +63,47 @@ export default function PdfPreview() {
 
   // 本地编译开关（默认开启）
   const localBuildEnabled = settings?.localPdfBuild !== false
+  const githubBuildEnabled = settings?.githubPdfBuild === true
   const canBuild = env?.yamlresume != null && localBuildEnabled
+
+  // 从 GitHub Action 同步 CI 产出的 PDF（github 编译方式预览）
+  const syncFromGithub = async () => {
+    if (!selected) return
+    setGithubSyncing(true)
+    setOutput('')
+    try {
+      const r = await api.post<{ pdfs: string[]; runNumber?: number; createdAt?: string; branch?: string }>(
+        '/api/github/pdf-sync',
+        {},
+      )
+      setGithubSync({ pdfs: r.pdfs, runNumber: r.runNumber, createdAt: r.createdAt, branch: r.branch })
+      setPdfUrl(`/api/pdf/${selected}.pdf`)
+      toast('success', `已同步 CI 产物（运行 #${r.runNumber}）`)
+    } catch (e: any) {
+      toast('error', e.message)
+    } finally {
+      setGithubSyncing(false)
+    }
+  }
 
   return (
     <div className="space-y-5">
-      {/* 本地编译关闭提示 */}
+      {/* 本地编译关闭但 GitHub 编译开启：引导从 CI 同步，而不是直接关闭预览 */}
       {!localBuildEnabled && (
         <div className="flex items-start gap-2.5 rounded-xl border border-zinc-700 bg-zinc-900/60 p-4 text-sm text-zinc-300">
           <Hammer size={16} className="mt-0.5 shrink-0 text-zinc-500" />
-          <div>
+          <div className="flex-1">
             <p className="font-medium">本地 PDF 编译已在设置中关闭</p>
             <p className="mt-1 text-xs text-zinc-500">
-              到「设置」页开启「本地编译 PDF」后即可在此构建预览。
+              {githubBuildEnabled
+                ? '当前使用 GitHub 编译方式：点下方「从 GitHub Action 同步 PDF」拉取 CI 产出的简历。'
+                : '到「设置」页开启「本地编译 PDF」，或在「设置」中开启「GitHub 编译 PDF」后从此处同步 CI 产物。'}
             </p>
           </div>
         </div>
       )}
 
-      {/* 环境提示 */}
+      {/* 本地编译可用但环境缺失 */}
       {localBuildEnabled && !env?.yamlresume && (
         <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
@@ -82,7 +112,7 @@ export default function PdfPreview() {
             <p className="mt-1 text-xs text-amber-200/70">
               安装 yamlresume 命令行：
               <a className="underline decoration-dotted" href="https://www.npmjs.com/package/yamlresume" target="_blank" rel="noreferrer">npm install -g yamlresume</a>
-              ，并安装 XeTeX/Tectonic 排版引擎。也可在「设置」中开启 GitHub 编译，push 后由 CI 自动构建。
+              ，并安装 XeTeX/Tectonic 排版引擎。也可在「设置」中开启 GitHub 编译，从 CI 同步 PDF 预览。
             </p>
           </div>
         </div>
@@ -90,7 +120,7 @@ export default function PdfPreview() {
 
       <Card
         title="构建简历 PDF"
-        desc="先按方向配方组合 data/ 信息，再调用本地 yamlresume 生成"
+        desc={githubBuildEnabled ? 'GitHub 编译已开启：可从 CI 同步产物，或使用本地构建' : '先按方向配方组合 data/ 信息，再调用本地 yamlresume 生成'}
         actions={
           <>
             <Select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-44">
@@ -98,8 +128,17 @@ export default function PdfPreview() {
                 <option key={v.name} value={v.name}>{v.label || v.name}</option>
               ))}
             </Select>
+            <Button
+              variant="secondary"
+              loading={githubSyncing}
+              disabled={!selected || !githubBuildEnabled}
+              title={githubBuildEnabled ? '从 GitHub Action 最近成功运行同步 PDF' : '需先在设置开启 GitHub 编译'}
+              onClick={syncFromGithub}
+            >
+              <CloudDownload size={15} /> 从 GitHub 同步
+            </Button>
             <Button variant="primary" loading={building} disabled={!selected || !canBuild} onClick={build}>
-              <Play size={15} /> 构建
+              <Play size={15} /> 本地构建
             </Button>
           </>
         }
@@ -112,6 +151,15 @@ export default function PdfPreview() {
             <Badge tone={env.xelatex ? 'emerald' : 'red'}>
               {env.xelatex ? <span className="inline-flex items-center gap-1"><CheckCircle2 size={11} />XeTeX</span> : 'XeTeX 缺失'}
             </Badge>
+            <Badge tone={githubBuildEnabled ? 'sky' : 'zinc'}>
+              <ServerCog size={11} />GitHub 编译 {githubBuildEnabled ? '已开启' : '未开启'}
+            </Badge>
+            {githubSync && (
+              <Badge tone="sky">
+                <Clock3 size={11} />
+                CI 产物 #{(githubSync as any).runNumber} · {(githubSync as any).pdfs?.length || 0} 份 PDF
+              </Badge>
+            )}
           </div>
         )}
         {output && <pre className="mt-3 max-h-40 overflow-auto rounded-lg bg-black/40 p-3 text-[11px] text-zinc-400">{output}</pre>}

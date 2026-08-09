@@ -39,6 +39,15 @@ export function isRepo(dir) {
   return fs.existsSync(path.join(dir, '.git'))
 }
 
+export async function getRemoteUrl(dir, remote = 'origin') {
+  const remotes = await git.listRemotes({ fs, dir }).catch(() => [])
+  return remotes.find((r) => r.remote === remote)?.url || remotes[0]?.url || null
+}
+
+export async function currentBranchSafe(dir) {
+  return git.currentBranch({ fs, dir }).catch(() => null)
+}
+
 function statusBadge(head, workdir, stage) {
   // 未跟踪：head=0, workdir=2, stage=0
   if (head === 0 && workdir === 2 && stage === 0) return 'untracked'
