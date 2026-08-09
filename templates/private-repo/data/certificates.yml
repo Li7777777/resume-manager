@@ -1,0 +1,9 @@
+# 全部证书（示例数据）
+- name: 系统架构设计师
+  issuer: 人力资源和社会保障部
+  date: "2021-11"
+  tags: [architecture]
+- name: AWS Certified Developer - Associate
+  issuer: Amazon Web Services
+  date: "2022-03"
+  tags: [backend]

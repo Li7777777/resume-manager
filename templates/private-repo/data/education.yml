@@ -1,0 +1,8 @@
+# 全部教育经历（示例数据）
+- institution: 示例大学
+  degree: Bachelor
+  area: 计算机科学与技术
+  startDate: "2012-09"
+  endDate: "2016-06"
+  summary:
+    - 主修课程：数据结构、操作系统、计算机网络、数据库原理

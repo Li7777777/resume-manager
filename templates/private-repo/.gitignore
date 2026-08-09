@@ -1,0 +1,19 @@
+# 组合脚本生成的变体简历（data/ 才是真相源，重新组合即可恢复）
+resumes/*.yml
+
+# YAMLResume 构建产物
+resumes/*.pdf
+resumes/*.tex
+resumes/*.aux
+resumes/*.log
+resumes/*.out
+resumes/*.html
+resumes/*.md
+resumes/*.docx
+resumes/*.synctex.gz
+
+# 系统/编辑器文件
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

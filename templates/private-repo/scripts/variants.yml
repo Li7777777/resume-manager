@@ -1,0 +1,52 @@
+# 简历方向配方：每种简历"选哪些信息、按什么标签过滤、用什么模板/章节顺序"
+# 新增方向：在 variants 下加一个条目；详情见 docs/DATA-FORMAT.md
+# blocks 规则：
+#   {include: all}          -> 全部条目
+#   {tags: [a, b]}          -> 只选命中任一标签的条目；成就点同规则过滤（无标签=通用保留）
+#   {ids: [id1, id2]}       -> 精确指定条目
+#   省略该块                  -> 不生成该章节
+
+defaults:
+  locale: zh-hans
+  layout:
+    engine: latex
+    template: moderncv-banking
+    typography:
+      fontSize: 11pt
+
+variants:
+  frontend:
+    label: 前端工程师方向
+    sectionOrder: [skills, work, projects, education]
+    overrides:
+      basics:
+        headline: 高级前端工程师（React / TypeScript）
+        summary:
+          - 8 年前端开发经验，深耕 React 技术栈与前端工程化
+          - 主导过微前端改造与性能优化专项
+    blocks:
+      basics: { include: true }
+      education: { include: all }
+      work: { tags: [frontend] }
+      projects: { tags: [frontend] }
+      skills: { tags: [frontend] }
+      certificates: { include: all }
+      interests: { include: all }
+
+  management:
+    label: 技术管理方向
+    sectionOrder: [work, skills, projects, education]
+    overrides:
+      basics:
+        headline: 前端技术负责人
+        summary:
+          - 8 年研发经验、3 年团队管理经验，曾带领 8 人前端团队
+          - 擅长技术规划、跨团队协作与人才梯队建设
+    blocks:
+      basics: { include: true }
+      education: { include: all }
+      work: { tags: [management] }
+      projects: { tags: [management] }
+      skills: { tags: [management] }
+      certificates: { include: all }
+      interests: { include: all }

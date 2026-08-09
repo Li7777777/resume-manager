@@ -1,0 +1,9 @@
+# 基本信息（示例数据，请全部替换为真实信息）
+name: 张三
+headline: 资深前端工程师
+phone: "138-0000-0000"
+email: zhangsan@example.com
+url: https://example.com
+summary:
+  - 8 年前端开发经验，深耕 React 技术栈与前端工程化
+  - 兼具一线开发与团队管理经验

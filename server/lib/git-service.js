@@ -1,0 +1,170 @@
+// Git 同步服务：基于 isomorphic-git 的纯 JS 实现，无需本机 git CLI
+import fs from 'node:fs'
+import path from 'node:path'
+import git from 'isomorphic-git'
+import http from 'isomorphic-git/http/node'
+import { diffLines } from 'diff'
+
+// 状态码含义：0=不存在 1=一致 2=已修改 3=?
+const STATUS_NAME = {
+  '0': 'deleted',
+  '1': 'unmodified',
+  '2': 'added',
+  '3': 'modified',
+  '5': 'untracked',
+}
+
+export function isRepo(dir) {
+  return fs.existsSync(path.join(dir, '.git'))
+}
+
+function statusBadge(head, workdir, stage) {
+  // 未跟踪：head=0, workdir=2, stage=0
+  if (head === 0 && workdir === 2 && stage === 0) return 'untracked'
+  if (stage === 0 && workdir === 2) return 'deleted' // 暂存区删除
+  if (stage === 2) return 'added'
+  if (stage === 3) return 'modified'
+  if (stage === 0 && head !== 0 && workdir === 0) return 'deleted'
+  if (workdir === 2 && stage === 1) return 'modified'
+  return 'unmodified'
+}
+
+export async function getStatus(dir, settings) {
+  if (!isRepo(dir)) return { ok: false, error: '目录不是 git 仓库' }
+  const branch = await git.currentBranch({ fs, dir }).catch(() => null)
+  const remotes = await git.listRemotes({ fs, dir }).catch(() => [])
+  const remoteUrl = remotes[0]?.url || null
+  const head = await git.resolveRef({ fs, dir, ref: branch || 'HEAD' }).catch(() => null)
+  const matrix = await git.statusMatrix({ fs, dir })
+  const files = []
+  for (const [filepath, headS, workS, stageS] of matrix) {
+    const badge = statusBadge(headS, workS, stageS)
+    if (badge !== 'unmodified') files.push({ path: filepath, badge })
+  }
+  return { ok: true, branch, remoteUrl, head, files, remotes: remotes.map((r) => r.url) }
+}
+
+export async function getLog(dir, depth = 20) {
+  const commits = await git.log({ fs, dir, depth })
+  return commits.map((c) => ({
+    oid: c.oid,
+    short: c.oid.slice(0, 7),
+    message: c.commit.message.trim().split('\n')[0],
+    author: c.commit.author.name,
+    email: c.commit.author.email,
+    timestamp: c.commit.author.timestamp,
+  }))
+}
+
+function authCallback(settings) {
+  return () => ({
+    username: settings.gitUsername || 'x-access-token',
+    password: settings.token || '',
+  })
+}
+
+export async function commitAll(dir, message, settings) {
+  const author = {
+    name: settings.gitUsername || 'resume-manager',
+    email: settings.gitEmail || 'resume-manager@localhost',
+  }
+  await git.add({ fs, dir, filepath: '.' })
+  const oid = await git.commit({ fs, dir, message, author, committer: author })
+  return oid
+}
+
+export async function fetchRemote(dir, settings, remote = 'origin') {
+  await git.fetch({
+    fs,
+    http,
+    dir,
+    remote,
+    ref: 'HEAD',
+    singleBranch: false,
+    onAuth: authCallback(settings),
+    onAuthFailure: () => ({ cancel: true }),
+  })
+  return true
+}
+
+export async function pullRemote(dir, settings, remote = 'origin') {
+  const branch = (await git.currentBranch({ fs, dir })) || 'main'
+  await fetchRemote(dir, settings, remote)
+  const res = await git.fastForward({ fs, dir, ref: `${remote}/${branch}` })
+  return { ff: res, branch }
+}
+
+export async function pushRemote(dir, settings, remote = 'origin') {
+  const branch = (await git.currentBranch({ fs, dir })) || 'main'
+  const res = await git.push({
+    fs,
+    http,
+    dir,
+    remote,
+    ref: branch,
+    onAuth: authCallback(settings),
+    onAuthFailure: () => ({ cancel: true }),
+  })
+  return res
+}
+
+// 领先/落后计数：fetch 后对比本地分支与 origin 分支的提交
+export async function aheadBehind(dir, settings, remote = 'origin') {
+  const branch = (await git.currentBranch({ fs, dir })) || 'main'
+  const remoteRef = `${remote}/${branch}`
+  const local = await git.log({ fs, dir, ref: branch }).catch(() => [])
+  const remoteLog = await git.log({ fs, dir, ref: remoteRef }).catch(() => [])
+  const localOids = new Set(local.map((c) => c.oid))
+  const remoteOids = new Set(remoteLog.map((c) => c.oid))
+  let ahead = 0
+  for (const c of local) if (!remoteOids.has(c.oid)) ahead++
+  let behind = 0
+  for (const c of remoteLog) if (!localOids.has(c.oid)) behind++
+  return { ahead, behind, localCount: local.length, remoteCount: remoteLog.length }
+}
+
+// 单文件 diff（工作区 vs HEAD），文本行级
+export async function getDiff(dir, filepath) {
+  const abs = path.join(dir, filepath)
+  if (!fs.existsSync(abs)) return null
+  let headText = ''
+  try {
+    const headOid = await git.resolveRef({ fs, dir, ref: 'HEAD' })
+    const { blob } = await git.readBlob({ fs, dir, oid: headOid, filepath })
+    headText = Buffer.from(blob).toString('utf8')
+  } catch {
+    headText = ''
+  }
+  const workText = fs.readFileSync(abs, 'utf8')
+  const hunks = diffLines(headText, workText)
+  return hunks
+    .map((h) => ({
+      value: h.value,
+      added: h.added || false,
+      removed: h.removed || false,
+    }))
+    .slice(0, 400)
+}
+
+export async function projectOverview(dir, settings) {
+  if (!dir || !fs.existsSync(dir)) {
+    return { configured: false, error: '未配置数据仓路径或目录不存在' }
+  }
+  if (!isRepo(dir)) {
+    return { configured: true, isRepo: false, error: '目录不是 git 仓库（请先 git init）' }
+  }
+  const status = await getStatus(dir, settings)
+  const ab = await aheadBehind(dir, settings).catch(() => ({ ahead: 0, behind: 0 }))
+  const log = await getLog(dir, 8).catch(() => [])
+  return {
+    configured: true,
+    isRepo: true,
+    branch: status.branch,
+    remoteUrl: status.remoteUrl,
+    head: status.head,
+    dirty: status.files.length,
+    ahead: ab.ahead,
+    behind: ab.behind,
+    recentCommits: log,
+  }
+}

@@ -1,0 +1,36 @@
+name: Build Resume
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PyYAML
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml
+
+      - name: Compose resumes from data
+        run: python3 scripts/compose.py
+
+      - name: Build resumes
+        id: build
+        uses: yamlresume/action@v0.2.3
+        with:
+          resumes: |
+            resumes/frontend.yml
+            resumes/management.yml
+          verbose: true
+          version: v0.14.1
+
+      - name: Upload PDF artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: resume-pdfs
+          path: ${{ steps.build.outputs.pdf-files }}
+          if-no-files-found: error
