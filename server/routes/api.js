@@ -11,6 +11,7 @@ import * as gitSvc from '../lib/git-service.js'
 import { detectGithubAuth, maskToken } from '../lib/github-auth.js'
 import { ghApi, ghDownload, parseRemoteUrl } from '../lib/github-api.js'
 import AdmZip from 'adm-zip'
+import { recordBuild, listBuilds } from '../lib/build-history.js'
 
 const router = express.Router()
 const TEMPLATE_DIR = path.resolve('templates/private-repo')
@@ -215,6 +216,23 @@ router.post('/build', async (req, res) => {
   try {
     const result = await builder.buildVariant(repo, variant)
     if (result.ok) {
+      // 本地构建成功 → 写入本地构建历史（时间轴记录）
+      try {
+        const head = (await gitSvc.getLog(repo, 1))[0] || null
+        recordBuild({
+          kind: 'local',
+          repoPath: repo,
+          variant,
+          sha: head?.oid || null,
+          headMessage: head?.message || null,
+          timestamp: Math.floor(Date.now() / 1000),
+          status: 'success',
+          pdfs: [result.pdf],
+          output: (result.output || '').slice(0, 500),
+        })
+      } catch {
+        /* 记录失败不影响构建结果 */
+      }
       res.json({ ok: true, pdf: `/api/pdf/${variant}.pdf`, output: result.output })
     } else {
       res.json({ ok: false, error: result.output })
@@ -442,12 +460,13 @@ router.post('/github/pdf-sync', async (req, res) => {
 /* ---------- GitHub 历史版本（提交时间轴 + CI 产物匹配 + YAML 快照） ---------- */
 const HISTORY_DIR = (repo) => path.join(repo, 'resumes', 'history')
 
-// 提交历史（本地 git log）与 GitHub Actions 运行（按 head_sha 匹配）合并
-router.get('/github/history', async (req, res) => {
+/* ---------- 合并时间轴（本地构建记录 + GitHub 提交/CI 运行） ---------- */
+// 返回统一时间轴：kind=local（本地 yamlresume 构建）与 kind=github（提交 + CI 运行）
+router.get('/history', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   const settings = getSettings()
-  const limit = Math.min(Number(req.query.limit) || 20, 50)
+  const limit = Math.min(Number(req.query.limit) || 30, 50)
   try {
     const commits = await gitSvc.getLog(repo, limit)
     const remoteUrl = await gitSvc.getRemoteUrl(repo)
@@ -469,9 +488,25 @@ router.get('/github/history', async (req, res) => {
         /* token 权限不足或网络问题：仅展示提交 */
       }
     }
+    const githubItems = commits.map((c) => ({
+      kind: 'github',
+      id: c.oid,
+      oid: c.oid,
+      short: c.short,
+      message: c.message,
+      author: c.author,
+      timestamp: c.timestamp,
+      run: runMap[c.oid] || null,
+    }))
+    // 本地构建记录（当前数据仓的）
+    const localItems = listBuilds(repo).map((b) => ({ ...b, kind: 'local' }))
+    // 合并按时间倒序（github 提交时间戳 / 本地构建时间戳）
+    const items = [...githubItems, ...localItems]
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, limit)
     res.json({
       ok: true,
-      commits: commits.map((c) => ({ ...c, run: runMap[c.oid] || null })),
+      items,
       owner: parsed?.owner || null,
       repo: parsed?.repo || null,
     })

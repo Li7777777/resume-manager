@@ -87,7 +87,8 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | PUT | `/api/yaml` | 写文件（先做 YAML 语法校验） |
 | POST | `/api/build` | `{variant}` → 组合 + 构建 → `{pdf: "/api/pdf/<v>.pdf"}`；**受 `localPdfBuild` 开关门控（服务端强制）** |
 | GET | `/api/pdf/history/:file` | 历史版本 PDF 预览（`resumes/history/` 缓存目录） |
-| GET | `/api/github/history` | 提交历史（本地 git log）+ GitHub Actions 运行匹配（head_sha→run），时间轴数据源 |
+| GET | `/api/history` | **合并时间轴**：本地构建记录（`~/.resume-manager/builds.json`，kind=local）+ GitHub 提交与 CI 运行匹配（kind=github），按时间倒序 |
+| POST | `/api/build` | 本地构建成功自动写入本地构建历史（时间轴记录：variant/sha/headMessage/pdf） |
 | GET | `/api/github/history/pdf?sha=` | 下载指定提交 CI 构建的产物 PDF（缓存到 `resumes/history/`，二次请求命中缓存） |
 | GET | `/api/git/file-at?sha=&path=` | 读取指定提交下的文件内容（仅限 `data/`、`scripts/`），历史版本 YAML 快照 |
 | POST | `/api/github/pdf-sync` | 从私有仓 GitHub Actions 最近成功运行拉取 `resume-pdfs` artifact，解压 PDF 写入 `resumes/` 供预览（GitHub 编译方式的预览链路） |

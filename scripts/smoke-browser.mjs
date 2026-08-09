@@ -41,22 +41,19 @@ const page = await browser.newPage()
 page.on('console', (m) => m.type() === 'error' && console.log('  [console.error]', m.text().slice(0, 150)))
 page.on('pageerror', (e) => console.log('  [pageerror]', String(e).slice(0, 150)))
 
-// 1. History 页
-console.log('=== History 页 ===')
-await page.goto(`${BASE}/#history`, { waitUntil: 'networkidle2', timeout: 60000 })
+// 1. 合并预览页（#pdf：时间轴 + PDF）
+console.log('=== 合并预览页 ===')
+await page.goto(`${BASE}/#pdf`, { waitUntil: 'networkidle2', timeout: 60000 })
 await sleep(3000)
 const timeline = await page.evaluate(() => {
   const el = document.querySelector('main')
-  return (el?.innerText || '').includes('GitHub 提交历史') && (el?.innerText || '').includes('历史版本详情')
+  return (el?.innerText || '').includes('版本时间轴') && (el?.innerText || '').includes('构建简历 PDF')
 })
 console.log('时间轴渲染:', timeline)
 const ok1 = await checkPdfRender(page, 'history')
 
-// 2. PdfPreview 页（本地构建产物预览）
-console.log('=== PdfPreview 页 ===')
-await page.goto(`${BASE}/#pdf`, { waitUntil: 'networkidle2', timeout: 60000 })
-await sleep(2000)
-// 点击「本地构建」触发构建
+// 2. 本地构建流程（点击「本地构建」→ 时间轴新增 + 渲染）
+console.log('=== 本地构建流程 ===')
 const clicked = await page.evaluate(() => {
   const btns = [...document.querySelectorAll('button')]
   const b = btns.find((x) => x.innerText.includes('本地构建'))
@@ -65,10 +62,9 @@ const clicked = await page.evaluate(() => {
 })
 console.log('点击本地构建:', clicked)
 if (clicked) {
-  // 等待构建完成（yamlresume + xelatex 约 15s），轮询页面出现预览卡片
   for (let i = 0; i < 30; i++) {
     await sleep(3000)
-    const has = await page.evaluate(() => !!document.querySelector('canvas') || document.body.innerText.includes('构建成功'))
+    const has = await page.evaluate(() => !!document.querySelector('canvas') || document.body.innerText.includes('已记录到时间轴'))
     if (has) break
   }
 }

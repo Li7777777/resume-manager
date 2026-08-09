@@ -251,7 +251,7 @@ export function Badge({
   tone,
   children,
 }: {
-  tone: 'emerald' | 'amber' | 'red' | 'sky' | 'zinc'
+  tone: 'emerald' | 'amber' | 'red' | 'sky' | 'zinc' | 'indigo'
   children: React.ReactNode
 }) {
   const map = {
@@ -260,6 +260,7 @@ export function Badge({
     red: 'bg-red-500/15 text-red-300 border-red-500/30',
     sky: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
     zinc: 'bg-zinc-700/30 text-zinc-400 border-zinc-600/40',
+    indigo: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
   }
   return (
     <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium ${map[tone]}`}>
