@@ -18,8 +18,9 @@ import {
 } from 'lucide-react'
 import { api } from '../api'
 import type { Settings } from '../types'
+import { loadSettings, patchSettings } from '../settings'
 import { useToast } from '../toast'
-import { Card, Button, Field, Input, Switch, Badge } from '../components/ui'
+import { Card, Button, Field, Input, Switch, Badge, Spinner } from '../components/ui'
 
 export default function SettingsPage() {
   const toast = useToast()
@@ -36,9 +37,13 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    api.get<{ settings: Settings }>('/api/settings').then((d) => setForm(d.settings))
+    loadSettings()
+      .then((s) => setForm(s))
+      .catch(() => {})
+      .finally(() => setReady(true))
     loadRepoCfg()
     runDetect()
   }, [])
@@ -65,12 +70,12 @@ export default function SettingsPage() {
   const applyDetected = async () => {
     if (!detected?.token) return
     try {
-      await api.put('/api/settings', {
+      const saved = await patchSettings({
         token: detected.token,
         gitUsername: detected.username || form.gitUsername,
       })
+      setForm(saved)
       toast('success', `已启用系统凭据${detected.username ? `（@${detected.username}）` : ''}`)
-      setForm((f) => ({ ...f, token: detected.token!, gitUsername: detected.username || f.gitUsername }))
       runDetect(true)
     } catch (e: any) {
       toast('error', e.message)
@@ -85,11 +90,42 @@ export default function SettingsPage() {
 
   const save = async () => {
     try {
-      await api.put('/api/settings', form)
+      const saved = await patchSettings({
+        repoPath: form.repoPath,
+        token: form.token,
+        gitUsername: form.gitUsername,
+        gitEmail: form.gitEmail,
+      })
+      setForm(saved)
       toast('success', '设置已保存')
       setTestResult(null)
+      loadRepoCfg()
     } catch (e: any) {
       toast('error', e.message)
+    }
+  }
+
+  // ★ 编译开关：切换即自动保存 + 热重载（乐观更新，失败回滚）
+  const toggleLocal = async (v: boolean) => {
+    setForm((f) => ({ ...f, localPdfBuild: v }))
+    try {
+      await patchSettings({ localPdfBuild: v })
+      toast('success', `本地编译 PDF 已${v ? '开启' : '关闭'}（即时生效）`)
+    } catch (e: any) {
+      setForm((f) => ({ ...f, localPdfBuild: !v }))
+      toast('error', `保存失败：${e.message}`)
+    }
+  }
+
+  const toggleGithub = async (v: boolean) => {
+    setForm((f) => ({ ...f, githubPdfBuild: v }))
+    try {
+      await patchSettings({ githubPdfBuild: v })
+      toast('success', `GitHub 编译 PDF 已${v ? '开启' : '关闭'}（需同步到私有仓后 CI 生效）`)
+      loadRepoCfg() // 热重载：刷新私有仓配置状态徽章
+    } catch (e: any) {
+      setForm((f) => ({ ...f, githubPdfBuild: !v }))
+      toast('error', `保存失败：${e.message}`)
     }
   }
 
@@ -171,7 +207,7 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
-            <Switch checked={localBuildOn} onChange={(v) => setForm({ ...form, localPdfBuild: v })} />
+            <Switch checked={localBuildOn} disabled={!ready} onChange={(v) => toggleLocal(v)} />
           </div>
           {/* GitHub 编译 */}
           <div className="flex items-start justify-between gap-4 py-3.5 first:pt-0 last:pb-0">
@@ -205,11 +241,11 @@ export default function SettingsPage() {
                 )}
               </div>
             </div>
-            <Switch checked={githubBuildOn} onChange={(v) => setForm({ ...form, githubPdfBuild: v })} />
+            <Switch checked={githubBuildOn} disabled={!ready} onChange={(v) => toggleGithub(v)} />
           </div>
         </div>
         <p className="mt-3 rounded-lg bg-zinc-950/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-600">
-          修改开关后点「保存设置」生效；GitHub 编译开关还需「同步并推送」到私有数据仓才会让 CI 生效。
+          开关<b className="text-zinc-400">切换即自动保存并即时生效</b>（无需点保存）；GitHub 编译开关还需「同步并推送」到私有数据仓才会让 CI 生效。
         </p>
       </Card>
 
@@ -319,6 +355,11 @@ export default function SettingsPage() {
           <Save size={15} /> 保存设置
         </Button>
       </div>
+      {!ready && (
+        <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-zinc-950/40">
+          <Spinner label="正在加载设置…" />
+        </div>
+      )}
     </div>
   )
 }
