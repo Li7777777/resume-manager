@@ -12,6 +12,7 @@ import { detectGithubAuth, maskToken } from '../lib/github-auth.js'
 import { ghApi, ghDownload, parseRemoteUrl } from '../lib/github-api.js'
 import AdmZip from 'adm-zip'
 import { recordBuild, listBuilds } from '../lib/build-history.js'
+import { TEMPLATES, ENGINE_LABELS } from '../lib/templates.js'
 
 const router = express.Router()
 const TEMPLATE_DIR = path.resolve('templates/private-repo')
@@ -596,6 +597,109 @@ router.get('/pdf/history/:file', (req, res) => {
   if (!fs.existsSync(p)) return res.status(404).json({ ok: false, error: '历史 PDF 不存在' })
   res.setHeader('Content-Type', 'application/pdf')
   fs.createReadStream(p).pipe(res)
+})
+
+/* ---------- 模板管理（官网模板载入 + 实时切换） ---------- */
+router.get('/templates', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  try {
+    const doc = compose.loadVariantsDoc(repo)
+    const current = {}
+    for (const [name, v] of Object.entries(doc.variants || {})) {
+      current[name] = v.layout?.template || null
+    }
+    res.json({ ok: true, templates: TEMPLATES, current, engineLabels: ENGINE_LABELS })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+// 把模板应用到指定方向（实时切换：默认同时触发构建以便立即预览）
+router.post('/template/apply', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const { variant, template, engine, build = true } = req.body || {}
+  try {
+    const doc = compose.loadVariantsDoc(repo)
+    const v = doc.variants?.[variant]
+    if (!v) return res.json({ ok: false, error: `方向 ${variant} 不存在` })
+    const tpl = TEMPLATES.find((t) => t.id === template)
+    if (!tpl) return res.json({ ok: false, error: '未知模板' })
+    v.layout = { ...(v.layout || {}), engine: engine || tpl.engine, template: tpl.id }
+    compose.saveVariantsDoc(repo, doc)
+    // 用新 layout 重新组合该方向的简历 YAML，再构建产物
+    compose.generateAll(repo, [variant])
+    let preview = null
+    let output = ''
+    if (build && tpl.engine === 'latex') {
+      const r = await builder.buildVariant(repo, variant)
+      if (r.ok) preview = `/api/pdf/${variant}.pdf`
+      output = r.output
+    } else if (build && tpl.engine === 'html') {
+      const r = await builder.buildHtmlVariant(repo, variant)
+      if (r.ok) preview = `/api/html/${variant}`
+      output = r.output
+    }
+    res.json({ ok: true, variant, template: tpl.id, engine: tpl.engine, preview, output: output.slice(0, 300) })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+// 已生成的 HTML 简历预览（html 引擎产物）
+router.get('/html/:name', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.status(404).end()
+  const name = path.basename(req.params.name)
+  const p = path.join(repo, 'resumes', `${name}.html`)
+  if (!fs.existsSync(p)) return res.status(404).json({ ok: false, error: 'HTML 简历不存在，请先生成' })
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache')
+  fs.createReadStream(p).pipe(res)
+})
+
+/* ---------- 简历定制（拖拽布局 → 实时渲染 HTML） ---------- */
+// 定制布局文档：{ sections: [{key, mode: 'all'|'ids'|'tags', ids?, tags?}], overrides? }
+// 映射为 variants.custom（html 引擎）→ compose → 构建 HTML
+router.post('/custom/layout', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const { sections = [], overrides, template = 'calm' } = req.body || {}
+  try {
+    const blocks = {}
+    const order = []
+    for (const s of sections) {
+      if (!store.CATEGORIES.includes(s.key)) continue
+      if (s.mode === 'all') blocks[s.key] = { include: 'all' }
+      else if (s.mode === 'ids' && Array.isArray(s.ids) && s.ids.length) blocks[s.key] = { ids: [...new Set(s.ids)] }
+      else if (s.mode === 'tags' && Array.isArray(s.tags) && s.tags.length) blocks[s.key] = { tags: [...s.tags] }
+      else continue
+      order.push(s.key)
+    }
+    if (Object.keys(blocks).length === 0) {
+      return res.json({ ok: false, error: '布局为空，请先拖入内容' })
+    }
+    const doc = compose.loadVariantsDoc(repo)
+    doc.variants = doc.variants || {}
+    doc.variants.custom = {
+      label: '定制简历',
+      layout: { engine: 'html', template },
+      sectionOrder: order,
+      blocks,
+      overrides: overrides?.basics ? { basics: overrides.basics } : undefined,
+    }
+    compose.saveVariantsDoc(repo, doc)
+    compose.generateAll(repo, ['custom'])
+    const r = await builder.buildHtmlVariant(repo, 'custom')
+    res.json({
+      ok: r.ok,
+      htmlUrl: r.ok ? '/api/html/custom' : null,
+      output: (r.output || '').slice(-400),
+    })
+  } catch (err) {
+    sendError(res, err)
+  }
 })
 
 /* ---------- 模板初始化 ---------- */

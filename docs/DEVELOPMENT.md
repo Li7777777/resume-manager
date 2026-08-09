@@ -110,6 +110,14 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | POST | `/api/git/pull` | fetch + fast-forward |
 | POST | `/api/git/push` | 推送（需 settings.token，用户名 `x-access-token`） |
 
+### 模板与定制
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/templates` | 官网模板元数据（LaTeX/HTML）+ 各方向当前模板映射 |
+| POST | `/api/template/apply` | `{variant, template, engine}` 应用模板到方向，重新 compose + 构建并返回预览 URL（实时切换） |
+| GET | `/api/html/:name` | 已生成的 HTML 简历预览（html 引擎产物，no-cache） |
+| POST | `/api/custom/layout` | `{sections:[{key,mode,ids,tags}], template, overrides}` 保存 variants.custom（html 引擎）+ compose + 构建 HTML，返回实时渲染 URL |
+
 ### 模板
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

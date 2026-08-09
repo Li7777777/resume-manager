@@ -63,3 +63,16 @@ export async function buildVariant(repo, variant, { verbose = true } = {}) {
 export function pdfPath(repo, variant) {
   return path.join(repo, 'resumes', `${variant}.pdf`)
 }
+
+// 仅构建 HTML 输出（html 引擎，无需 xelatex，用于简历定制实时渲染）
+export async function buildHtmlVariant(repo, variant) {
+  const env = checkEnvironment()
+  if (!env.yamlresume) {
+    return { ok: false, output: '未找到 yamlresume CLI，请先安装：npm install -g yamlresume' }
+  }
+  const args = ['build', `resumes/${variant}.yml`, '-t', '120']
+  const r = await run(env.yamlresume, args, repo)
+  const html = path.join(repo, 'resumes', `${variant}.html`)
+  const ok = r.code === 0 && fs.existsSync(html)
+  return { ok, output: (r.stdout + r.stderr).trim(), html: ok ? `${variant}.html` : null }
+}

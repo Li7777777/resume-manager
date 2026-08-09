@@ -17,7 +17,7 @@ const HEADER = [
   '',
 ].join('\n')
 
-function loadVariantsDoc(repo) {
+export function loadVariantsDoc(repo) {
   const file = VARIANTS_FILE(repo)
   if (!fs.existsSync(file)) return { defaults: {}, variants: {} }
   return yaml.load(fs.readFileSync(file, 'utf8')) || { defaults: {}, variants: {} }
