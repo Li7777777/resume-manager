@@ -65,6 +65,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | GET | `/api/health` | 版本 + 构建环境探测（yamlresume/xelatex/tectonic 是否在 PATH） |
 | GET | `/api/settings` | 返回设置（token 打码为 `••••••`）；含编译开关 `localPdfBuild`（默认 true）/ `githubPdfBuild`（默认 false） |
 | PUT | `/api/settings` | 保存设置；token 传 `••••••` 表示保持不变；编译开关接受 boolean |
+| GET | `/api/github/autodetect` | 自动检测系统 GitHub 凭据（`GITHUB_TOKEN`/`GH_TOKEN` 环境变量、`gh auth token`），返回 `{found, source, username, token, tokenPreview}`（token 仅本机 localhost 返回） |
 | GET | `/api/project/status` | 数据仓总览（配置/仓库/分支/HEAD/脏文件数/领先落后/最近提交） |
 
 ### 信息条目
@@ -152,3 +153,10 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - 同步链路：设置页开关 → `POST /api/repo/pdf-config {commit:true, push:true}` → `git-service.commitFile`（仅提交该文件）→ push；未配 Token 时落本地并提示去 Git 看板推送；
 - 代理支持：`server/lib/git-service.js` 读取 `HTTP(S)_PROXY` 环境变量，用 `https-proxy-agent` 包装 http 客户端注入每次请求（isomorphic-git 的 push 不透传 agent 参数，必须包装）；无代理变量时不影响；
 - 修改 workflow 门控逻辑时，须同步更新模板与既有私有仓（两份 workflow 保持一致）。
+
+## 9.1 GitHub 凭据自动检测实现要点
+
+- 模块：`server/lib/github-auth.js`；检测顺序：`GITHUB_TOKEN`/`GH_TOKEN` 环境变量 → `gh auth token`（spawnSync，15s 超时）；
+- 用户名反查：`gh api user --jq .login`（gh 源）或 `https://api.github.com/user`（best-effort，走 `HttpsProxyAgent`）；
+- 前端：`src/pages/Settings.tsx` 挂载时自动调用 `GET /api/github/autodetect`；检测到 → 展示来源/用户/打码预览 + 「一键启用系统凭据」；未检测到且未配置 → 展示图文教程（Fine-grained/Classic Token 链接 + gh auth login）；
+- 隐私：token 仅在本机 `127.0.0.1` 前端可用；检测结果不写日志。

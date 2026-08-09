@@ -29,6 +29,7 @@ npm run typecheck  # 前端 TS 检查
 | `server/lib/builder.js` | 调用本地 yamlresume CLI 构建 PDF |
 | `server/lib/git-service.js` | isomorphic-git 封装（status/log/commit/push/pull/diff） |
 | `server/config.js` | 设置存取 `~/.resume-manager/settings.json` |
+| `server/lib/github-auth.js` | GitHub 凭据自动检测（环境变量 / gh CLI） |
 | `src/pages/*.tsx` | 八个页面（总览/信息/方向/YAML/PDF/Git/模板/设置） |
 | `src/components/ui.tsx` | UI 组件库（Button/Card/Modal/TagInput…） |
 | `templates/private-repo/` | 私有数据仓模板（新用户初始化用） |

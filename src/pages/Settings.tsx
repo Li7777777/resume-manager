@@ -11,6 +11,10 @@ import {
   CloudCog,
   CloudUpload,
   CheckCircle2,
+  ScanSearch,
+  ExternalLink,
+  Sparkles,
+  TerminalSquare,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Settings } from '../types'
@@ -21,6 +25,14 @@ export default function SettingsPage() {
   const toast = useToast()
   const [form, setForm] = useState<Settings>({})
   const [repoCfg, setRepoCfg] = useState<{ present: boolean; repoValue: boolean | null } | null>(null)
+  const [detected, setDetected] = useState<{
+    found: boolean
+    source?: string | null
+    username?: string | null
+    token?: string | null
+    tokenPreview?: string | null
+  } | null>(null)
+  const [detecting, setDetecting] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
@@ -28,7 +40,42 @@ export default function SettingsPage() {
   useEffect(() => {
     api.get<{ settings: Settings }>('/api/settings').then((d) => setForm(d.settings))
     loadRepoCfg()
+    runDetect()
   }, [])
+
+  const runDetect = async (silent = false) => {
+    if (!silent) setDetecting(true)
+    try {
+      const d = await api.get<{
+        found: boolean
+        source?: string | null
+        username?: string | null
+        token?: string | null
+        tokenPreview?: string | null
+      }>('/api/github/autodetect')
+      setDetected(d)
+    } catch {
+      setDetected({ found: false })
+    } finally {
+      setDetecting(false)
+    }
+  }
+
+  // 一键启用系统检测到的凭据
+  const applyDetected = async () => {
+    if (!detected?.token) return
+    try {
+      await api.put('/api/settings', {
+        token: detected.token,
+        gitUsername: detected.username || form.gitUsername,
+      })
+      toast('success', `已启用系统凭据${detected.username ? `（@${detected.username}）` : ''}`)
+      setForm((f) => ({ ...f, token: detected.token!, gitUsername: detected.username || f.gitUsername }))
+      runDetect(true)
+    } catch (e: any) {
+      toast('error', e.message)
+    }
+  }
 
   const loadRepoCfg = () =>
     api
@@ -168,10 +215,7 @@ export default function SettingsPage() {
 
       <Card title="GitHub 同步" desc="用于 push / pull 的凭据，仅保存在本机，不上传">
         <div className="space-y-4">
-          <Field
-            label="GitHub Token"
-            hint="需要 repo 权限（fine-grained: Contents 读写）"
-          >
+          <Field label="GitHub Token" hint="需要 repo 权限（fine-grained: Contents 读写）">
             <div className="relative">
               <KeyRound size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
               <Input
@@ -183,6 +227,68 @@ export default function SettingsPage() {
               />
             </div>
           </Field>
+
+          {/* 自动检测状态区 */}
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs">
+                <ScanSearch size={14} className="text-zinc-500" />
+                <span className="text-zinc-400">系统凭据自动检测</span>
+                {detecting && <span className="text-[11px] text-zinc-600">检测中…</span>}
+                {!detecting && detected?.found && (
+                  <Badge tone="emerald">
+                    <Sparkles size={11} />
+                    已检测到（{detected.source === 'gh' ? 'gh CLI' : detected.source}）
+                  </Badge>
+                )}
+                {!detecting && !detected?.found && form.token && <Badge tone="emerald"><CheckCircle2 size={11} />已配置</Badge>}
+                {!detecting && !detected?.found && !form.token && <Badge tone="amber">未检测到，请手动添加</Badge>}
+              </div>
+              <Button size="sm" variant="ghost" loading={detecting} onClick={() => runDetect()}>
+                <RefreshCw size={12} /> 重新检测
+              </Button>
+            </div>
+            {!detecting && detected?.found && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-zinc-800 pt-2">
+                <span className="text-[11px] text-zinc-500">
+                  从{detected.source === 'gh' ? ' gh CLI 登录态' : ` 环境变量 ${detected.source}`}检测到凭据
+                  {detected.username ? `（用户 @${detected.username}）` : ''}：
+                  <code className="text-zinc-400">{detected.tokenPreview}</code>
+                </span>
+                <Button size="sm" variant="success" onClick={applyDetected}>
+                  <Sparkles size={12} /> 一键启用系统凭据
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* 获取不到时：教程引导 */}
+          {!detecting && !detected?.found && !form.token && (
+            <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-4">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-indigo-300">
+                <TerminalSquare size={13} /> 如何获取 GitHub Token（二选一）
+              </p>
+              <div className="mt-2.5 space-y-3 text-xs leading-relaxed text-zinc-400">
+                <div>
+                  <p className="font-medium text-zinc-300">方式一：GitHub 网页创建（推荐）</p>
+                  <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+                    <li>打开
+                      <a className="mx-1 inline-flex items-center gap-0.5 text-indigo-400 underline decoration-dotted hover:text-indigo-300" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">创建 Fine-grained Token<ExternalLink size={10} /></a>
+                      （或<a className="mx-1 text-indigo-400 underline decoration-dotted hover:text-indigo-300" href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">经典 Token<ExternalLink size={10} /></a>）
+                    </li>
+                    <li>Repository access → Only select repositories → 勾选你的简历私有仓</li>
+                    <li>Permissions → Contents → <span className="text-zinc-200">Read and write</span>（GitHub 编译开关另需 Workflows: Read and write）</li>
+                    <li>Generate token → 复制 <code className="text-zinc-300">github_pat_</code> / <code className="text-zinc-300">ghp_</code> 开头的 Token，粘贴到上方输入框</li>
+                  </ol>
+                </div>
+                <div>
+                  <p className="font-medium text-zinc-300">方式二：gh CLI（本机已登录则本页会自动检测到）</p>
+                  <pre className="mt-1 rounded-md bg-black/40 p-2 text-[11px] text-zinc-300">gh auth login</pre>
+                  <p className="mt-1 text-zinc-500">登录后返回本页点「重新检测」即可一键启用。</p>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="提交用户名">
               <div className="relative">

@@ -8,6 +8,7 @@ import * as store from '../lib/data-store.js'
 import * as compose from '../lib/compose.js'
 import * as builder from '../lib/builder.js'
 import * as gitSvc from '../lib/git-service.js'
+import { detectGithubAuth, maskToken } from '../lib/github-auth.js'
 
 const router = express.Router()
 const TEMPLATE_DIR = path.resolve('templates/private-repo')
@@ -50,6 +51,27 @@ router.put('/settings', (req, res) => {
   if (typeof githubPdfBuild === 'boolean') patch.githubPdfBuild = githubPdfBuild
   const saved = saveSettings(patch)
   res.json({ ok: true, settings: { ...saved, token: saved.token ? '••••••' : '' } })
+})
+
+/* ---------- GitHub 凭据自动检测 ---------- */
+// 先尝试从系统环境获取（GITHUB_TOKEN/GH_TOKEN 环境变量、gh CLI 登录态），
+// 获取不到时由前端引导用户创建 Token（设置页内置教程与链接）。
+router.get('/github/autodetect', async (req, res) => {
+  try {
+    const sources = await detectGithubAuth()
+    const first = sources[0] || null
+    res.json({
+      ok: true,
+      found: !!first,
+      source: first?.source || null,
+      username: first?.username || null,
+      // token 仅在本机 localhost 环境下返回给前端，供一键启用
+      token: first?.token || null,
+      tokenPreview: first ? maskToken(first.token) : null,
+    })
+  } catch (err) {
+    res.json({ ok: true, found: false, source: null, username: null, token: null, tokenPreview: null })
+  }
 })
 
 /* ---------- 项目总览 ---------- */

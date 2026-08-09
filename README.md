@@ -49,8 +49,12 @@ npm start            # 启动服务: http://127.0.0.1:8787
 
 ### 3. 连接私有数据
 
-打开「设置」，填入私有数据仓的**本地目录路径**（如 `E:\code\my-resume-data`），
-再填写 GitHub Token（fine-grained，Contents 读写）与提交身份，保存后即可开始管理。
+打开「设置」，填入私有数据仓的**本地目录路径**（如 `E:\code\my-resume-data`）。
+
+**GitHub 同步凭据会自动检测**：系统会优先从环境自动获取（`gh` CLI 登录态、`GITHUB_TOKEN`/`GH_TOKEN` 环境变量），
+检测到后点「一键启用系统凭据」即可；获取不到时，设置页内置图文教程与链接（
+[Fine-grained Token](https://github.com/settings/personal-access-tokens/new)、[Classic Token](https://github.com/settings/tokens)）引导你创建，
+或先执行 `gh auth login` 再回来「重新检测」。
 
 ## 功能一览
 
@@ -63,7 +67,7 @@ npm start            # 启动服务: http://127.0.0.1:8787
 | PDF 预览 | 一键组合 + 本地构建 + 浏览器内渲染 PDF（缩放/下载） |
 | Git 同步看板 | 分支/远程/领先落后/未同步文件可视化；提交、提交并推送、拉取；文件级 diff；提交历史时间线 |
 | 模板初始化 | 按数据格式一键生成私有数据仓骨架 + 建仓推送指引 |
-| 设置 | 数据仓路径、**PDF 编译开关**、GitHub Token（仅存本机）、提交身份、隐私说明 |
+| 设置 | 数据仓路径、**PDF 编译开关**、GitHub Token（**自动检测 + 教程引导**）、提交身份、隐私说明 |
 
 ## PDF 编译开关（设置页）
 
