@@ -7,11 +7,18 @@ import fs from 'node:fs'
 const CONFIG_DIR = path.join(os.homedir(), '.resume-manager')
 const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json')
 
+// 编译开关默认值：GitHub 编译 PDF 默认关闭，本地编译 PDF 默认开启
+export const SETTINGS_DEFAULTS = {
+  localPdfBuild: true,
+  githubPdfBuild: false,
+}
+
 export function getSettings() {
   try {
-    return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) || {}
+    const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) || {}
+    return { ...SETTINGS_DEFAULTS, ...saved }
   } catch {
-    return {}
+    return { ...SETTINGS_DEFAULTS }
   }
 }
 

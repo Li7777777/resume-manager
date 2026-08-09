@@ -12,14 +12,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # GitHub 编译 PDF 开关：由 resume-manager.config.json 控制（Resume Manager 设置页可配置）
+      - name: Check PDF build switch
+        id: switch
+        run: |
+          ENABLED="false"
+          if [ -f resume-manager.config.json ]; then
+            ENABLED=$(python3 -c "import json;print(str(json.load(open('resume-manager.config.json')).get('githubPdfBuild',False)).lower())" 2>/dev/null || echo "false")
+          fi
+          echo "enabled=$ENABLED" >> "$GITHUB_OUTPUT"
+          echo "GitHub PDF 编译开关: $ENABLED"
+
+      - name: GitHub PDF 编译已关闭（默认）
+        if: steps.switch.outputs.enabled != 'true'
+        run: |
+          echo "::notice::GitHub PDF 编译已关闭，跳过构建。如需开启：在 Resume Manager 设置页打开「GitHub 编译 PDF」并同步到私有数据仓。"
+
       - name: Install PyYAML
+        if: steps.switch.outputs.enabled == 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml
 
       - name: Compose resumes from data
+        if: steps.switch.outputs.enabled == 'true'
         run: python3 scripts/compose.py
 
       - name: Build resumes
         id: build
+        if: steps.switch.outputs.enabled == 'true'
         uses: yamlresume/action@v0.2.3
         with:
           resumes: |
@@ -29,6 +48,7 @@ jobs:
           version: v0.14.1
 
       - name: Upload PDF artifacts
+        if: steps.switch.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: resume-pdfs

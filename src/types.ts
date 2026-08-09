@@ -20,6 +20,9 @@ export interface Settings {
   token?: string
   gitUsername?: string
   gitEmail?: string
+  // 编译开关：本地编译默认开启，GitHub 编译默认关闭
+  localPdfBuild?: boolean
+  githubPdfBuild?: boolean
 }
 
 export interface Variant {

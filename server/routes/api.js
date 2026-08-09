@@ -40,12 +40,14 @@ router.get('/settings', (req, res) => {
 })
 
 router.put('/settings', (req, res) => {
-  const { repoPath, token, gitUsername, gitEmail } = req.body || {}
+  const { repoPath, token, gitUsername, gitEmail, localPdfBuild, githubPdfBuild } = req.body || {}
   const patch = {}
   if (typeof repoPath === 'string') patch.repoPath = repoPath
   if (typeof token === 'string' && token !== '••••••') patch.token = token
   if (typeof gitUsername === 'string') patch.gitUsername = gitUsername
   if (typeof gitEmail === 'string') patch.gitEmail = gitEmail
+  if (typeof localPdfBuild === 'boolean') patch.localPdfBuild = localPdfBuild
+  if (typeof githubPdfBuild === 'boolean') patch.githubPdfBuild = githubPdfBuild
   const saved = saveSettings(patch)
   res.json({ ok: true, settings: { ...saved, token: saved.token ? '••••••' : '' } })
 })
@@ -182,6 +184,10 @@ router.post('/build', async (req, res) => {
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   const { variant } = req.body || {}
   if (!variant) return res.json({ ok: false, error: '缺少 variant' })
+  // 本地编译开关（服务端强制校验，默认开启）
+  if (getSettings().localPdfBuild === false) {
+    return res.json({ ok: false, error: '本地 PDF 编译已关闭，请在「设置」页开启后再构建' })
+  }
   try {
     const result = await builder.buildVariant(repo, variant)
     if (result.ok) {
@@ -282,6 +288,58 @@ router.post('/git/push', async (req, res) => {
     const r = await gitSvc.pushRemote(repo, settings)
     if (r.error) return res.json({ ok: false, error: r.error.message || String(r.error) })
     res.json({ ok: true, pushed: r.pushed, branch: r.branch || null })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+/* ---------- GitHub 编译开关（私有数据仓配置同步） ---------- */
+const PDF_CONFIG_FILE = 'resume-manager.config.json'
+
+router.get('/repo/pdf-config', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const cfgPath = path.join(repo, PDF_CONFIG_FILE)
+  let repoValue = null
+  if (fs.existsSync(cfgPath)) {
+    try {
+      repoValue = !!JSON.parse(fs.readFileSync(cfgPath, 'utf8')).githubPdfBuild
+    } catch {
+      repoValue = null
+    }
+  }
+  res.json({ ok: true, present: fs.existsSync(cfgPath), repoValue })
+})
+
+// 把当前设置写入私有数据仓 resume-manager.config.json（可选：提交/推送）
+router.post('/repo/pdf-config', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const { commit = false, push = false } = req.body || {}
+  const settings = getSettings()
+  const value = !!settings.githubPdfBuild
+  const cfgPath = path.join(repo, PDF_CONFIG_FILE)
+  try {
+    fs.writeFileSync(cfgPath, JSON.stringify({ githubPdfBuild: value }, null, 2) + '\n', 'utf8')
+    let committed = false
+    let pushed = false
+    if (commit) {
+      await gitSvc.commitFile(
+        repo,
+        PDF_CONFIG_FILE,
+        `chore: 设置 GitHub PDF 编译 = ${value ? '开启' : '关闭'}`,
+        settings,
+      )
+      committed = true
+      if (push) {
+        if (!settings.token) {
+          return res.json({ ok: false, error: '未配置 GitHub Token：已写入并提交本地，请到「Git 同步看板」推送', committed })
+        }
+        await gitSvc.pushRemote(repo, settings)
+        pushed = true
+      }
+    }
+    res.json({ ok: true, committed, pushed, value, file: PDF_CONFIG_FILE })
   } catch (err) {
     sendError(res, err)
   }

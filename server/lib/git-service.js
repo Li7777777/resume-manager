@@ -3,7 +3,28 @@ import fs from 'node:fs'
 import path from 'node:path'
 import git from 'isomorphic-git'
 import http from 'isomorphic-git/http/node'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 import { diffLines } from 'diff'
+
+// 代理支持：Node 的 https.request 不读 HTTP(S)_PROXY 环境变量，
+// 而 curl / git CLI 会读。当环境存在代理时（如 Clash），必须显式隧道，
+// 否则直连可能被重置（ECONNRESET / Request timed out）。
+const PROXY_URL =
+  process.env.HTTPS_PROXY ||
+  process.env.https_proxy ||
+  process.env.HTTP_PROXY ||
+  process.env.http_proxy ||
+  null
+const AGENT = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : undefined
+
+// isomorphic-git 的 push/fetch 不透传 agent（v1.41 签名无该参数），
+// 因此这里包装 http 客户端，把代理 agent 注入每一次请求。
+function httpClient() {
+  if (!AGENT) return http
+  return {
+    request: (req) => http.request({ ...req, agent: AGENT }),
+  }
+}
 
 // 状态码含义：0=不存在 1=一致 2=已修改 3=?
 const STATUS_NAME = {
@@ -73,10 +94,21 @@ export async function commitAll(dir, message, settings) {
   return oid
 }
 
+// 提交单个文件（用于同步 resume-manager.config.json 等仓库级配置）
+export async function commitFile(dir, filepath, message, settings) {
+  const author = {
+    name: settings.gitUsername || 'resume-manager',
+    email: settings.gitEmail || 'resume-manager@localhost',
+  }
+  await git.add({ fs, dir, filepath })
+  const oid = await git.commit({ fs, dir, message, author, committer: author })
+  return oid
+}
+
 export async function fetchRemote(dir, settings, remote = 'origin') {
   await git.fetch({
     fs,
-    http,
+    http: httpClient(),
     dir,
     remote,
     ref: 'HEAD',
@@ -98,7 +130,7 @@ export async function pushRemote(dir, settings, remote = 'origin') {
   const branch = (await git.currentBranch({ fs, dir })) || 'main'
   const res = await git.push({
     fs,
-    http,
+    http: httpClient(),
     dir,
     remote,
     ref: branch,

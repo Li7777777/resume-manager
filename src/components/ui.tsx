@@ -268,6 +268,35 @@ export function Badge({
   )
 }
 
+/* ---------- 开关 ---------- */
+export function Switch({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? 'bg-indigo-500' : 'bg-zinc-700'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+          checked ? 'left-[22px]' : 'left-0.5'
+        }`}
+      />
+    </button>
+  )
+}
+
 /* ---------- 空状态 / 加载 ---------- */
 export function Spinner({ label }: { label?: string }) {
   return (

@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { Play, RefreshCw, Download, ZoomIn, ZoomOut, FileText, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { Play, RefreshCw, Download, ZoomIn, ZoomOut, FileText, AlertTriangle, CheckCircle2, Hammer } from 'lucide-react'
 import { api } from '../api'
 import type { Variant } from '../types'
 import { useToast } from '../toast'
@@ -20,15 +20,18 @@ export default function PdfPreview() {
   const [output, setOutput] = useState('')
   const [numPages, setNumPages] = useState(0)
   const [scale, setScale] = useState(1.3)
+  const [settings, setSettings] = useState<{ localPdfBuild?: boolean }>({})
 
   useEffect(() => {
     Promise.all([
       api.get<{ variants: Variant[] }>('/api/variants').catch(() => ({ variants: [] })),
       api.get<{ yamlresume: string | null; xelatex: string | null }>('/api/health').catch(() => null),
-    ]).then(([v, h]) => {
+      api.get<{ settings: { localPdfBuild?: boolean } }>('/api/settings').catch(() => ({ settings: {} })),
+    ]).then(([v, h, s]) => {
       setVariants(v.variants)
       if (v.variants[0]) setSelected(v.variants[0].name)
       setEnv(h)
+      setSettings(s.settings)
     })
   }, [])
 
@@ -48,19 +51,35 @@ export default function PdfPreview() {
     }
   }
 
-  const canBuild = env?.yamlresume != null
+  // 本地编译开关（默认开启）
+  const localBuildEnabled = settings.localPdfBuild !== false
+  const canBuild = env?.yamlresume != null && localBuildEnabled
 
   return (
     <div className="space-y-5">
+      {/* 本地编译关闭提示 */}
+      {!localBuildEnabled && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-zinc-700 bg-zinc-900/60 p-4 text-sm text-zinc-300">
+          <Hammer size={16} className="mt-0.5 shrink-0 text-zinc-500" />
+          <div>
+            <p className="font-medium">本地 PDF 编译已在设置中关闭</p>
+            <p className="mt-1 text-xs text-zinc-500">
+              到「设置」页开启「本地编译 PDF」后即可在此构建预览。
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 环境提示 */}
-      {!canBuild && (
+      {localBuildEnabled && !env?.yamlresume && (
         <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
           <div>
             <p className="font-medium">未检测到本地构建环境</p>
             <p className="mt-1 text-xs text-amber-200/70">
-              安装 yamlresume 命令行：<code className="rounded bg-black/30 px-1">npm install -g yamlresume</code>，并安装 XeTeX/Tectonic 排版引擎。
-              也可直接 <code className="rounded bg-black/30 px-1">git push</code> 交给 GitHub Action 自动构建。
+              安装 yamlresume 命令行：
+              <a className="underline decoration-dotted" href="https://www.npmjs.com/package/yamlresume" target="_blank" rel="noreferrer">npm install -g yamlresume</a>
+              ，并安装 XeTeX/Tectonic 排版引擎。也可在「设置」中开启 GitHub 编译，push 后由 CI 自动构建。
             </p>
           </div>
         </div>

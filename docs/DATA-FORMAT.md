@@ -205,6 +205,20 @@ layouts:
       order: [skills, work, projects, education]
 ```
 
+## 5.1 仓库级配置（resume-manager.config.json）
+
+仓库根目录可放置一个可选配置文件，控制仓库级行为：
+
+```json
+{
+  "githubPdfBuild": false
+}
+```
+
+- `githubPdfBuild`：GitHub 编译 PDF 开关（默认 false）。CI workflow 第一步读取此文件，
+  false 时跳过所有构建步骤；由 Resume Manager 设置页「GitHub 编译 PDF」开关维护。
+- 文件缺失或解析失败时按 `false` 处理（安全回退）。
+
 ## 6. 兼容与扩展
 
 - 新增分类：在 `data/` 加 `xxx.yml`，并在配方 `blocks` 引用即可；管理端 `server/lib/data-store.js`

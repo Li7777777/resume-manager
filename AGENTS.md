@@ -49,4 +49,5 @@ npm run typecheck  # 前端 TS 检查
 - **新增信息分类**（如 awards）：1) `server/lib/data-store.js` 的 `CATEGORIES` 加项；
   2) `src/pages/Entries.tsx` 的 `FIELDS` 加字段配置；3) 模板 `templates/private-repo/data/` 加文件；4) 更新 docs/DATA-FORMAT.md。
 - **新增 API**：`server/routes/api.js` 注册路由 → `src/api.ts` 已是通用 client，前端直接调。
-- **新增页面**：`src/pages/X.tsx` → `src/App.tsx` 的 `NAV`/`TITLES` 注册。
+- **新增页面**：`src/pages/X.tsx` → `src/App.tsx` 的 `NAV`/`TITLES` 注册（支持 hash 直达 `#/x`）。
+- **编译开关**：`localPdfBuild`（本地，默认开）/ `githubPdfBuild`（CI，默认关，经 `resume-manager.config.json` 同步到私有仓）。详见 docs/DEVELOPMENT.md §9。

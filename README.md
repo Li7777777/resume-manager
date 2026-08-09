@@ -38,7 +38,7 @@ npm start            # 启动服务: http://127.0.0.1:8787
 开发模式：`npm run dev`（Vite dev server :5173 + API :8787）。
 
 > 构建 PDF 需要本机安装 `yamlresume` CLI 与 XeTeX/Tectonic：
-> `npm install -g yamlresume`。没有也不影响其他功能。
+> `npm install -g yamlresume`（[yamlresume 地址](https://www.npmjs.com/package/yamlresume)）。没有也不影响其他功能。
 
 ### 2. 准备私有数据仓（二选一）
 
@@ -63,7 +63,17 @@ npm start            # 启动服务: http://127.0.0.1:8787
 | PDF 预览 | 一键组合 + 本地构建 + 浏览器内渲染 PDF（缩放/下载） |
 | Git 同步看板 | 分支/远程/领先落后/未同步文件可视化；提交、提交并推送、拉取；文件级 diff；提交历史时间线 |
 | 模板初始化 | 按数据格式一键生成私有数据仓骨架 + 建仓推送指引 |
-| 设置 | 数据仓路径、GitHub Token（仅存本机）、提交身份、隐私说明 |
+| 设置 | 数据仓路径、**PDF 编译开关**、GitHub Token（仅存本机）、提交身份、隐私说明 |
+
+## PDF 编译开关（设置页）
+
+| 开关 | 默认 | 控制内容 |
+| --- | --- | --- |
+| **本地编译 PDF** | 开启 ✅ | 「PDF 预览」页的本地构建。**需要安装 [yamlresume](https://www.npmjs.com/package/yamlresume)**（`npm install -g yamlresume`）及 XeTeX/Tectonic 排版引擎 |
+| **GitHub 编译 PDF** | 关闭 ❌ | push 后是否触发私有数据仓的 GitHub Action 编译 PDF。开启后需点击「同步并推送」把开关写入私有仓 `resume-manager.config.json` 才会生效 |
+
+> 📌 **本地编译需要安装 yamlresume**：https://www.npmjs.com/package/yamlresume
+> （`npm install -g yamlresume`），未安装时 PDF 预览不可用，其余功能不受影响。
 
 ## 隐私与安全
 

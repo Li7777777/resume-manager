@@ -47,8 +47,25 @@ const TITLES: Record<string, [string, string]> = {
 }
 
 function Shell() {
-  const [page, setPage] = useState('dashboard')
+  const [page, setPage] = useState(() => {
+    const h = window.location.hash.replace(/^#\/?/, '')
+    return NAV.some((n) => n.key === h) ? h : 'dashboard'
+  })
   const [status, setStatus] = useState<ProjectStatus | null>(null)
+
+  const go = (p: string) => {
+    setPage(p)
+    window.location.hash = `/${p}`
+  }
+
+  useEffect(() => {
+    const onHash = () => {
+      const h = window.location.hash.replace(/^#\/?/, '')
+      if (NAV.some((n) => n.key === h)) setPage(h)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   useEffect(() => {
     const load = () =>
@@ -125,7 +142,7 @@ function Shell() {
           <p className="text-xs text-zinc-500">{desc}</p>
         </header>
         <div className="p-6 lg:p-8">
-          {page === 'dashboard' && <Dashboard go={setPage} />}
+          {page === 'dashboard' && <Dashboard go={go} />}
           {page === 'entries' && <Entries />}
           {page === 'variants' && <Variants />}
           {page === 'yaml' && <YamlPage />}

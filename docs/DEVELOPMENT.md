@@ -63,8 +63,8 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/health` | 版本 + 构建环境探测（yamlresume/xelatex/tectonic 是否在 PATH） |
-| GET | `/api/settings` | 返回设置（token 打码为 `••••••`） |
-| PUT | `/api/settings` | 保存设置；token 传 `••••••` 表示保持不变 |
+| GET | `/api/settings` | 返回设置（token 打码为 `••••••`）；含编译开关 `localPdfBuild`（默认 true）/ `githubPdfBuild`（默认 false） |
+| PUT | `/api/settings` | 保存设置；token 传 `••••••` 表示保持不变；编译开关接受 boolean |
 | GET | `/api/project/status` | 数据仓总览（配置/仓库/分支/HEAD/脏文件数/领先落后/最近提交） |
 
 ### 信息条目
@@ -84,8 +84,14 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | GET | `/api/files` | 可编辑文件列表 |
 | GET | `/api/yaml?path=` | 读文件（路径必须位于数据仓内） |
 | PUT | `/api/yaml` | 写文件（先做 YAML 语法校验） |
-| POST | `/api/build` | `{variant}` → 组合 + 构建 → `{pdf: "/api/pdf/<v>.pdf"}` |
+| POST | `/api/build` | `{variant}` → 组合 + 构建 → `{pdf: "/api/pdf/<v>.pdf"}`；**受 `localPdfBuild` 开关门控（服务端强制）** |
 | GET | `/api/pdf/:name` | 流式返回 PDF |
+
+### GitHub 编译开关（私有数据仓配置同步）
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/repo/pdf-config` | 读取私有仓 `resume-manager.config.json` 的 `githubPdfBuild` 状态 |
+| POST | `/api/repo/pdf-config` | 把当前设置写入私有仓配置文件；`{commit, push}` 可选提交/推送（push 需 Token） |
 
 ### Git 看板
 | 方法 | 路径 | 说明 |
@@ -106,7 +112,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 
 ## 5. 前端结构要点
 
-- **页面切换**：`App.tsx` 用 state 切换，无 router（保持轻量）。新增页面 = 写 `pages/X.tsx` + 在 `NAV`/`TITLES` 注册。
+- **页面切换**：`App.tsx` 用 state 切换 + 轻量 hash 导航（`#/entries` 等可直达）；新增页面 = 写 `pages/X.tsx` + 在 `NAV`/`TITLES` 注册。
 - **组件库** `components/ui.tsx`：Button/Card/Field/Input/Textarea/Select/Modal/TagChip/TagInput/Badge/Spinner/EmptyState/relativeTime。
 - **表单字段配置** `pages/Entries.tsx` 的 `FIELDS`：新增分类时在此登记字段（type: text/textarea/select/tags/summary/achievements），并同步 `server/lib/data-store.js` 的 `CATEGORIES`。
 - **编辑器** `components/YamlEditor.tsx`：CodeMirror 6 + lang-yaml + oneDark。
@@ -137,3 +143,12 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - Token 只写 `~/.resume-manager/settings.json`；
 - 服务仅绑定 `127.0.0.1`；
 - `templates/`、`docs/`、`src/` 不得包含真实个人信息（示例数据须明显标注）。
+
+## 9. PDF 编译开关实现要点
+
+- 设置键：`localPdfBuild`（默认 true）、`githubPdfBuild`（默认 false），存于 `~/.resume-manager/settings.json`；
+- 本地开关：`server/routes/api.js` 的 `POST /api/build` 做服务端门控（`getSettings().localPdfBuild === false` 时拒绝），前端 `PdfPreview.tsx` 同步禁用按钮并提示；
+- GitHub 开关：通过私有仓根目录 `resume-manager.config.json`（`{"githubPdfBuild": bool}`）控制 CI。workflow 模板（`templates/private-repo/.github/workflows/build.yml`）第一步读取该文件，为 false 时跳过全部构建步骤（默认关闭，安全回退）；
+- 同步链路：设置页开关 → `POST /api/repo/pdf-config {commit:true, push:true}` → `git-service.commitFile`（仅提交该文件）→ push；未配 Token 时落本地并提示去 Git 看板推送；
+- 代理支持：`server/lib/git-service.js` 读取 `HTTP(S)_PROXY` 环境变量，用 `https-proxy-agent` 包装 http 客户端注入每次请求（isomorphic-git 的 push 不透传 agent 参数，必须包装）；无代理变量时不影响；
+- 修改 workflow 门控逻辑时，须同步更新模板与既有私有仓（两份 workflow 保持一致）。
