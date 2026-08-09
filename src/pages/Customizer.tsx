@@ -197,7 +197,7 @@ export default function Customizer() {
   return (
     <div className="flex gap-4" style={{ height: 'calc(100vh - 130px)' }}>
       {/* 左：信息库（可拖拽） */}
-      <Card title="简历信息库" desc="拖拽条目或整个章节到中间布局" className="flex w-72 shrink-0 flex-col" pad={false}>
+      <Card title="简历信息库" desc="拖拽条目或整个章节到中间布局" className="w-72 shrink-0" pad={false} fill>
         <div className="flex flex-wrap gap-1 border-b border-zinc-800 p-2">
           {CATS.map((c) => (
             <button
@@ -212,7 +212,7 @@ export default function Customizer() {
             </button>
           ))}
         </div>
-        <div className="flex-1 overflow-auto p-2">
+        <div className="min-h-0 flex-1 overflow-auto p-2">
           {/* 整章节拖拽 */}
           <div
             draggable
@@ -262,8 +262,9 @@ export default function Customizer() {
       <Card
         title="简历布局"
         desc="区块按从上到下顺序展示；拖入条目/章节，支持排序与删除"
-        className="flex min-w-0 flex-1 flex-col"
+        className="min-w-0 flex-1"
         pad={false}
+        fill
         actions={
           <Button size="sm" variant="ghost" onClick={() => commit([])}>
             <Trash2 size={12} /> 清空
@@ -283,7 +284,7 @@ export default function Customizer() {
           />
         </div>
         <div
-          className={`flex-1 overflow-auto p-3 ${dragOver === 'canvas' ? 'ring-2 ring-inset ring-indigo-500/40' : ''}`}
+          className={`min-h-0 flex-1 overflow-auto p-3 ${dragOver === 'canvas' ? 'ring-2 ring-inset ring-indigo-500/40' : ''}`}
           onDragOver={(e) => {
             e.preventDefault()
             setDragOver('canvas')
@@ -359,6 +360,7 @@ export default function Customizer() {
         desc="Calm 模板 · HTML 引擎（每次拖拽自动重渲染）"
         className="w-[46%] shrink-0"
         pad={false}
+        fill
         actions={
           <div className="flex items-center gap-2 text-[11px]">
             {rendering && (
@@ -372,17 +374,19 @@ export default function Customizer() {
           </div>
         }
       >
-        {htmlUrl ? (
-          <iframe key={htmlUrl} src={htmlUrl} className="h-full w-full bg-white" title="定制简历实时预览" />
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <EmptyState
-              icon={<FileCode2 size={30} />}
-              title="HTML 简历将在这里实时渲染"
-              desc="把信息拖入布局后自动生成并展示。"
-            />
-          </div>
-        )}
+        <div className="min-h-0 flex-1">
+          {htmlUrl ? (
+            <iframe key={htmlUrl} src={htmlUrl} className="h-full w-full bg-white" title="定制简历实时预览" />
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <EmptyState
+                icon={<FileCode2 size={30} />}
+                title="HTML 简历将在这里实时渲染"
+                desc="把信息拖入布局后自动生成并展示。"
+              />
+            </div>
+          )}
+        </div>
       </Card>
     </div>
   )

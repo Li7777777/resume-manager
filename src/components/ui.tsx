@@ -48,6 +48,7 @@ export function Card({
   children,
   className = '',
   pad = true,
+  fill = false,
 }: {
   title?: React.ReactNode
   desc?: React.ReactNode
@@ -55,9 +56,11 @@ export function Card({
   children?: React.ReactNode
   className?: string
   pad?: boolean
+  /** 撑满父容器高度：外部 flex-col + 内容区 flex-1（用于全高布局） */
+  fill?: boolean
 }) {
   return (
-    <div className={`rounded-xl border border-zinc-800 bg-zinc-900/50 ${className}`}>
+    <div className={`rounded-xl border border-zinc-800 bg-zinc-900/50 ${fill ? 'flex flex-col' : ''} ${className}`}>
       {(title || actions) && (
         <div className="flex items-center justify-between gap-3 border-b border-zinc-800/80 px-4 py-3">
           <div>
@@ -67,7 +70,7 @@ export function Card({
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </div>
       )}
-      <div className={pad ? 'p-4' : ''}>{children}</div>
+      <div className={`min-h-0 ${fill ? 'flex flex-1 flex-col' : ''} ${pad ? 'p-4' : ''}`}>{children}</div>
     </div>
   )
 }
