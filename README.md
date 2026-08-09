@@ -49,7 +49,7 @@ npm start            # 启动服务: http://127.0.0.1:8787
 
 ### 3. 连接私有数据
 
-打开「设置」，填入私有数据仓的**本地目录路径**（如 `E:\code\Tech7Resume`），
+打开「设置」，填入私有数据仓的**本地目录路径**（如 `E:\code\my-resume-data`），
 再填写 GitHub Token（fine-grained，Contents 读写）与提交身份，保存后即可开始管理。
 
 ## 功能一览

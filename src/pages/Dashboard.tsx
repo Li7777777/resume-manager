@@ -46,7 +46,7 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
       <EmptyState
         icon={<FolderGit2 size={40} />}
         title="尚未配置私有数据仓"
-        desc="先在「设置」中填写私有数据仓的本地路径（例如 E:\\code\\Tech7Resume），或到「模板初始化」一键生成数据仓骨架。"
+        desc="先在「设置」中填写私有数据仓的本地路径（例如 E:\\code\\my-resume-data），或到「模板初始化」一键生成数据仓骨架。"
         action={
           <button
             className="rounded-lg bg-indigo-500 px-4 py-2 text-sm text-white hover:bg-indigo-400"

@@ -40,7 +40,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl space-y-5">
-      <Card title="数据仓" desc="指向你的私有简历数据仓本地目录（如 E:\code\Tech7Resume）">
+      <Card title="数据仓" desc="指向你的私有简历数据仓本地目录（如 E:\code\my-resume-data）">
         <div className="space-y-4">
           <Field label="仓库路径">
             <div className="flex gap-2">
@@ -49,7 +49,7 @@ export default function SettingsPage() {
                 <Input
                   value={form.repoPath || ''}
                   onChange={(e) => setForm({ ...form, repoPath: e.target.value })}
-                  placeholder="E:\code\Tech7Resume"
+                  placeholder="E:\code\my-resume-data"
                   className="pl-9 font-mono"
                 />
               </div>
