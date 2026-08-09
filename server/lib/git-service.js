@@ -48,6 +48,17 @@ export async function currentBranchSafe(dir) {
   return git.currentBranch({ fs, dir }).catch(() => null)
 }
 
+// 读取指定提交（sha）下某文件的文本内容（用于历史版本 YAML 快照）；支持短 sha
+export async function readFileAt(dir, sha, filepath) {
+  const oid = await git.expandOid({ fs, dir, oid: sha }).catch(() => sha)
+  const { blob } = await git.readBlob({ fs, dir, oid, filepath })
+  return Buffer.from(blob).toString('utf8')
+}
+
+export async function expandOid(dir, sha) {
+  return git.expandOid({ fs, dir, oid: sha }).catch(() => sha)
+}
+
 function statusBadge(head, workdir, stage) {
   // 未跟踪：head=0, workdir=2, stage=0
   if (head === 0 && workdir === 2 && stage === 0) return 'untracked'

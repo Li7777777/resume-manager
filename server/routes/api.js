@@ -439,6 +439,130 @@ router.post('/github/pdf-sync', async (req, res) => {
   }
 })
 
+/* ---------- GitHub 历史版本（提交时间轴 + CI 产物匹配 + YAML 快照） ---------- */
+const HISTORY_DIR = (repo) => path.join(repo, 'resumes', 'history')
+
+// 提交历史（本地 git log）与 GitHub Actions 运行（按 head_sha 匹配）合并
+router.get('/github/history', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const settings = getSettings()
+  const limit = Math.min(Number(req.query.limit) || 20, 50)
+  try {
+    const commits = await gitSvc.getLog(repo, limit)
+    const remoteUrl = await gitSvc.getRemoteUrl(repo)
+    const parsed = parseRemoteUrl(remoteUrl)
+    let runMap = {}
+    if (parsed && settings.token) {
+      try {
+        const runs = await ghApi(
+          `/repos/${parsed.owner}/${parsed.repo}/actions/runs?branch=${encodeURIComponent((await gitSvc.currentBranchSafe(repo)) || 'main')}&per_page=50`,
+          settings.token,
+        )
+        runMap = Object.fromEntries(
+          (runs.workflow_runs || []).map((r) => [
+            r.head_sha,
+            { id: r.id, run_number: r.run_number, status: r.status, conclusion: r.conclusion, created_at: r.created_at, name: r.name },
+          ]),
+        )
+      } catch {
+        /* token 权限不足或网络问题：仅展示提交 */
+      }
+    }
+    res.json({
+      ok: true,
+      commits: commits.map((c) => ({ ...c, run: runMap[c.oid] || null })),
+      owner: parsed?.owner || null,
+      repo: parsed?.repo || null,
+    })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+// 下载指定提交构建的 CI 产物 PDF（缓存到 resumes/history/），返回预览 URL 列表
+router.get('/github/history/pdf', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const settings = getSettings()
+  const sha = String(req.query.sha || '').trim()
+  if (!/^[0-9a-f]{7,40}$/.test(sha)) return res.json({ ok: false, error: '无效的提交标识' })
+  if (!settings.token) return res.json({ ok: false, error: '未配置 GitHub Token，无法拉取历史产物' })
+  try {
+    const remoteUrl = await gitSvc.getRemoteUrl(repo)
+    const parsed = parseRemoteUrl(remoteUrl)
+    if (!parsed) return res.json({ ok: false, error: '无法解析远程仓库地址' })
+    // 短 sha 先展开为完整 oid（GitHub API head_sha 需要完整 40 位）
+    const fullSha = await gitSvc.expandOid(repo, sha)
+    // 1. 找到该提交的运行
+    const runs = await ghApi(`/repos/${parsed.owner}/${parsed.repo}/actions/runs?head_sha=${fullSha}&per_page=1`, settings.token)
+    const run = runs.workflow_runs?.[0]
+    if (!run) {
+      return res.json({ ok: false, error: '该提交没有对应的 CI 运行（可能 GitHub 编译未开启）', sha })
+    }
+    if (run.conclusion !== 'success') {
+      return res.json({ ok: false, error: `该提交的 CI 运行 ${run.status}/${run.conclusion || '未知'}，没有可用产物`, runNumber: run.run_number })
+    }
+    // 2. 产物
+    const arts = await ghApi(`/repos/${parsed.owner}/${parsed.repo}/actions/runs/${run.id}/artifacts`, settings.token)
+    const art = arts.artifacts?.find((a) => a.name === 'resume-pdfs') || arts.artifacts?.[0]
+    if (!art) {
+      return res.json({ ok: false, error: '该运行没有 PDF artifact（GitHub 编译可能未开启）', runNumber: run.run_number })
+    }
+    // 3. 下载 + 解压 + 缓存（避免重复下载）
+    const cacheDir = HISTORY_DIR(repo)
+    fs.mkdirSync(cacheDir, { recursive: true })
+    const short = sha.slice(0, 7)
+    const existing = fs.readdirSync(cacheDir).filter((f) => f.startsWith(`${short}-`))
+    if (existing.length > 0) {
+      return res.json({ ok: true, pdfs: existing, sha, runNumber: run.run_number, cached: true })
+    }
+    const zipBuf = await ghDownload(`/repos/${parsed.owner}/${parsed.repo}/actions/artifacts/${art.id}/zip`, settings.token)
+    const zip = new AdmZip(zipBuf)
+    const pdfs = []
+    for (const e of zip.getEntries()) {
+      if (e.entryName.toLowerCase().endsWith('.pdf')) {
+        const fname = `${short}-${path.basename(e.entryName)}`
+        fs.writeFileSync(path.join(cacheDir, fname), e.getData())
+        pdfs.push(fname)
+      }
+    }
+    res.json({ ok: true, pdfs, sha, runNumber: run.run_number, cached: false })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+// 历史版本 YAML 快照（读取指定提交下的数据文件）
+router.get('/git/file-at', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const sha = String(req.query.sha || '').trim()
+  const file = String(req.query.path || '').trim()
+  if (!/^[0-9a-f]{7,40}$/.test(sha)) return res.json({ ok: false, error: '无效的提交标识' })
+  try {
+    const abs = safeJoin(repo, file)
+    if (!abs.startsWith(path.join(repo, 'data')) && !abs.startsWith(path.join(repo, 'scripts'))) {
+      return res.json({ ok: false, error: '仅允许查看 data/ 与 scripts/ 下的文件' })
+    }
+    const content = await gitSvc.readFileAt(repo, sha, file)
+    res.json({ ok: true, content })
+  } catch (err) {
+    res.json({ ok: false, error: `该提交下不存在文件：${String(err.message).slice(0, 60)}` })
+  }
+})
+
+// 历史版本 PDF 预览（resumes/history/ 缓存目录）
+router.get('/pdf/history/:file', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.status(404).end()
+  const fname = path.basename(req.params.file)
+  const p = path.join(HISTORY_DIR(repo), fname)
+  if (!fs.existsSync(p)) return res.status(404).json({ ok: false, error: '历史 PDF 不存在' })
+  res.setHeader('Content-Type', 'application/pdf')
+  fs.createReadStream(p).pipe(res)
+})
+
 /* ---------- 模板初始化 ---------- */
 router.get('/template/info', (req, res) => {
   const files = []

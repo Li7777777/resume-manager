@@ -1,15 +1,12 @@
 // PDF 预览页：构建各方向简历并在线渲染 PDF
-import React, { useEffect, useRef, useState } from 'react'
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { Play, RefreshCw, Download, ZoomIn, ZoomOut, FileText, AlertTriangle, CheckCircle2, Hammer, CloudDownload, Clock3, ServerCog } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { Play, Download, FileText, AlertTriangle, CheckCircle2, Hammer, CloudDownload, Clock3, ServerCog } from 'lucide-react'
 import { api } from '../api'
 import type { Variant, Settings } from '../types'
 import { loadSettings, subscribeSettings } from '../settings'
 import { useToast } from '../toast'
 import { Card, Button, Select, Spinner, Badge } from '../components/ui'
-
-GlobalWorkerOptions.workerSrc = workerUrl
+import PdfViewer from '../components/PdfViewer'
 
 export default function PdfPreview() {
   const toast = useToast()
@@ -19,8 +16,6 @@ export default function PdfPreview() {
   const [building, setBuilding] = useState(false)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [output, setOutput] = useState('')
-  const [numPages, setNumPages] = useState(0)
-  const [scale, setScale] = useState(1.3)
   const [githubSyncing, setGithubSyncing] = useState(false)
   const [githubSync, setGithubSync] = useState<{
     pdfs?: string[]
@@ -165,94 +160,28 @@ export default function PdfPreview() {
         {output && <pre className="mt-3 max-h-40 overflow-auto rounded-lg bg-black/40 p-3 text-[11px] text-zinc-400">{output}</pre>}
       </Card>
 
-      {/* PDF 渲染 */}
+      {/* PDF 渲染（react-pdf 强大组件） */}
       {pdfUrl ? (
-        <div className="flex gap-4">
-          <div className="min-w-0 flex-1">
-            <PdfViewer url={pdfUrl} pageCount={(n) => setNumPages(n)} scale={scale} />
+        <Card title="PDF 预览" desc="基于 react-pdf 渲染" pad={false}>
+          <div className="p-4">
+            <PdfViewer url={pdfUrl} />
           </div>
-          <div className="w-44 shrink-0 space-y-3">
-            <Card title="预览控制" pad>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-zinc-400">
-                  <span>页数</span><span>{numPages}</span>
-                </div>
-                <div className="flex gap-1">
-                  <Button size="sm" onClick={() => setScale((s) => Math.max(0.5, s - 0.2))}><ZoomOut size={13} /></Button>
-                  <Button size="sm" onClick={() => setScale((s) => Math.min(3, s + 0.2))}><ZoomIn size={13} /></Button>
-                  <a href={pdfUrl} download className="flex-1">
-                    <Button size="sm" variant="success" className="w-full"><Download size={13} /> 下载</Button>
-                  </a>
-                </div>
-              </div>
-            </Card>
+          <div className="flex justify-end border-t border-zinc-800 px-4 py-3">
+            <a href={pdfUrl} download>
+              <Button size="sm" variant="success">
+                <Download size={13} /> 下载 PDF
+              </Button>
+            </a>
           </div>
-        </div>
+        </Card>
       ) : (
         <div className="flex h-[50vh] items-center justify-center">
           <div className="text-center text-zinc-600">
             <FileText size={40} className="mx-auto mb-3 opacity-40" />
-            <p className="text-sm">选择方向并点击「构建」生成 PDF 预览</p>
+            <p className="text-sm">选择方向并点击「本地构建」或「从 GitHub 同步」生成 PDF 预览</p>
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-/* ---------- PDF 渲染组件 ---------- */
-function PdfViewer({ url, pageCount, scale }: { url: string; pageCount: (n: number) => void; scale: number }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [rendering, setRendering] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    let doc: any = null
-    setRendering(true)
-    const load = async () => {
-      try {
-        doc = await getDocument(url).promise
-        if (cancelled) return
-        pageCount(doc.numPages)
-        const container = containerRef.current!
-        container.innerHTML = ''
-        for (let i = 1; i <= doc.numPages; i++) {
-          const page = await doc.getPage(i)
-          const viewport = page.getViewport({ scale })
-          const canvas = document.createElement('canvas')
-          canvas.width = viewport.width
-          canvas.height = viewport.height
-          canvas.style.width = '100%'
-          canvas.style.height = 'auto'
-          const ctx = canvas.getContext('2d')!
-          await page.render({ canvasContext: ctx, viewport }).promise
-          const wrap = document.createElement('div')
-          wrap.className = 'mb-4 overflow-hidden rounded-lg border border-zinc-800 bg-white shadow-2xl shadow-black/40'
-          wrap.appendChild(canvas)
-          container.appendChild(wrap)
-        }
-      } catch (e) {
-        containerRef.current!.innerHTML = '<p class="p-6 text-center text-sm text-red-400">PDF 渲染失败</p>'
-      } finally {
-        if (!cancelled) setRendering(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-      doc?.destroy()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, scale])
-
-  return (
-    <div className="relative">
-      {rendering && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-950/60">
-          <div className="flex items-center gap-2 text-sm text-zinc-400"><RefreshCw size={15} className="animate-spin" />渲染中…</div>
-        </div>
-      )}
-      <div ref={containerRef} className="min-h-[40vh]" />
     </div>
   )
 }

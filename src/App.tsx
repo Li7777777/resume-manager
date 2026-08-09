@@ -11,6 +11,7 @@ import {
   Settings,
   ShieldCheck,
   FolderGit2,
+  History,
 } from 'lucide-react'
 import { api } from './api'
 import { ToastProvider } from './toast'
@@ -20,6 +21,7 @@ import Entries from './pages/Entries'
 import Variants from './pages/Variants'
 import YamlPage from './pages/YamlPage'
 import PdfPreview from './pages/PdfPreview'
+import HistoryPage from './pages/History'
 import GitBoard from './pages/GitBoard'
 import Templates from './pages/Templates'
 import SettingsPage from './pages/Settings'
@@ -30,6 +32,7 @@ const NAV = [
   { key: 'variants', label: '简历方向', icon: <GitBranch size={16} /> },
   { key: 'yaml', label: 'YAML 编辑', icon: <FileCode2 size={16} /> },
   { key: 'pdf', label: 'PDF 预览', icon: <FileText size={16} /> },
+  { key: 'history', label: '历史版本', icon: <History size={16} /> },
   { key: 'git', label: 'Git 同步看板', icon: <GitPullRequestArrow size={16} /> },
   { key: 'templates', label: '模板初始化', icon: <LayoutTemplate size={16} /> },
   { key: 'settings', label: '设置', icon: <Settings size={16} /> },
@@ -41,6 +44,7 @@ const TITLES: Record<string, [string, string]> = {
   variants: ['简历方向', '可视化编辑配方，按标签动态组稿多份简历'],
   yaml: ['YAML 编辑', '直接查看与编辑数据文件（保存时校验语法）'],
   pdf: ['PDF 预览', '构建各方向简历并在线预览'],
+  history: ['历史版本', 'GitHub 提交时间轴 + 对应 PDF 与 YAML 快照'],
   git: ['Git 同步看板', '本地与 GitHub 私有仓的可视化同步'],
   templates: ['模板初始化', '按数据格式生成私有数据仓骨架'],
   settings: ['设置', '数据仓路径、GitHub 凭据与提交身份'],
@@ -147,6 +151,7 @@ function Shell() {
           {page === 'variants' && <Variants />}
           {page === 'yaml' && <YamlPage />}
           {page === 'pdf' && <PdfPreview />}
+          {page === 'history' && <HistoryPage />}
           {page === 'git' && <GitBoard />}
           {page === 'templates' && <Templates />}
           {page === 'settings' && <SettingsPage />}

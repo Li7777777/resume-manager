@@ -1,6 +1,9 @@
 # 组合脚本生成的变体简历（data/ 才是真相源，重新组合即可恢复）
 resumes/*.yml
 
+# 历史版本产物缓存（从 GitHub CI 拉取）
+resumes/history/
+
 # YAMLResume 构建产物
 resumes/*.pdf
 resumes/*.tex
