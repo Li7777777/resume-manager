@@ -251,7 +251,7 @@ export default function SettingsPage() {
 
       <Card title="GitHub 同步" desc="用于 push / pull 的凭据，仅保存在本机，不上传">
         <div className="space-y-4">
-          <Field label="GitHub Token" hint="需要 repo 权限（fine-grained: Contents 读写）">
+          <Field label="GitHub 令牌" hint="需要仓库权限（细粒度：内容读写）">
             <div className="relative">
               <KeyRound size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
               <Input
@@ -309,12 +309,12 @@ export default function SettingsPage() {
                   <p className="font-medium text-zinc-300">方式一：GitHub 网页创建（推荐）</p>
                   <ol className="mt-1 list-decimal space-y-0.5 pl-4">
                     <li>打开
-                      <a className="mx-1 inline-flex items-center gap-0.5 text-indigo-400 underline decoration-dotted hover:text-indigo-300" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">创建 Fine-grained Token<ExternalLink size={10} /></a>
+                      <a className="mx-1 inline-flex items-center gap-0.5 text-indigo-400 underline decoration-dotted hover:text-indigo-300" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">创建细粒度令牌<ExternalLink size={10} /></a>
                       （或<a className="mx-1 text-indigo-400 underline decoration-dotted hover:text-indigo-300" href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">经典 Token<ExternalLink size={10} /></a>）
                     </li>
-                    <li>Repository access → Only select repositories → 勾选你的简历私有仓</li>
-                    <li>Permissions → Contents → <span className="text-zinc-200">Read and write</span>（GitHub 编译开关另需 Workflows: Read and write；从 CI 同步 PDF 预览需 Actions: Read and write）</li>
-                    <li>Generate token → 复制 <code className="text-zinc-300">github_pat_</code> / <code className="text-zinc-300">ghp_</code> 开头的 Token，粘贴到上方输入框</li>
+                    <li>仓库访问 → 仅所选仓库 → 勾选你的简历私有仓</li>
+                    <li>权限 → 内容 → <span className="text-zinc-200">读写</span>（GitHub 编译开关另需工作流：读写；从 CI 同步 PDF 预览需操作：读写）</li>
+                    <li>生成令牌 → 复制 <code className="text-zinc-300">github_pat_</code> / <code className="text-zinc-300">ghp_</code> 开头的令牌，粘贴到上方输入框</li>
                   </ol>
                 </div>
                 <div>

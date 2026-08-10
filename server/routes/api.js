@@ -87,12 +87,62 @@ router.get('/project/status', async (req, res) => {
   }
 })
 
+/* ---------- 分类管理（自定义 tab：增/删/改名/排序） ---------- */
+// 分类定义存私有仓 categories.json；data/*.yml 自动发现兜底
+router.get('/categories', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  try {
+    res.json({ ok: true, categories: store.getCategories(repo) })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+// 整体保存分类（前端管理后的完整数组）；服务端 diff 创建/删除 data/<key>.yml
+router.put('/categories', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const { categories } = req.body || {}
+  if (!Array.isArray(categories)) return res.json({ ok: false, error: '参数错误' })
+  try {
+    const clean = []
+    const seen = new Set()
+    for (const c of categories) {
+      if (!c || typeof c.key !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(c.key) || seen.has(c.key)) continue
+      seen.add(c.key)
+      clean.push({ key: c.key, label: String(c.label || c.key).trim() || c.key, visible: c.visible !== false })
+    }
+    if (clean.length === 0) return res.json({ ok: false, error: '至少保留一个分类' })
+    // 删除的分类 → 移除 data/<key>.yml
+    const dataDir = path.join(repo, 'data')
+    for (const key of store.scanDataKeys(repo)) {
+      if (!seen.has(key)) {
+        const f = store.dataFile(repo, key)
+        if (fs.existsSync(f)) fs.unlinkSync(f)
+      }
+    }
+    store.saveCategories(repo, clean)
+    // 新增分类（无 data 文件）→ 创建空数组文件
+    for (const c of clean) {
+      const f = store.dataFile(repo, c.key)
+      if (!fs.existsSync(f)) {
+        fs.mkdirSync(dataDir, { recursive: true })
+        fs.writeFileSync(f, c.key === 'basics' ? '# 基础信息\n' : '# ' + c.label + '\n[]\n', 'utf8')
+      }
+    }
+    res.json({ ok: true, categories: store.getCategories(repo) })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
 /* ---------- 信息条目 ---------- */
 router.get('/entries', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   const { entries, tagCount } = store.allEntries(repo)
-  res.json({ ok: true, entries, tagCount, categories: store.CATEGORIES, labels: store.CATEGORY_LABELS })
+  res.json({ ok: true, entries, tagCount, categories: store.getCategories(repo) })
 })
 
 router.get('/entries/:cat', (req, res) => {
@@ -166,9 +216,9 @@ router.get('/files', (req, res) => {
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   try {
     const files = []
-    for (const cat of store.CATEGORIES) {
-      const f = store.dataFile(repo, cat)
-      files.push({ path: `data/${cat}.yml`, label: store.CATEGORY_LABELS[cat], exists: fs.existsSync(f) })
+    for (const cat of store.getCategories(repo)) {
+      const f = store.dataFile(repo, cat.key)
+      files.push({ path: `data/${cat.key}.yml`, label: cat.label, exists: fs.existsSync(f) })
     }
     files.push({ path: 'scripts/variants.yml', label: '简历方向配方', exists: fs.existsSync(path.join(repo, 'scripts', 'variants.yml')) })
     res.json({ ok: true, files })
@@ -670,7 +720,8 @@ router.post('/custom/layout', async (req, res) => {
     const blocks = {}
     const order = []
     for (const s of sections) {
-      if (!store.CATEGORIES.includes(s.key)) continue
+      const allowed = new Set(store.getCategories(repo).map((c) => c.key))
+      if (!allowed.has(s.key)) continue
       if (s.mode === 'all') blocks[s.key] = { include: 'all' }
       else if (s.mode === 'ids' && Array.isArray(s.ids) && s.ids.length) blocks[s.key] = { ids: [...new Set(s.ids)] }
       else if (s.mode === 'tags' && Array.isArray(s.tags) && s.tags.length) blocks[s.key] = { tags: [...s.tags] }
@@ -684,7 +735,8 @@ router.post('/custom/layout', async (req, res) => {
     doc.variants = doc.variants || {}
     doc.variants.custom = {
       label: '定制简历',
-      layout: { engine: 'html', template },
+      // html 引擎：显式合法字号（覆盖 defaults 的 pt 值，避免 html 引擎校验失败）
+      layout: { engine: 'html', template, typography: { fontSize: '16px' } },
       sectionOrder: order,
       blocks,
       overrides: overrides?.basics ? { basics: overrides.basics } : undefined,

@@ -14,16 +14,49 @@ import {
   Heart,
   UserRound,
   ListChecks,
+  Settings2,
+  ArrowUp,
+  ArrowDown,
+  EyeOff,
+  PlusCircle,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Category, Entry } from '../types'
 import { useToast } from '../toast'
 import { Card, Button, Modal, Field, Input, Textarea, Select, TagChip, TagInput, EmptyState, Spinner } from '../components/ui'
 
+// 学位与技能等级：显示中文、存储 YAMLResume schema 英文枚举（翻译会导致简历校验失败）
 const DEGREES = ['Middle School', 'High School', 'Diploma', 'Associate', 'Bachelor', 'Master', 'Doctor']
+const DEGREE_LABELS: Record<string, string> = {
+  'Middle School': '初中',
+  'High School': '高中',
+  Diploma: '专科',
+  Associate: '副学士',
+  Bachelor: '学士',
+  Master: '硕士',
+  Doctor: '博士',
+}
 const LEVELS = ['Novice', 'Beginner', 'Intermediate', 'Advanced', 'Expert', 'Master']
+const LEVEL_LABELS: Record<string, string> = {
+  Novice: '新手',
+  Beginner: '初级',
+  Intermediate: '中级',
+  Advanced: '高级',
+  Expert: '专家',
+  Master: '大师',
+}
 
-const CATEGORIES: { key: Category; label: string; icon: React.ReactNode }[] = [
+// 自定义分类的通用字段（新增分类使用）
+const GENERIC_FIELDS: FieldDef[] = [
+  { key: 'name', label: '名称', type: 'text', required: true },
+  { key: 'description', label: '简介', type: 'text' },
+  { key: 'summary', label: '要点', type: 'summary', hint: '每行一条要点，自动转为 markdown 列表' },
+  { key: 'keywords', label: '关键词', type: 'tags' },
+  { key: 'tags', label: '方向标签', type: 'tags', hint: '元数据，用于筛选（不进入简历）' },
+  { key: 'notes', label: '备注', type: 'textarea', hint: '仅自己可见' },
+]
+
+const DEFAULT_CATEGORIES: { key: string; label: string; icon: React.ReactNode }[] = [
   { key: 'basics', label: '基础信息', icon: <UserRound size={14} /> },
   { key: 'work', label: '工作经历', icon: <Briefcase size={14} /> },
   { key: 'education', label: '教育背景', icon: <GraduationCap size={14} /> },
@@ -32,6 +65,16 @@ const CATEGORIES: { key: Category; label: string; icon: React.ReactNode }[] = [
   { key: 'certificates', label: '证书资质', icon: <Award size={14} /> },
   { key: 'interests', label: '兴趣爱好', icon: <Heart size={14} /> },
 ]
+
+const CAT_ICONS: Record<string, React.ReactNode> = {
+  basics: <UserRound size={14} />,
+  work: <Briefcase size={14} />,
+  education: <GraduationCap size={14} />,
+  projects: <FolderKanban size={14} />,
+  skills: <Wrench size={14} />,
+  certificates: <Award size={14} />,
+  interests: <Heart size={14} />,
+}
 
 // 字段配置：类型 text/textarea/date/select/tags/achievements/summary
 interface FieldDef {
@@ -67,7 +110,7 @@ const FIELDS: Record<Category, FieldDef[]> = {
     { key: 'institution', label: '学校', type: 'text', required: true },
     { key: 'degree', label: '学位', type: 'select', options: DEGREES },
     { key: 'area', label: '专业', type: 'text' },
-    { key: 'score', label: '成绩/GPA', type: 'text' },
+    { key: 'score', label: '成绩', type: 'text' },
     { key: 'startDate', label: '开始时间', type: 'text' },
     { key: 'endDate', label: '结束时间', type: 'text' },
     { key: 'url', label: '学校主页', type: 'text' },
@@ -103,7 +146,7 @@ const FIELDS: Record<Category, FieldDef[]> = {
   ],
 }
 
-function emptyEntry(cat: Category): Entry {
+function emptyEntry(cat: string): Entry {
   const e: Entry = { tags: [] }
   if (cat === 'work') e.achievements = []
   if (cat === 'basics') e.summary = []
@@ -112,7 +155,8 @@ function emptyEntry(cat: Category): Entry {
 
 export default function Entries() {
   const toast = useToast()
-  const [category, setCategory] = useState<Category>('work')
+  const [categories, setCategories] = useState<{ key: string; label: string; visible: boolean }[]>(DEFAULT_CATEGORIES.map((c) => ({ key: c.key, label: c.label, visible: true })))
+  const [category, setCategory] = useState<string>('work')
   const [all, setAll] = useState<Record<string, any>>({})
   const [tagCount, setTagCount] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -120,13 +164,15 @@ export default function Entries() {
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<Entry | null>(null)
   const [isNew, setIsNew] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
 
   const load = () =>
     api
-      .get<{ entries: Record<string, Entry[]>; tagCount: Record<string, number> }>('/api/entries')
+      .get<{ entries: Record<string, Entry[]>; tagCount: Record<string, number>; categories: { key: string; label: string; visible: boolean }[] }>('/api/entries')
       .then((d) => {
         setAll(d.entries)
         setTagCount(d.tagCount)
+        if (d.categories?.length) setCategories(d.categories)
         setLoading(false)
       })
       .catch((e) => toast('error', e.message))
@@ -180,9 +226,9 @@ export default function Entries() {
     category === 'work' ? (e.company as string) || (e.name as string) : (e.name as string) || '未命名'
   const subOf = (e: Entry) => {
     if (category === 'work') return `${e.position || ''} · ${e.startDate || ''} ~ ${e.endDate || '至今'}`
-    if (category === 'education') return `${e.degree || ''} ${e.area || ''} · ${e.startDate || ''}`
+    if (category === 'education') return `${DEGREE_LABELS[(e.degree as string) || ''] || (e.degree as string) || ''} ${e.area || ''} · ${e.startDate || ''}`
     if (category === 'projects') return e.description as string
-    if (category === 'skills') return e.level as string
+    if (category === 'skills') return (LEVEL_LABELS[(e.level as string) || ''] || (e.level as string) || '') as string
     if (category === 'certificates') return e.issuer as string
     return ''
   }
@@ -191,35 +237,44 @@ export default function Entries() {
 
   return (
     <div className="space-y-5">
-      {/* 分类切换 */}
-      <div className="flex flex-wrap gap-2">
-        {CATEGORIES.map((c) => (
-          <button
-            key={c.key}
-            onClick={() => {
-              setCategory(c.key)
-              setFilterTag(null)
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition ${
-              category === c.key
-                ? 'border-indigo-500/60 bg-indigo-500/15 text-indigo-200'
-                : 'border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            {c.icon}
-            {c.label}
-            <span className="rounded-full bg-zinc-800 px-1.5 text-[10px] text-zinc-400">
-              {category === c.key ? filtered.length : all[c.key]?.length || 0}
-            </span>
-          </button>
-        ))}
+      {/* 分类切换（动态 tab，可管理增删改排序） */}
+      <div className="flex flex-wrap items-center gap-2">
+        {categories
+          .filter((c) => c.visible !== false)
+          .map((c) => (
+            <button
+              key={c.key}
+              onClick={() => {
+                setCategory(c.key)
+                setFilterTag(null)
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition ${
+                category === c.key
+                  ? 'border-indigo-500/60 bg-indigo-500/15 text-indigo-200'
+                  : 'border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {CAT_ICONS[c.key] || <FolderKanban size={14} />}
+              {c.label}
+              <span className="rounded-full bg-zinc-800 px-1.5 text-[10px] text-zinc-400">
+                {category === c.key ? filtered.length : all[c.key]?.length || 0}
+              </span>
+            </button>
+          ))}
+        <button
+          onClick={() => setManageOpen(true)}
+          className="inline-flex items-center gap-1 rounded-lg border border-dashed border-zinc-600 px-2.5 py-1.5 text-xs text-zinc-500 transition hover:border-indigo-400 hover:text-indigo-300"
+          title="管理分类：新增/改名/排序/删除"
+        >
+          <Settings2 size={13} /> 管理分类
+        </button>
       </div>
 
       {/* 搜索与标签筛选 */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`搜索${CATEGORIES.find((c) => c.key === category)?.label}…`} className="pl-9" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`搜索${categories.find((c) => c.key === category)?.label || ''}…`} className="pl-9" />
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <Filter size={14} className="text-zinc-600" />
@@ -317,7 +372,143 @@ export default function Entries() {
           onSave={save}
         />
       )}
+
+      {/* 分类管理弹窗（增/删/改名/排序/显隐） */}
+      <CategoryManagerModal
+        open={manageOpen}
+        categories={categories}
+        current={category}
+        onClose={() => setManageOpen(false)}
+        onSaved={(cats) => {
+          setCategories(cats)
+          setCategory((c) => (cats.some((x) => x.key === c && x.visible !== false) ? c : (cats.find((x) => x.visible !== false)?.key || 'work')))
+        }}
+      />
     </div>
+  )
+}
+
+/* ---------- 分类管理弹窗 ---------- */
+function CategoryManagerModal({
+  open,
+  categories,
+  current,
+  onClose,
+  onSaved,
+}: {
+  open: boolean
+  categories: { key: string; label: string; visible: boolean }[]
+  current: string
+  onClose: () => void
+  onSaved: (cats: { key: string; label: string; visible: boolean }[]) => void
+}) {
+  const toast = useToast()
+  const [list, setList] = useState<{ key: string; label: string; visible: boolean }[]>([])
+  const [newKey, setNewKey] = useState('')
+  const [newLabel, setNewLabel] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (open) setList(categories.map((c) => ({ ...c })))
+  }, [open, categories])
+
+  const move = (idx: number, dir: -1 | 1) => {
+    const j = idx + dir
+    if (j < 0 || j >= list.length) return
+    const next = [...list]
+    ;[next[idx], next[j]] = [next[j], next[idx]]
+    setList(next)
+  }
+
+  const save = async () => {
+    if (list.length === 0) return toast('warn', '至少保留一个分类')
+    setSaving(true)
+    try {
+      await api.put('/api/categories', { categories: list })
+      toast('success', '分类已保存')
+      onSaved(list)
+      onClose()
+    } catch (e: any) {
+      toast('error', e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal open={open} title="管理分类" onClose={onClose} wide>
+      <p className="mb-3 text-xs leading-relaxed text-zinc-500">
+        分类对应私有数据仓的 <code className="text-zinc-400">data/*.yml</code> 与 <code className="text-zinc-400">categories.json</code>；
+        新增分类会自动创建数据文件，删除分类会同时删除其数据。
+      </p>
+      <div className="space-y-1.5">
+        {list.map((c, i) => (
+          <div key={c.key} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2">
+            <span className="font-mono text-[11px] text-zinc-600">{c.key}</span>
+            <Input
+              value={c.label}
+              onChange={(e) => setList(list.map((x) => (x === c ? { ...x, label: e.target.value } : x)))}
+              className="flex-1 !py-1.5 text-xs"
+            />
+            <button
+              className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
+              onClick={() => setList(list.map((x) => (x === c ? { ...x, visible: !x.visible } : x)))}
+              title={c.visible ? '隐藏（不删除数据）' : '显示'}
+            >
+              {c.visible ? <EyeOff size={13} /> : <EyeOff size={13} className="text-zinc-400" />}
+            </button>
+            <button className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(i, -1)} disabled={i === 0}>
+              <ArrowUp size={13} />
+            </button>
+            <button className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(i, 1)} disabled={i === list.length - 1}>
+              <ArrowDown size={13} />
+            </button>
+            <button
+              className="rounded p-1 text-zinc-600 hover:bg-red-500/20 hover:text-red-400"
+              onClick={() => {
+                if (c.key === current && list.length > 1) toast('warn', '当前分类删除后会自动切换')
+                setList(list.filter((x) => x !== c))
+              }}
+              title="删除（同时删除 data 文件）"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        ))}
+      </div>
+      {/* 新增分类 */}
+      <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-zinc-700 p-3">
+        <Input
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+          placeholder="分类标识（英文小写，如 awards）"
+          className="w-44 !py-1.5 font-mono text-xs"
+        />
+        <Input
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+          placeholder="中文名称，如：荣誉奖项"
+          className="flex-1 !py-1.5 text-xs"
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!/^[a-z][a-z0-9_-]*$/.test(newKey) || !newLabel.trim()}
+          onClick={() => {
+            if (list.some((x) => x.key === newKey)) return toast('warn', '该分类标识已存在')
+            setList([...list, { key: newKey, label: newLabel.trim(), visible: true }])
+            setNewKey('')
+            setNewLabel('')
+          }}
+        >
+          <PlusCircle size={13} /> 添加
+        </Button>
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button onClick={onClose}>取消</Button>
+        <Button variant="primary" loading={saving} onClick={save}>保存分类</Button>
+      </div>
+    </Modal>
   )
 }
 
@@ -355,7 +546,7 @@ function EntryModal({
   onClose,
   onSave,
 }: {
-  category: Category
+  category: string
   entry: Entry
   allTags: string[]
   onClose: () => void
@@ -367,7 +558,15 @@ function EntryModal({
     keywords: Array.isArray(entry.keywords) ? [...(entry.keywords as string[])] : [],
   }))
   const [saving, setSaving] = useState(false)
+  const toast = useToast()
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }))
+
+  // 学位/等级：显示中文，存储 schema 英文枚举
+  const optionLabel = (f: FieldDef, o: string) => {
+    if (f.key === 'degree') return DEGREE_LABELS[o] || o
+    if (f.key === 'level') return LEVEL_LABELS[o] || o
+    return o
+  }
 
   const renderField = (f: FieldDef) => {
     const value = form[f.key]
@@ -381,7 +580,7 @@ function EntryModal({
           <Select value={(value as string) || ''} onChange={(e) => set(f.key, e.target.value)}>
             <option value="">— 请选择 —</option>
             {(f.options || []).map((o) => (
-              <option key={o} value={o}>{o}</option>
+              <option key={o} value={o}>{optionLabel(f, o)}</option>
             ))}
           </Select>
         )
@@ -409,6 +608,17 @@ function EntryModal({
   }
 
   const submit = () => {
+    // 必填字段校验（防止空条目误保存）
+    const fields = FIELDS[category as Category] || GENERIC_FIELDS
+    for (const f of fields) {
+      if (f.required) {
+        const v = form[f.key]
+        if (!v || (Array.isArray(v) && v.length === 0) || (typeof v === 'string' && !v.trim())) {
+          toast('warn', `「${f.label}」为必填项`)
+          return
+        }
+      }
+    }
     setSaving(true)
     setTimeout(() => {
       onSave(form)
@@ -419,7 +629,7 @@ function EntryModal({
   return (
     <Modal open title={entry.id ? '编辑条目' : '新增条目'} onClose={onClose} wide>
       <div className="space-y-4">
-        {FIELDS[category].map((f) => (
+        {(FIELDS[category as Category] || GENERIC_FIELDS).map((f) => (
           <Field key={f.key} label={f.label} hint={f.hint}>
             {renderField(f)}
           </Field>

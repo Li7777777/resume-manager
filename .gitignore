@@ -6,3 +6,6 @@ Thumbs.db
 .idea/
 .vscode/
 server/.runtime/
+
+# 目标工具状态
+.pi-glla/

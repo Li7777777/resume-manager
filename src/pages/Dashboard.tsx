@@ -129,7 +129,7 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
               <span className="font-mono text-zinc-200">{status.branch}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-zinc-500">HEAD</span>
+              <span className="text-zinc-500">最新提交</span>
               <span className="font-mono text-zinc-400">{status.head?.slice(0, 7) || '—'}</span>
             </div>
             <div className="flex justify-between">

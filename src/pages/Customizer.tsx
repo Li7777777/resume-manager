@@ -17,7 +17,7 @@ import type { Entry } from '../types'
 import { useToast } from '../toast'
 import { Card, Button, Input, Badge, TagChip, Spinner, EmptyState } from '../components/ui'
 
-const CATS: { key: string; label: string }[] = [
+const DEFAULT_CATS: { key: string; label: string }[] = [
   { key: 'basics', label: '基础信息' },
   { key: 'work', label: '工作经历' },
   { key: 'education', label: '教育背景' },
@@ -45,6 +45,7 @@ export default function Customizer() {
   const toast = useToast()
   const [entries, setEntries] = useState<Record<string, Entry[]>>({})
   const [cat, setCat] = useState('work')
+  const [cats, setCats] = useState<{ key: string; label: string }[]>(DEFAULT_CATS)
   const [sections, setSections] = useState<Section[]>([])
   const [headline, setHeadline] = useState('')
   const [summary, setSummary] = useState('')
@@ -58,8 +59,10 @@ export default function Customizer() {
     Promise.all([
       api.get<{ entries: Record<string, Entry[]> }>('/api/entries').catch(() => ({ entries: {} })),
       api.get<{ variants: any[] }>('/api/variants').catch(() => ({ variants: [] })),
-    ]).then(([e, v]) => {
+      api.get<{ categories: { key: string; label: string; visible: boolean }[] }>('/api/categories').catch(() => ({ categories: [] })),
+    ]).then(([e, v, c]) => {
       setEntries(e.entries)
+      if (c.categories?.length) setCats(c.categories.filter((x) => x.visible !== false).map((x) => ({ key: x.key, label: x.label })))
       const custom = v.variants.find((x) => x.name === 'custom')
       if (custom?.blocks) {
         const secs: Section[] = (custom.sectionOrder || Object.keys(custom.blocks))
@@ -159,7 +162,7 @@ export default function Customizer() {
     const data = parseDrop(e)
     if (!data) return
     const exists = sections.some((s) => s.key === data.key)
-    if (exists) return toast('warn', `${CATS.find((c) => c.key === data.key)?.label} 已在布局中，直接拖入该区块`)
+    if (exists) return toast('warn', `${cats.find((c) => c.key === data.key)?.label} 已在布局中，直接拖入该区块`)
     if (data.type === 'entry') {
       commit([...sections, { key: data.key, mode: 'ids', ids: [data.id] }])
     } else {
@@ -192,14 +195,14 @@ export default function Customizer() {
   const listOf = (key: string): Entry[] => (Array.isArray(entries[key]) ? (entries[key] as Entry[]) : [])
 
   const entryTitleOf = (key: string, e: Entry) => entryTitle(key, e)
-  const sectionLabel = (key: string) => CATS.find((c) => c.key === key)?.label || key
+  const sectionLabel = (key: string) => cats.find((c) => c.key === key)?.label || key
 
   return (
     <div className="flex gap-4" style={{ height: 'calc(100vh - 130px)' }}>
       {/* 左：信息库（可拖拽） */}
       <Card title="简历信息库" desc="拖拽条目或整个章节到中间布局" className="w-72 shrink-0" pad={false} fill>
         <div className="flex flex-wrap gap-1 border-b border-zinc-800 p-2">
-          {CATS.map((c) => (
+          {cats.map((c) => (
             <button
               key={c.key}
               onClick={() => setCat(c.key)}

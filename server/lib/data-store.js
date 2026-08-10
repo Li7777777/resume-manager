@@ -6,7 +6,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import yaml from 'js-yaml'
 
-export const CATEGORIES = [
+export const DEFAULT_CATEGORIES = [
   'basics',
   'work',
   'education',
@@ -16,7 +16,7 @@ export const CATEGORIES = [
   'interests',
 ]
 
-export const CATEGORY_LABELS = {
+export const DEFAULT_CATEGORY_LABELS = {
   basics: '基础信息',
   work: '工作经历',
   education: '教育背景',
@@ -26,6 +26,74 @@ export const CATEGORY_LABELS = {
   interests: '兴趣爱好',
 }
 
+export const CATEGORIES = DEFAULT_CATEGORIES
+
+export const CATEGORY_LABELS = DEFAULT_CATEGORY_LABELS
+
+const CATEGORIES_FILE = 'categories.json'
+const KEY_RE = /^[a-z][a-z0-9_-]*$/
+
+// 分类定义（私有仓 categories.json）：[{key, label, visible}]
+function categoriesFile(repo) {
+  return path.join(repo, CATEGORIES_FILE)
+}
+
+// 扫描 data/*.yml 自动发现的分类 key（未配置时兜底）
+export function scanDataKeys(repo) {
+  const dir = path.join(repo, 'data')
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.yml'))
+      .map((f) => f.replace(/\.yml$/, ''))
+      .filter((k) => KEY_RE.test(k))
+  } catch {
+    return []
+  }
+}
+
+// 读取私有仓分类配置（动态）：categories.json + data/*.yml 自动发现合并
+// 返回 [{key, label, visible}]（visible 默认 true）
+export function getCategories(repo) {
+  const list = []
+  try {
+    const raw = JSON.parse(fs.readFileSync(categoriesFile(repo), 'utf8'))
+    if (Array.isArray(raw.categories)) {
+      for (const c of raw.categories) {
+        if (c && KEY_RE.test(c.key)) {
+          list.push({ key: c.key, label: (c.label || c.key), visible: c.visible !== false })
+        }
+      }
+    }
+  } catch {
+    /* 无配置文件：用默认分类 */
+  }
+  const keys = new Set(list.map((c) => c.key))
+  // 未配置时用默认 7 类兜底
+  if (list.length === 0) {
+    for (const k of DEFAULT_CATEGORIES) {
+      list.push({ key: k, label: DEFAULT_CATEGORY_LABELS[k] || k, visible: true })
+      keys.add(k)
+    }
+  }
+  // data/*.yml 自动发现（未在配置中的新分类追加，label 取默认或 key）
+  for (const k of scanDataKeys(repo)) {
+    if (!keys.has(k)) {
+      list.push({ key: k, label: DEFAULT_CATEGORY_LABELS[k] || k, visible: true })
+      keys.add(k)
+    }
+  }
+  return list
+}
+
+export function saveCategories(repo, categories) {
+  fs.mkdirSync(repo, { recursive: true })
+  fs.writeFileSync(
+    categoriesFile(repo),
+    JSON.stringify({ categories }, null, 2) + '\n',
+    'utf8',
+  )
+}
 // 元数据键：不进入最终简历
 export const META_KEYS = new Set(['id', 'tags', 'notes'])
 
@@ -107,10 +175,11 @@ export function deleteEntry(repoPath, category, id) {
 export function allEntries(repoPath) {
   const out = {}
   const tagCount = {}
-  for (const cat of CATEGORIES) {
-    const entries = readCategory(repoPath, cat)
-    out[cat] = entries
-    if (cat === 'basics') continue
+  for (const cat of getCategories(repoPath)) {
+    if (cat.visible === false) continue
+    const entries = readCategory(repoPath, cat.key)
+    out[cat.key] = entries
+    if (cat.key === 'basics') continue
     for (const e of entries) {
       for (const t of e.tags || []) {
         tagCount[t] = (tagCount[t] || 0) + 1

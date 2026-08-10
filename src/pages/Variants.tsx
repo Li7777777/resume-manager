@@ -8,7 +8,7 @@ import { Card, Button, Modal, Field, Input, Textarea, Select, TagInput, Badge, S
 
 const TEMPLATES = ['moderncv-banking', 'moderncv-casual', 'jake']
 const LANGUAGES = ['zh-hans', 'zh-hant-hk', 'zh-hant-tw', 'en', 'ja', 'de', 'fr', 'es', 'pt-br']
-const BLOCKS: { key: string; label: string }[] = [
+const DEFAULT_BLOCKS: { key: string; label: string }[] = [
   { key: 'basics', label: '基础信息' },
   { key: 'education', label: '教育背景' },
   { key: 'work', label: '工作经历' },
@@ -29,19 +29,22 @@ export default function Variants() {
   const [allTags, setAllTags] = useState<string[]>([])
   const [editing, setEditing] = useState<Variant | null>(null)
   const [isNew, setIsNew] = useState(false)
+  const [blocks, setBlocks] = useState<{ key: string; label: string }[]>(DEFAULT_BLOCKS)
 
   const load = () =>
     Promise.all([
       api.get<{ variants: Variant[]; defaults: Record<string, any> }>('/api/variants'),
       api.get<{ tagCount: Record<string, number> }>('/api/entries'),
+      api.get<{ categories: { key: string; label: string; visible: boolean }[] }>('/api/categories').catch(() => ({ categories: [] })),
     ])
-      .then(([v, e]) => {
+      .then(([v, e, c]) => {
         const variants: Record<string, Variant> = {}
         v.variants.forEach((x) => {
           variants[x.name] = x
         })
         setDoc({ defaults: v.defaults, variants })
         setAllTags(Object.keys(e.tagCount).sort())
+        if (c.categories?.length) setBlocks(c.categories.filter((x) => x.visible !== false).map((x) => ({ key: x.key, label: x.label })))
       })
       .catch((err) => toast('error', err.message))
 
@@ -113,13 +116,13 @@ export default function Variants() {
                 <Badge tone="zinc">{v.layout?.template || doc.defaults.layout?.template || '—'}</Badge>
                 {Object.entries(v.matched || {}).map(([block, n]) => (
                   <Badge key={block} tone="sky">
-                    {BLOCKS.find((b) => b.key === block)?.label || block}: {n} 条
+                    {blocks.find((b) => b.key === block)?.label || block}: {n} 条
                   </Badge>
                 ))}
               </div>
               {v.sectionOrder && v.sectionOrder.length > 0 && (
                 <p className="mt-3 text-xs text-zinc-600">
-                  章节顺序：{v.sectionOrder.map((s) => BLOCKS.find((b) => b.key === s)?.label || s).join(' → ')}
+                  章节顺序：{v.sectionOrder.map((s) => blocks.find((b) => b.key === s)?.label || s).join(' → ')}
                 </p>
               )}
             </Card>
@@ -133,6 +136,7 @@ export default function Variants() {
           isNew={isNew}
           allTags={allTags}
           defaults={doc.defaults}
+          blocks={blocks}
           onClose={() => setEditing(null)}
           onSave={async (name, v) => {
             const next = { ...doc, variants: { ...doc.variants } }
@@ -158,6 +162,7 @@ function VariantModal({
   isNew,
   allTags,
   defaults,
+  blocks,
   onClose,
   onSave,
 }: {
@@ -165,6 +170,7 @@ function VariantModal({
   isNew: boolean
   allTags: string[]
   defaults: Record<string, any>
+  blocks: { key: string; label: string }[]
   onClose: () => void
   onSave: (name: string, v: Variant) => void
 }) {
@@ -265,7 +271,7 @@ function VariantModal({
           <div className="flex flex-wrap gap-2">
             {(form.sectionOrder || []).map((s, i) => (
               <div key={s} className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-300">
-                {BLOCKS.find((b) => b.key === s)?.label || s}
+                {blocks.find((b) => b.key === s)?.label || s}
                 <button className="text-zinc-600 hover:text-zinc-300" onClick={() => moveOrder(i, -1)}><ArrowUp size={12} /></button>
                 <button className="text-zinc-600 hover:text-zinc-300" onClick={() => moveOrder(i, 1)}><ArrowDown size={12} /></button>
               </div>
@@ -276,7 +282,7 @@ function VariantModal({
         {/* 章节内容筛选 */}
         <Field label="章节内容（按标签筛选信息全集）">
           <div className="space-y-2">
-            {BLOCKS.map((b) => {
+            {blocks.map((b) => {
               const mode = blockMode(b.key)
               return (
                 <div key={b.key} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
