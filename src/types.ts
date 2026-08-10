@@ -30,6 +30,7 @@ export interface Variant {
   label?: string
   locale?: string
   layout?: { engine?: string; template?: string; typography?: { fontSize?: string } }
+  htmlLayout?: { engine?: string; template?: string; typography?: { fontSize?: string } }
   sectionOrder?: string[]
   overrides?: { basics?: { headline?: string; summary?: string[] } }
   blocks?: Record<string, { include?: string; tags?: string[]; ids?: string[] }>

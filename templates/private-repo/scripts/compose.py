@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
-"""组合脚本：从 data/ 信息全集按 scripts/variants.yml 配方生成 resumes/*.yml
-（与 resume-manager 的 server/lib/compose.js 语义一致，CI 环境用此实现）"""
+"""
+组合脚本：从 data/ 信息全集按 scripts/variants.yml 配方生成 resumes/*.yml
+
+用法：
+    python scripts/compose.py            # 生成所有变体
+    python scripts/compose.py frontend   # 只生成指定变体
+    python scripts/compose.py --check    # 只做完整性检查，不写文件
+
+原则：
+- data/ 是唯一真相源，本脚本只读 data/，生成的 resumes/*.yml 不应手改
+- 元数据键（id / tags / notes / 以 _ 开头）只用于筛选，绝不进入最终简历
+- achievements 每条成就可打 tags；无标签成就视为通用，任何方向都保留
+"""
 import os
 import sys
 
@@ -38,6 +49,7 @@ def load(path):
 
 
 def strip_meta(item):
+    """去掉元数据键，返回纯简历字段"""
     if not isinstance(item, dict):
         return item
     return {k: v for k, v in item.items() if k not in META_KEYS and not k.startswith("_")}
@@ -52,6 +64,7 @@ def tag_overlap(item_tags, wanted_tags):
 
 
 def select_entries(entries, cfg):
+    """按配方选择条目：include-all / ids / tags"""
     if not entries:
         return []
     if cfg is None or cfg.get("include") == "all":
@@ -69,23 +82,14 @@ def select_entries(entries, cfg):
     return result
 
 
-def to_summary_string(summary):
-    if summary is None:
-        return None
-    if isinstance(summary, str):
-        return summary
-    if isinstance(summary, list):
-        lines = ["- " + str(s) for s in summary if s]
-        return "\n".join(lines) if lines else None
-    return str(summary)
-
-
 def build_summary(entry, wanted_tags):
+    """成就点 -> summary（按标签过滤）；无成就点则保留原 summary"""
     if ACHIEVEMENTS_KEY not in entry:
         return entry.get("summary")
     items = []
     for a in entry[ACHIEVEMENTS_KEY]:
         if isinstance(a, dict):
+            # 无标签成就 = 通用，保留；有标签的必须与方向命中
             if wanted_tags and a.get("tags") and not tag_overlap(a.get("tags"), wanted_tags):
                 continue
             if a.get("text"):
@@ -97,10 +101,21 @@ def build_summary(entry, wanted_tags):
     return "\n".join("- " + t for t in items)
 
 
+def to_summary_string(summary):
+    """summary 规范化为 markdown 字符串（schema 要求 summary 是字符串）"""
+    if summary is None:
+        return None
+    if isinstance(summary, str):
+        return summary
+    if isinstance(summary, list):
+        return "\n".join("- " + str(s) for s in summary if s)
+    return str(summary)
+
+
 def compose_basics(overrides):
     b = strip_meta(load(os.path.join(DATA_DIR, "basics.yml")))
     ov = (overrides or {}).get("basics") or {}
-    b.update(ov)
+    b.update(ov)  # 变体级覆盖（headline / summary 等）
     if isinstance(b.get("summary"), list):
         b["summary"] = to_summary_string(b["summary"])
     return b if b else None
@@ -115,6 +130,7 @@ def compose_list(block, cfg):
     out = []
     for e in selected:
         item = strip_meta(e)
+        # 字段别名：work 章节的 schema 字段名是 name（数据里用 company 更自然）
         if "company" in item and "name" not in item:
             item["name"] = item.pop("company")
         summary = build_summary(e, wanted)
@@ -122,7 +138,8 @@ def compose_list(block, cfg):
             item["summary"] = to_summary_string(summary)
         elif ACHIEVEMENTS_KEY in e:
             item.pop("summary", None)
-        item.pop(ACHIEVEMENTS_KEY, None)
+        item.pop(ACHIEVEMENTS_KEY, None)  # 成就点用完即删，不进入简历
+        # 其他列表型 summary（projects / education 等）同样转字符串
         if isinstance(item.get("summary"), list):
             item["summary"] = to_summary_string(item["summary"])
         out.append(item)
@@ -136,6 +153,21 @@ def build_layout(v, defaults):
     if order:
         d.setdefault("sections", {})["order"] = list(order)
     return d
+
+
+def build_layouts(v, defaults):
+    """多引擎支持：v.htmlLayout 存在时同时输出 HTML 布局（PDF + HTML 一次构建）"""
+    latex = build_layout(v, defaults)
+    html = v.get("htmlLayout")
+    if html and html.get("template"):
+        html_layout = {"engine": "html", "template": html["template"]}
+        if html.get("typography", {}).get("fontSize"):
+            html_layout["typography"] = {"fontSize": html["typography"]["fontSize"]}
+        order = v.get("sectionOrder") or defaults.get("sectionOrder")
+        if order:
+            html_layout.setdefault("sections", {})["order"] = list(order)
+        return [latex, html_layout]
+    return [latex]
 
 
 def compose_variant(name, v, defaults):
@@ -152,7 +184,7 @@ def compose_variant(name, v, defaults):
     return {
         "content": content,
         "locale": {"language": v.get("locale", defaults.get("locale", "zh-hans"))},
-        "layouts": [build_layout(v, defaults)],
+        "layouts": build_layouts(v, defaults),
     }
 
 

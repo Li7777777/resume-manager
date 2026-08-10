@@ -112,6 +112,24 @@ function buildLayout(v, defaults) {
   return d
 }
 
+// 多引擎支持：v.htmlLayout（如 {engine:'html', template:'calm'}）存在时，
+// 同时输出 HTML 布局 → yamlresume build 会同时产出 PDF 与 HTML
+function buildLayouts(v, defaults) {
+  const latex = buildLayout(v, defaults)
+  const html = v.htmlLayout
+  if (html && html.template) {
+    const htmlLayout = { engine: 'html', template: html.template }
+    if (html.typography?.fontSize) htmlLayout.typography = { fontSize: html.typography.fontSize }
+    // html 引擎章节顺序同样生效
+    const order = v.sectionOrder || (defaults && defaults.sectionOrder)
+    if (Array.isArray(order) && order.length) {
+      htmlLayout.sections = { ...(htmlLayout.sections || {}), order: [...order] }
+    }
+    return [latex, htmlLayout]
+  }
+  return [latex]
+}
+
 export function composeVariant(repo, name, v, defaults) {
   const content = {}
   for (const [block, cfg] of Object.entries(v.blocks || {})) {
@@ -126,7 +144,7 @@ export function composeVariant(repo, name, v, defaults) {
   return {
     content,
     locale: { language: v.locale || (defaults && defaults.locale) || 'zh-hans' },
-    layouts: [buildLayout(v, defaults)],
+    layouts: buildLayouts(v, defaults),
   }
 }
 

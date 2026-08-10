@@ -4,9 +4,10 @@ import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, Eye } from 'lucide-react'
 import { api } from '../api'
 import type { Variant } from '../types'
 import { useToast } from '../toast'
-import { Card, Button, Modal, Field, Input, Textarea, Select, TagInput, Badge, Spinner, EmptyState } from '../components/ui'
+import { Card, Button, Modal, Field, Input, Textarea, Select, TagInput, Badge, Spinner, EmptyState, Switch } from '../components/ui'
 
 const TEMPLATES = ['moderncv-banking', 'moderncv-casual', 'jake']
+const HTML_TEMPLATES = ['calm', 'vscode']
 const LANGUAGES = ['zh-hans', 'zh-hant-hk', 'zh-hant-tw', 'en', 'ja', 'de', 'fr', 'es', 'pt-br']
 const DEFAULT_BLOCKS: { key: string; label: string }[] = [
   { key: 'basics', label: '基础信息' },
@@ -263,6 +264,27 @@ function VariantModal({
                 <option key={t} value={t}>{t}</option>
               ))}
             </Select>
+          </Field>
+          <Field label="同时生成 HTML" hint="开启后构建同时产出网页版简历（复用 PDF 预览页）">
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={!!form.htmlLayout}
+                onChange={(on) =>
+                  set(on ? { htmlLayout: { engine: 'html', template: 'calm' } } : { htmlLayout: undefined })
+                }
+              />
+              {form.htmlLayout && (
+                <Select
+                  value={form.htmlLayout.template || 'calm'}
+                  onChange={(e) => set({ htmlLayout: { ...form.htmlLayout, template: e.target.value } })}
+                  className="w-32"
+                >
+                  {HTML_TEMPLATES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </Select>
+              )}
+            </div>
           </Field>
         </div>
 
