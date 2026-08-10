@@ -37,6 +37,13 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [connecting, setConnecting] = useState(false)
+  const [connectResult, setConnectResult] = useState<{
+    generated?: boolean
+    inited?: boolean
+    target?: string
+    status?: { isRepo?: boolean; branch?: string; error?: string }
+  } | null>(null)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -141,6 +148,38 @@ export default function SettingsPage() {
     }
   }
 
+  // 连接数据仓：目录不存在/为空 → 自动生成模板骨架 + git init；已有内容 → 不生成直接连接
+  const connect = async () => {
+    if (!form.repoPath || !form.repoPath.trim()) return toast('warn', '请先填写数仓路径')
+    setConnecting(true)
+    setConnectResult(null)
+    try {
+      const r = await api.post<{
+        ok?: boolean
+        generated?: boolean
+        inited?: boolean
+        target?: string
+        status?: { isRepo?: boolean; branch?: string; error?: string }
+        error?: string
+      }>('/api/project/connect', { repoPath: form.repoPath.trim() })
+      if (r.ok === false) throw new Error(r.error || '连接失败')
+      setConnectResult(r)
+      setForm((f) => ({ ...f, repoPath: r.target }))
+      toast('success', r.generated ? '已生成数据仓骨架并初始化 git' : '已连接数据仓')
+      try {
+        await patchSettings({ repoPath: r.target })
+      } catch {
+        /* 静默 */
+      }
+      setTestResult(null)
+    } catch (e: any) {
+      toast('error', e.message)
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+
   // 把 GitHub 编译开关同步到私有数据仓（写入 resume-manager.config.json 并提交推送）
   const syncGithubSwitch = async (withPush = true) => {
     setSyncing(true)
@@ -181,10 +220,31 @@ export default function SettingsPage() {
               <Button variant="secondary" loading={testing} onClick={test}>
                 <RefreshCw size={13} /> 测试连接
               </Button>
+              <Button variant="primary" loading={connecting} onClick={connect}>
+                <FolderGit2 size={14} /> 连接数据仓
+              </Button>
             </div>
           </Field>
           {testResult && (
             <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs text-zinc-400">{testResult}</div>
+          )}
+          {connectResult && (
+            <div className="space-y-2">
+              <div className={`rounded-lg border px-3 py-2 text-xs ${connectResult.generated ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-zinc-800 bg-zinc-950/50 text-zinc-400'}`}>
+                {connectResult.generated
+                  ? `✅ 已自动生成数据仓骨架：${connectResult.target}（含示例数据、简历方向配方、CI 工作流）${connectResult.inited ? '，并已初始化 git 仓库' : ''}`
+                  : `✅ 已连接：${connectResult.target}${connectResult.status?.isRepo ? `（git 仓库，分支 ${connectResult.status.branch}）` : ''}`}
+              </div>
+              {/* 折叠的建仓推送指引 */}
+              <details className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs">
+                <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">创建 GitHub 私有仓并推送（可选）</summary>
+                <pre className="mt-2 overflow-x-auto rounded-md bg-black/40 p-2 font-mono text-[11px] leading-relaxed text-zinc-300">{`cd ${connectResult.target}
+git add -A
+git commit -m "init: resume data"
+gh repo create resume-data --private --source . --remote origin --push`}</pre>
+                <p className="mt-1.5 text-[11px] text-zinc-600">推送后到「Git 同步看板」可提交/推送后续修改；或在本页填入 GitHub 令牌后直接使用看板。</p>
+              </details>
+            </div>
           )}
         </div>
       </Card>

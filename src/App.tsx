@@ -7,7 +7,6 @@ import {
   FileCode2,
   FileText,
   GitPullRequestArrow,
-  LayoutTemplate,
   Settings,
   ShieldCheck,
   FolderGit2,
@@ -22,7 +21,6 @@ import Variants from './pages/Variants'
 import YamlPage from './pages/YamlPage'
 import HistoryPage from './pages/History'
 import GitBoard from './pages/GitBoard'
-import Templates from './pages/Templates'
 import TemplateManager from './pages/TemplateManager'
 import Customizer from './pages/Customizer'
 import SettingsPage from './pages/Settings'
@@ -34,7 +32,6 @@ const NAV = [
   { key: 'yaml', label: 'YAML 编辑', icon: <FileCode2 size={16} /> },
   { key: 'pdf', label: 'PDF 预览', icon: <FileText size={16} /> },
   { key: 'git', label: 'Git 同步看板', icon: <GitPullRequestArrow size={16} /> },
-  { key: 'templates', label: '模板初始化', icon: <LayoutTemplate size={16} /> },
   { key: 'tmpl-manage', label: '简历模板', icon: <ShieldCheck size={16} /> },
   { key: 'customizer', label: '简历定制', icon: <DraftingCompass size={16} /> },
   { key: 'settings', label: '设置', icon: <Settings size={16} /> },
@@ -47,7 +44,6 @@ const TITLES: Record<string, [string, string]> = {
   yaml: ['YAML 编辑', '直接查看与编辑数据文件（保存时校验语法）'],
   pdf: ['PDF 预览', '本地构建与 GitHub 提交的统一时间轴 + 对应版本 PDF/YAML'],
   git: ['Git 同步看板', '本地与 GitHub 私有仓的可视化同步'],
-  templates: ['模板初始化', '按数据格式生成私有数据仓骨架'],
   'tmpl-manage': ['简历模板', '官网模板载入与实时切换预览'],
   customizer: ['简历定制', '拖拽信息到布局，实时渲染 HTML 简历'],
   settings: ['设置', '数据仓路径、GitHub 凭据与提交身份'],
@@ -155,7 +151,6 @@ function Shell() {
           {page === 'yaml' && <YamlPage />}
           {page === 'pdf' && <HistoryPage />}
           {page === 'git' && <GitBoard />}
-          {page === 'templates' && <Templates />}
           {page === 'tmpl-manage' && <TemplateManager go={go} />}
           {page === 'customizer' && <Customizer />}
           {page === 'settings' && <SettingsPage />}

@@ -754,6 +754,53 @@ router.post('/custom/layout', async (req, res) => {
   }
 })
 
+/* ---------- 连接数据仓（设置页：自动检测 + 空目录自动生成骨架 + git init） ---------- */
+// 复用模板复制逻辑
+function copyTemplate(dest) {
+  fs.mkdirSync(dest, { recursive: true })
+  const copy = (src, dst) => {
+    fs.mkdirSync(dst, { recursive: true })
+    for (const name of fs.readdirSync(src)) {
+      const s = path.join(src, name)
+      const d = path.join(dst, name)
+      if (fs.statSync(s).isDirectory()) copy(s, d)
+      else fs.copyFileSync(s, d)
+    }
+  }
+  copy(TEMPLATE_DIR, dest)
+}
+
+router.post('/project/connect', async (req, res) => {
+  const { repoPath } = req.body || {}
+  if (!repoPath) return res.json({ ok: false, error: '缺少数仓路径' })
+  const dest = path.resolve(repoPath)
+  try {
+    let generated = false
+    if (!fs.existsSync(dest)) {
+      // 目录不存在 → 创建并生成骨架
+      fs.mkdirSync(dest, { recursive: true })
+      copyTemplate(dest)
+      generated = true
+    } else if (fs.readdirSync(dest).filter((f) => !f.startsWith('.')).length === 0) {
+      // 空目录 → 生成骨架
+      copyTemplate(dest)
+      generated = true
+    }
+    // 无 .git 时自动 git init
+    const inited = generated || !(await gitSvc.isRepo(dest)) ? await gitSvc.initRepo(dest) : false
+    const status = await gitSvc.projectOverview(dest, getSettings()).catch(() => ({ configured: true, isRepo: gitSvc.isRepo(dest) }))
+    res.json({
+      ok: true,
+      generated,
+      inited,
+      target: dest,
+      status,
+    })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
 /* ---------- 模板初始化 ---------- */
 router.get('/template/info', (req, res) => {
   const files = []

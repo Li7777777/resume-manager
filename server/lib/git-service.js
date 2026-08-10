@@ -39,6 +39,12 @@ export function isRepo(dir) {
   return fs.existsSync(path.join(dir, '.git'))
 }
 
+export async function initRepo(dir) {
+  if (isRepo(dir)) return false
+  await git.init({ fs, dir, defaultBranch: 'main' })
+  return true
+}
+
 export async function getRemoteUrl(dir, remote = 'origin') {
   const remotes = await git.listRemotes({ fs, dir }).catch(() => [])
   return remotes.find((r) => r.remote === remote)?.url || remotes[0]?.url || null
