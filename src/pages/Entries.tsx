@@ -15,6 +15,7 @@ import {
   UserRound,
   ListChecks,
   Settings2,
+  Tags,
   ArrowUp,
   ArrowDown,
   EyeOff,
@@ -165,6 +166,7 @@ export default function Entries() {
   const [editing, setEditing] = useState<Entry | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
+  const [tagManageOpen, setTagManageOpen] = useState(false)
 
   const load = () =>
     api
@@ -297,6 +299,13 @@ export default function Entries() {
               {t} · {tagCount[t]}
             </button>
           ))}
+          <button
+            onClick={() => setTagManageOpen(true)}
+            className="inline-flex items-center gap-1 rounded-lg border border-dashed border-zinc-600 px-2.5 py-1.5 text-xs text-zinc-500 transition hover:border-indigo-400 hover:text-indigo-300"
+            title="管理标签：新增/重命名/删除（作用于全部条目）"
+          >
+            <Tags size={13} /> 管理标签
+          </button>
         </div>
         <Button variant="primary" onClick={() => { setEditing(emptyEntry(category)); setIsNew(true) }}>
           <Plus size={15} /> 新增
@@ -384,7 +393,129 @@ export default function Entries() {
           setCategory((c) => (cats.some((x) => x.key === c && x.visible !== false) ? c : (cats.find((x) => x.visible !== false)?.key || 'work')))
         }}
       />
+
+      {/* 标签管理弹窗（新增/重命名/删除，作用于全部条目） */}
+      <TagManagerModal
+        open={tagManageOpen}
+        onClose={() => setTagManageOpen(false)}
+        onChanged={() => load()}
+      />
     </div>
+  )
+}
+
+/* ---------- 标签管理弹窗 ---------- */
+interface TagItem {
+  name: string
+  count: number
+  inLibrary: boolean
+}
+
+function TagManagerModal({ open, onClose, onChanged }: { open: boolean; onClose: () => void; onChanged: () => void }) {
+  const toast = useToast()
+  const [tags, setTags] = useState<TagItem[]>([])
+  const [newTag, setNewTag] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (open) load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const load = () =>
+    api
+      .get<{ tags: TagItem[] }>('/api/tags')
+      .then((d) => setTags(d.tags))
+      .catch((e) => toast('error', e.message))
+
+  // 新增标签：写入标签库（条目编辑建议即包含）
+  const addTag = async () => {
+    const t = newTag.trim()
+    if (!t) return
+    setBusy(true)
+    try {
+      const cur = tags.map((x) => x.name)
+      if (cur.includes(t)) return toast('warn', '标签已存在')
+      await api.put('/api/tags/library', { tags: [...cur, t] })
+      toast('success', `已新增标签「${t}」`)
+      setNewTag('')
+      await load()
+      onChanged()
+    } catch (e: any) {
+      toast('error', e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 重命名标签（所有条目同步）
+  const renameTag = async (from: string) => {
+    const to = window.prompt(`将标签「${from}」重命名为：`, from)
+    if (!to || to.trim() === from) return
+    setBusy(true)
+    try {
+      const r = await api.post<{ affected: number }>('/api/tags/rename', { from, to: to.trim() })
+      toast('success', `已重命名，影响 ${r.affected} 个条目`)
+      await load()
+      onChanged()
+    } catch (e: any) {
+      toast('error', e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 删除标签（所有条目移除）
+  const deleteTag = async (t: string) => {
+    if (!confirm(`确定删除标签「${t}」吗？将从所有条目中移除。`)) return
+    setBusy(true)
+    try {
+      const r = await api.post<{ affected: number }>('/api/tags/delete', { tag: t })
+      toast('success', `已删除，影响 ${r.affected} 个条目`)
+      await load()
+      onChanged()
+    } catch (e: any) {
+      toast('error', e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal open={open} title="管理标签" onClose={onClose} wide>
+      <p className="mb-3 text-xs leading-relaxed text-zinc-500">
+        标签用于给信息条目打方向标记（如 <code className="text-zinc-400">frontend</code>）；重命名/删除会同步作用于<b className="text-zinc-300">全部条目</b>。
+      </p>
+      <div className="flex gap-2">
+        <Input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="新增标签名称（如：data）" className="flex-1 !py-1.5 text-xs" />
+        <Button size="sm" variant="secondary" loading={busy} disabled={!newTag.trim()} onClick={addTag}>
+          <Plus size={13} /> 新增
+        </Button>
+      </div>
+      <div className="mt-3 space-y-1.5">
+        {tags.length === 0 ? (
+          <p className="py-6 text-center text-xs text-zinc-600">暂无标签</p>
+        ) : (
+          tags.map((t) => (
+            <div key={t.name} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2">
+              <TagChip tag={t.name} />
+              <span className="text-[11px] text-zinc-600">{t.count} 个条目{t.inLibrary ? ' · 标签库' : ''}</span>
+              <div className="ml-auto flex gap-1">
+                <button className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => renameTag(t.name)} title="重命名">
+                  <Pencil size={13} />
+                </button>
+                <button className="rounded p-1 text-zinc-600 hover:bg-red-500/20 hover:text-red-400" onClick={() => deleteTag(t.name)} title="删除">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <div className="mt-4 flex justify-end">
+        <Button onClick={onClose}>关闭</Button>
+      </div>
+    </Modal>
   )
 }
 

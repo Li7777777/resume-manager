@@ -94,6 +94,79 @@ export function saveCategories(repo, categories) {
     'utf8',
   )
 }
+
+/* ---------- 标签库（tags.json，私有仓级；标签增删改） ---------- */
+function tagsFile(repo) {
+  return path.join(repo, 'tags.json')
+}
+
+// 读取标签库（预定义标签，用于新增标签入口与建议）
+export function libTags(repo) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(tagsFile(repo), 'utf8'))
+    if (Array.isArray(raw.tags)) {
+      return raw.tags.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim())
+    }
+  } catch {
+    /* 无标签库 */
+  }
+  return []
+}
+
+export function saveLibTags(repo, tags) {
+  fs.mkdirSync(repo, { recursive: true })
+  const clean = [...new Set(tags.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim()))]
+  fs.writeFileSync(tagsFile(repo), JSON.stringify({ tags: clean }, null, 2) + '\n', 'utf8')
+  return clean
+}
+
+// 全条目重命名标签（from → to，合并去重），返回受影响条目数
+export function renameTag(repo, from, to) {
+  let affected = 0
+  for (const cat of getCategories(repo)) {
+    const entries = readCategory(repo, cat.key)
+    if (cat.key === 'basics') continue
+    let changed = false
+    for (const e of entries) {
+      if (Array.isArray(e.tags) && e.tags.includes(from)) {
+        e.tags = [...new Set(e.tags.map((t) => (t === from ? to : t)))]
+        changed = true
+      }
+    }
+    if (changed) {
+      writeCategory(repo, cat.key, entries)
+      affected += entries.length
+    }
+  }
+  // 更新标签库
+  const lib = libTags(repo)
+  if (lib.includes(from)) {
+    saveLibTags(repo, lib.map((t) => (t === from ? to : t)))
+  }
+  return affected
+}
+
+// 全条目删除标签，返回受影响条目数
+export function deleteTag(repo, tag) {
+  let affected = 0
+  for (const cat of getCategories(repo)) {
+    const entries = readCategory(repo, cat.key)
+    if (cat.key === 'basics') continue
+    let changed = false
+    for (const e of entries) {
+      if (Array.isArray(e.tags) && e.tags.includes(tag)) {
+        e.tags = e.tags.filter((t) => t !== tag)
+        changed = true
+      }
+    }
+    if (changed) {
+      writeCategory(repo, cat.key, entries)
+      affected += entries.length
+    }
+  }
+  saveLibTags(repo, libTags(repo).filter((t) => t !== tag))
+  return affected
+}
 // 元数据键：不进入最终简历
 export const META_KEYS = new Set(['id', 'tags', 'notes'])
 
