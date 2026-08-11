@@ -1,4 +1,4 @@
-// 本地构建历史：记录本地 yamlresume 构建（时间轴数据源之一，与 GitHub CI 记录并列）
+// 本机正式版历史：只记录用户显式发布的版本；临时预览不进入时间轴。
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

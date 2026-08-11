@@ -503,24 +503,7 @@ router.post('/build', async (req, res) => {
   try {
     const result = await builder.buildVariant(repo, variant)
     if (result.ok) {
-      // 本地构建成功 → 写入本地构建历史（时间轴记录）
-      try {
-        const head = (await gitSvc.getLog(repo, 1))[0] || null
-        recordBuild({
-          kind: 'local',
-          repoPath: repo,
-          variant,
-          branch: (await gitSvc.currentBranchSafe(repo)) || null,
-          sha: head?.oid || null,
-          headMessage: head?.message || null,
-          timestamp: Math.floor(Date.now() / 1000),
-          status: 'success',
-          pdfs: [result.pdf],
-          output: (result.output || '').slice(0, 500),
-        })
-      } catch {
-        /* 记录失败不影响构建结果 */
-      }
+      // 兼容构建只生成临时产物；正式版必须从简历定制页显式发布。
       res.json({ ok: true, pdf: `/api/pdf/${variant}.pdf`, output: result.output })
     } else {
       res.json({ ok: false, error: result.output })
@@ -755,8 +738,8 @@ router.post('/github/pdf-sync', async (req, res) => {
 /* ---------- GitHub 历史版本（提交时间轴 + CI 产物匹配 + YAML 快照） ---------- */
 const HISTORY_DIR = (repo) => path.join(repo, 'resumes', 'history')
 
-/* ---------- 合并时间轴（本地构建记录 + GitHub 提交/CI 运行） ---------- */
-// 返回统一时间轴：kind=local（本地 yamlresume 构建）与 kind=github（提交 + CI 运行）
+/* ---------- 合并时间轴（本机正式版 + Git 提交/CI 运行） ---------- */
+// 预览不会进入时间轴；只返回 kind=release（显式发布）与 kind=github。
 router.get('/history', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
@@ -804,13 +787,13 @@ router.get('/history', async (req, res) => {
       branch,
       run: runMap[c.oid] || null,
     }))
-    // 本地构建也按简历类型/分支过滤；旧记录没有 branch 时用 variant 兼容
-    const localItems = ref
+    // 仅显式发布的正式版进入时间轴；旧 kind=local 预览记录永久过滤。
+    const releaseItems = ref
       ? listBuilds(repo)
-          .filter((b) => b.branch === branch || (!b.branch && b.variant === variant))
-          .map((b) => ({ ...b, kind: 'local', branch }))
+          .filter((b) => b.kind === 'release' && (b.branch === branch || (!b.branch && b.variant === variant)))
+          .map((b) => ({ ...b, kind: 'release', branch }))
       : []
-    const items = [...githubItems, ...localItems]
+    const items = [...githubItems, ...releaseItems]
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
       .slice(0, limit)
     res.json({
@@ -919,6 +902,21 @@ router.get('/pdf/history/:file', (req, res) => {
   fs.createReadStream(p).pipe(res)
 })
 
+// 本机正式版归档；支持 PDF 与 HTML，不提供预览构建产物的历史入口。
+router.get('/release/history/:file', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.status(404).end()
+  const fname = path.basename(req.params.file)
+  const p = path.join(HISTORY_DIR(repo), fname)
+  if (!fs.existsSync(p)) return res.status(404).json({ ok: false, error: '正式版产物不存在' })
+  const extension = path.extname(fname).toLowerCase()
+  if (extension === '.pdf') res.setHeader('Content-Type', 'application/pdf')
+  else if (extension === '.html') res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  else return res.status(400).json({ ok: false, error: '不支持的正式版文件类型' })
+  res.setHeader('Cache-Control', 'no-cache')
+  fs.createReadStream(p).pipe(res)
+})
+
 /* ---------- 模板管理（官网模板载入 + 实时切换） ---------- */
 router.get('/templates', (req, res) => {
   const repo = getRepoPath()
@@ -979,136 +977,151 @@ router.get('/html/:name', (req, res) => {
   fs.createReadStream(p).pipe(res)
 })
 
-/* ---------- 简历定制（内容 + 模板 → 在定制页构建预览） ---------- */
-// PDF 预览页保持只读；所有模板切换、组合与构建统一在这里完成。
-async function renderCustomizedVariant(repo, variant, engine, branch) {
-  compose.generateAll(repo, [variant])
+/* ---------- 简历定制（预览不留历史；显式发布才进入时间轴） ---------- */
+function resolveCustomizedVariant(repo, doc, variant, body) {
+  const current = doc.variants?.[variant]
+  if (!current) throw new Error(`当前 YAML 中不存在简历类型 ${variant}`)
+
+  const hasVisualDraft = body.template !== undefined || body.sections !== undefined || body.overrides !== undefined
+  if (!hasVisualDraft) {
+    const layout = { ...(doc.defaults?.layout || {}), ...(current.layout || {}) }
+    const template = TEMPLATES.find((item) => item.id === layout.template)
+    if (!template) throw new Error(`当前 YAML 使用了未知模板 ${layout.template || '—'}`)
+    const engine = layout.engine || template.engine
+    if (engine !== 'latex' && engine !== 'html') throw new Error(`不支持的预览引擎 ${engine}`)
+    return { next: current, template, engine }
+  }
+
+  if (!Array.isArray(body.sections)) throw new Error('布局格式无效')
+  const template = TEMPLATES.find((item) => item.id === body.template)
+  if (!template) throw new Error('请选择有效的简历模板')
+  const allowed = new Set(store.getCategories(repo).map((category) => category.key))
+  const blocks = {}
+  const order = []
+  for (const section of body.sections) {
+    if (!allowed.has(section.key)) continue
+    if (section.mode === 'all') blocks[section.key] = { include: 'all' }
+    else if (section.mode === 'ids' && Array.isArray(section.ids) && section.ids.length) blocks[section.key] = { ids: [...new Set(section.ids)] }
+    else if (section.mode === 'tags' && Array.isArray(section.tags) && section.tags.length) blocks[section.key] = { tags: [...new Set(section.tags)] }
+    else continue
+    order.push(section.key)
+  }
+  if (Object.keys(blocks).length === 0) throw new Error('布局为空，请先拖入内容')
+
+  return {
+    next: {
+      ...current,
+      layout: {
+        engine: template.engine,
+        template: template.id,
+        typography: { fontSize: template.engine === 'html' ? '16px' : '11pt' },
+      },
+      htmlLayout: undefined,
+      sectionOrder: order,
+      blocks,
+      overrides: body.overrides?.basics
+        ? { ...(current.overrides || {}), basics: body.overrides.basics }
+        : current.overrides,
+    },
+    template,
+    engine: template.engine,
+  }
+}
+
+function archiveRelease(repo, variant, engine) {
+  const id = `release-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+  const extension = engine === 'html' ? 'html' : 'pdf'
+  const source = path.join(repo, 'resumes', `${variant}.${extension}`)
+  if (!fs.existsSync(source)) throw new Error('正式版产物不存在')
+  fs.mkdirSync(HISTORY_DIR(repo), { recursive: true })
+  const artifact = `${variant}-${id}.${extension}`
+  fs.copyFileSync(source, path.join(HISTORY_DIR(repo), artifact))
+  return { id, artifact }
+}
+
+async function renderCustomizedVariant(repo, variant, config, defaults, engine, branch, publish) {
+  compose.generateVariant(repo, variant, config, defaults)
   const result = engine === 'html'
     ? await builder.buildHtmlVariant(repo, variant)
-    : await builder.buildVariant(repo, variant)
+    : await builder.buildVariant(repo, variant, { compose: false })
   const preview = result.ok
     ? engine === 'html'
       ? `/api/html/${encodeURIComponent(variant)}`
       : `/api/pdf/${encodeURIComponent(variant)}.pdf`
     : null
-  if (result.ok && engine === 'latex') {
-    try {
-      const head = (await gitSvc.getLog(repo, 1))[0] || null
-      recordBuild({
-        kind: 'local',
-        repoPath: repo,
-        variant,
-        branch,
-        sha: head?.oid || null,
-        headMessage: head?.message || null,
-        timestamp: Math.floor(Date.now() / 1000),
-        status: 'success',
-        pdfs: [`${variant}.pdf`],
-        output: (result.output || '').slice(0, 500),
-      })
-    } catch {
-      /* 记录失败不影响预览 */
-    }
+
+  let release = null
+  if (result.ok && publish) {
+    const archived = archiveRelease(repo, variant, engine)
+    const head = (await gitSvc.getLog(repo, 1))[0] || null
+    release = recordBuild({
+      id: archived.id,
+      kind: 'release',
+      repoPath: repo,
+      variant,
+      branch,
+      engine,
+      artifacts: [archived.artifact],
+      sha: head?.oid || null,
+      headMessage: head?.message || null,
+      timestamp: Math.floor(Date.now() / 1000),
+      status: 'success',
+      output: (result.output || '').slice(0, 500),
+    })
   }
-  return { result, preview }
+  return { result, preview, release }
 }
 
-router.post('/custom/layout', async (req, res) => {
-  const repo = getRepoPath()
-  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
-  const { variant, sections = [], overrides, template } = req.body || {}
-  if (!TYPE_NAME_RE.test(String(variant || ''))) return res.json({ ok: false, error: '请选择有效的简历类型' })
-  try {
-    const doc = compose.loadVariantsDoc(repo)
-    const current = doc.variants?.[variant]
-    if (!current) return res.json({ ok: false, error: `当前分支没有简历类型 ${variant} 的配置` })
-    const expectedBranch = typeBranch(repo, variant)
-    const activeBranch = await gitSvc.currentBranchSafe(repo)
-    if (activeBranch !== expectedBranch) {
-      return res.json({ ok: false, error: `请先在「简历类型」页切换到 ${expectedBranch}，再定制该类型` })
+function customizedHandler({ persist, publish }) {
+  return async (req, res) => {
+    const repo = getRepoPath()
+    if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+    const variant = String(req.body?.variant || '')
+    if (!TYPE_NAME_RE.test(variant)) return res.json({ ok: false, error: '请选择有效的简历类型' })
+    try {
+      const doc = compose.loadVariantsDoc(repo)
+      const expectedBranch = typeBranch(repo, variant)
+      const activeBranch = await gitSvc.currentBranchSafe(repo)
+      if (activeBranch !== expectedBranch) {
+        return res.json({ ok: false, error: `请先在「简历类型」页切换到 ${expectedBranch}，再定制该类型` })
+      }
+      const resolved = resolveCustomizedVariant(repo, doc, variant, req.body || {})
+      if (resolved.engine === 'latex' && getSettings().localPdfBuild === false) {
+        return res.json({ ok: false, error: '本地 PDF 编译已关闭，请在「设置」页开启后再生成 LaTeX 版本' })
+      }
+      if (persist) {
+        doc.variants[variant] = resolved.next
+        compose.saveVariantsDoc(repo, doc)
+      }
+      const { result, preview, release } = await renderCustomizedVariant(
+        repo,
+        variant,
+        resolved.next,
+        doc.defaults || {},
+        resolved.engine,
+        expectedBranch,
+        publish,
+      )
+      res.json({
+        ok: result.ok,
+        preview,
+        engine: resolved.engine,
+        template: resolved.template.id,
+        release: release ? { id: release.id, timestamp: release.timestamp } : null,
+        error: result.ok ? undefined : (result.output || (publish ? '正式版发布失败' : '预览构建失败')).slice(-500),
+        output: (result.output || '').slice(-500),
+      })
+    } catch (err) {
+      sendError(res, err)
     }
-    const tpl = TEMPLATES.find((t) => t.id === template)
-    if (!tpl) return res.json({ ok: false, error: '请选择有效的简历模板' })
-    if (tpl.engine === 'latex' && getSettings().localPdfBuild === false) {
-      return res.json({ ok: false, error: '本地 PDF 编译已关闭，请在「设置」页开启后再生成 LaTeX 预览' })
-    }
-
-    const allowed = new Set(store.getCategories(repo).map((c) => c.key))
-    const blocks = {}
-    const order = []
-    for (const s of sections) {
-      if (!allowed.has(s.key)) continue
-      if (s.mode === 'all') blocks[s.key] = { include: 'all' }
-      else if (s.mode === 'ids' && Array.isArray(s.ids) && s.ids.length) blocks[s.key] = { ids: [...new Set(s.ids)] }
-      else if (s.mode === 'tags' && Array.isArray(s.tags) && s.tags.length) blocks[s.key] = { tags: [...new Set(s.tags)] }
-      else continue
-      order.push(s.key)
-    }
-    if (Object.keys(blocks).length === 0) return res.json({ ok: false, error: '布局为空，请先拖入内容' })
-
-    doc.variants[variant] = {
-      ...current,
-      layout: {
-        engine: tpl.engine,
-        template: tpl.id,
-        typography: { fontSize: tpl.engine === 'html' ? '16px' : '11pt' },
-      },
-      htmlLayout: undefined,
-      sectionOrder: order,
-      blocks,
-      overrides: overrides?.basics ? { ...(current.overrides || {}), basics: overrides.basics } : current.overrides,
-    }
-    compose.saveVariantsDoc(repo, doc)
-    const { result, preview } = await renderCustomizedVariant(repo, variant, tpl.engine, expectedBranch)
-    res.json({
-      ok: result.ok,
-      preview,
-      engine: tpl.engine,
-      template: tpl.id,
-      error: result.ok ? undefined : (result.output || '预览构建失败').slice(-500),
-      output: (result.output || '').slice(-500),
-    })
-  } catch (err) {
-    sendError(res, err)
   }
-})
+}
 
-// YAML 工作区保存后按落盘数据重建预览，不覆写 variants.yml 中的任何配置。
-router.post('/custom/preview', async (req, res) => {
-  const repo = getRepoPath()
-  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
-  const variant = String(req.body?.variant || '')
-  if (!TYPE_NAME_RE.test(variant)) return res.json({ ok: false, error: '请选择有效的简历类型' })
-  try {
-    const doc = compose.loadVariantsDoc(repo)
-    const current = doc.variants?.[variant]
-    if (!current) return res.json({ ok: false, error: `当前 YAML 中不存在简历类型 ${variant}` })
-    const expectedBranch = typeBranch(repo, variant)
-    const activeBranch = await gitSvc.currentBranchSafe(repo)
-    if (activeBranch !== expectedBranch) {
-      return res.json({ ok: false, error: `请先在「简历类型」页切换到 ${expectedBranch}，再更新预览` })
-    }
-    const layout = { ...(doc.defaults?.layout || {}), ...(current.layout || {}) }
-    const template = TEMPLATES.find((item) => item.id === layout.template)
-    if (!template) return res.json({ ok: false, error: `当前 YAML 使用了未知模板 ${layout.template || '—'}` })
-    const engine = layout.engine || template.engine
-    if (engine !== 'latex' && engine !== 'html') return res.json({ ok: false, error: `不支持的预览引擎 ${engine}` })
-    if (engine === 'latex' && getSettings().localPdfBuild === false) {
-      return res.json({ ok: false, error: '本地 PDF 编译已关闭，请在「设置」页开启后再更新 LaTeX 预览' })
-    }
-    const { result, preview } = await renderCustomizedVariant(repo, variant, engine, expectedBranch)
-    res.json({
-      ok: result.ok,
-      preview,
-      engine,
-      template: template.id,
-      error: result.ok ? undefined : (result.output || '预览构建失败').slice(-500),
-      output: (result.output || '').slice(-500),
-    })
-  } catch (err) {
-    sendError(res, err)
-  }
-})
+// 旧客户端兼容：原“保存并预览”按正式发布处理。
+router.post('/custom/layout', customizedHandler({ persist: true, publish: true }))
+router.post('/custom/release', customizedHandler({ persist: true, publish: true }))
+// 可视化草稿可随请求预览；仅传 variant 时按落盘 YAML 预览。两者均不写时间轴。
+router.post('/custom/preview', customizedHandler({ persist: false, publish: false }))
 
 /* ---------- 连接数据仓（设置页：自动检测 + 空目录自动生成骨架 + git init） ---------- */
 // 复用模板复制逻辑

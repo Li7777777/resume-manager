@@ -48,10 +48,10 @@
 ```
 信息管理页  ──POST /api/entries/:cat──►  data-store.js ──► data/<cat>.yml
 简历类型页  ──/api/resume-types───────►  git-service.js  ──► resume/<type> 分支
-简历定制页  ──POST /api/custom/layout─►  可视化配置写入配方 + HTML/PDF 预览
-YAML 工作区  ──PUT /api/yaml───────────►  保存源码
-             └─POST /api/custom/preview►  按落盘 YAML 重建同页预览
-PDF 预览页  ──GET /api/history?variant►  指定类型分支提交/CI/本地预览记录（只读）
+简历定制页  ──POST /api/custom/preview─►  按当前草稿生成临时预览（不落盘、不进时间轴）
+             └─POST /api/custom/release►  保存配方 + 归档正式版 + 写入时间轴
+YAML 工作区  ──PUT /api/yaml───────────►  只保存源码；预览/发布由右侧独立按钮触发
+PDF 预览页  ──GET /api/history?variant►  指定类型分支的正式版 + Git 提交/CI（只读）
 Git 看板    ──/api/git/*────────────►  git-service.js ──► 仓库 .git（isomorphic-git）
 ```
 
@@ -95,8 +95,9 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | GET | `/api/yaml?path=` | 读文件（路径必须位于数据仓内） |
 | PUT | `/api/yaml` | 写文件（先做 YAML 语法校验） |
 | POST | `/api/build` | 兼容 API：`{variant}` → 组合 + 构建；前端 PDF 预览页不调用此端点 |
-| GET | `/api/pdf/history/:file` | 历史版本 PDF 预览（`resumes/history/` 缓存目录） |
-| GET | `/api/history?variant=<type>` | 仅返回该类型 `resume/*` 分支的本地 PDF 预览记录、提交与 CI 运行，按时间倒序 |
+| GET | `/api/pdf/history/:file` | Git/CI 历史版本 PDF 预览（`resumes/history/` 缓存目录） |
+| GET | `/api/release/history/:file` | 读取本机正式版归档（HTML/PDF） |
+| GET | `/api/history?variant=<type>` | 仅返回该类型 `resume/*` 分支的本机正式版、Git 提交与 CI 运行；旧预览记录过滤，按时间倒序 |
 | GET | `/api/github/history/pdf?sha=&variant=` | 下载指定提交中该类型的 PDF 产物（缓存到 `resumes/history/`） |
 | GET | `/api/git/file-at?sha=&path=` | 读取指定提交下的文件内容（仅限 `data/`、`scripts/`），历史版本 YAML 快照 |
 | POST | `/api/github/pdf-sync` | 从私有仓 GitHub Actions 最近成功运行拉取 `resume-pdfs` artifact，解压 PDF 写入 `resumes/` 供预览（GitHub 编译方式的预览链路） |
@@ -123,8 +124,9 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | --- | --- | --- |
 | GET | `/api/templates` | 全部官网 LaTeX/HTML 模板元数据；由简历定制页使用 |
 | GET | `/api/html/:name` | 已生成的 HTML 简历预览（no-cache） |
-| POST | `/api/custom/layout` | `{variant, sections, template, overrides}`：仅允许当前类型分支，保存可视化内容/模板后生成 HTML 或 PDF 预览，并反向刷新配方编辑器；LaTeX 成功时写入该分支本地时间线 |
-| POST | `/api/custom/preview` | `{variant}`：不覆写配方，完全按已落盘的 data/ 与 variants.yml 重建 HTML/PDF 预览；供同页 YAML 保存后同步预览 |
+| POST | `/api/custom/preview` | `{variant, sections?, template?, overrides?}`：可视化模式按当前草稿、YAML 模式按落盘文件生成临时 HTML/PDF；不保存配方、不写时间轴 |
+| POST | `/api/custom/release` | `{variant, sections?, template?, overrides?}`：保存可视化配方（YAML 模式直接使用落盘配置）、归档不可变 HTML/PDF 正式版并写入时间轴 |
+| POST | `/api/custom/layout` | 旧客户端兼容端点，按“保存发布正式版”处理 |
 | POST | `/api/template/apply` | 旧客户端兼容端点；当前 UI 不再使用，模板入口已合并至简历定制 |
 
 ### 模板
@@ -157,9 +159,9 @@ Git 看板    ──/api/git/*────────────►  git-servi
 1. 设置指向一个**测试副本**数据仓（勿在真实仓上做破坏性操作）；
 2. 信息管理：新增/编辑/删除条目、标签筛选、搜索；
 3. 简历类型：为旧类型创建分支 → 切换类型 → 有未提交改动时验证切换被拒绝；
-4. 简历定制：确认侧栏中位于 PDF 预览之前；可视化保存后 `variants.yml` 编辑内容刷新；YAML 保存后当前模板预览自动重建；非法 YAML 保持未保存状态并显示错误；
+4. 简历定制：确认侧栏中位于 PDF 预览之前；“预览”不改 `variants.yml` 且不增加时间轴记录；“保存发布正式版”保存配方并增加正式版；YAML 保存只落盘，非法 YAML 保持未保存状态并显示错误；
 5. 兼容路由：访问 `#/yaml` 自动进入 `#/customizer`，侧栏无独立 YAML 入口，主内容区无 header；
-6. PDF 预览：切换类型后仅出现该 `resume/*` 分支时间线，页面不存在构建/同步按钮；
+6. PDF 预览：切换类型后只出现该 `resume/*` 分支的正式版与 Git 记录，不出现预览结果，页面不存在构建/同步按钮；
 7. Git 看板：改文件 → 状态出现 → 提交 → 推送（测试用一次性临时私有仓）；
 8. 设置连接空目录：生成骨架 → 目录结构核对 → `yamlresume validate` 通过。
 

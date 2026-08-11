@@ -181,21 +181,24 @@ export function saveVariantsDoc(repo, doc) {
   fs.writeFileSync(file, yaml.dump(clean, { noRefs: true, lineWidth: -1, sortKeys: false }), 'utf8')
 }
 
+export function generateVariant(repo, name, variant, defaults = {}) {
+  if (!variant) return null
+  fs.mkdirSync(OUT_DIR(repo), { recursive: true })
+  const resume = composeVariant(repo, name, variant, defaults)
+  const text = HEADER + yaml.dump(resume, { noRefs: true, lineWidth: -1, sortKeys: false })
+    .replace(/: null\s*$/gm, ':')
+  fs.writeFileSync(path.join(OUT_DIR(repo), `${name}.yml`), text, 'utf8')
+  return name
+}
+
 export function generateAll(repo, only) {
   const doc = loadVariantsDoc(repo)
   const defaults = doc.defaults || {}
   const variants = doc.variants || {}
   const names = only ? [only] : Object.keys(variants)
-  fs.mkdirSync(OUT_DIR(repo), { recursive: true })
   const generated = []
   for (const name of names) {
-    const v = variants[name]
-    if (!v) continue
-    const resume = composeVariant(repo, name, v, defaults)
-    const text = HEADER + yaml.dump(resume, { noRefs: true, lineWidth: -1, sortKeys: false })
-      .replace(/: null\s*$/gm, ':')
-    fs.writeFileSync(path.join(OUT_DIR(repo), `${name}.yml`), text, 'utf8')
-    generated.push(name)
+    if (generateVariant(repo, name, variants[name], defaults)) generated.push(name)
   }
   return generated
 }

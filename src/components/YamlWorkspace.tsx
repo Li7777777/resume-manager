@@ -1,4 +1,4 @@
-// 简历定制页内的 YAML 工作区：保存后由父页面重建并刷新预览。
+// 简历定制页内的 YAML 工作区：只负责源码落盘；预览与正式发布由父页面独立触发。
 import React, { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, FileCode2, RotateCcw, Save } from 'lucide-react'
 import { api } from '../api'
@@ -14,13 +14,11 @@ interface FileItem {
 
 export default function YamlWorkspace({
   disabled,
-  canPreview,
   revision,
   onDirtyChange,
   onSaved,
 }: {
   disabled?: boolean
-  canPreview: boolean
   revision: number
   onDirtyChange: (dirty: boolean) => void
   onSaved: (path: string) => Promise<void>
@@ -82,7 +80,7 @@ export default function YamlWorkspace({
         }
       })
     return () => { active = false }
-    // revision 由可视化保存触发，用于反向刷新 variants.yml。
+    // revision 由可视化正式发布触发，用于反向刷新 variants.yml。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision])
 
@@ -160,7 +158,7 @@ export default function YamlWorkspace({
               <RotateCcw size={14} />
             </button>
             <Button variant="primary" size="sm" loading={saving} disabled={disabled || !dirty || !current} onClick={save}>
-              <Save size={14} /> {canPreview ? '保存并更新预览' : '保存 YAML'}
+              <Save size={14} /> 保存 YAML
             </Button>
           </div>
         }

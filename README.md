@@ -61,8 +61,8 @@ npm start            # 启动服务: http://127.0.0.1:8787
 | 总览 | 数据统计、仓库同步状态、最近提交、标签云、快捷入口 |
 | 信息管理 | 分类管理（工作/教育/项目/技能/证书/兴趣/基础信息），标签筛选与搜索，可视化增删改，成就点逐条打标签 |
 | 简历类型 | 轻量管理多个简历类型；每个类型对应 `resume/<type>` Git 分支，支持创建、切换、改名和删除 |
-| 简历定制 | 在“可视化编排 / YAML 源码”间切换；选择全部官方模板（ModernCV/Jake/Calm/VS Code），拖拽内容与章节或直接编辑全部 YAML 文件。可视化保存会刷新配方源码，YAML 保存会重建当前模板预览 |
-| PDF 预览 | **按简历类型分支分类**查看本地预览记录与 GitHub 提交/CI 时间线、对应 PDF 和 YAML 数据快照；页面严格只读，不触发构建 |
+| 简历定制 | 在“可视化编排 / YAML 源码”间切换；选择全部官方模板（ModernCV/Jake/Calm/VS Code），拖拽内容与章节或直接编辑全部 YAML 文件。“预览”只生成临时产物；“保存发布正式版”才保存配方并进入版本时间轴 |
+| PDF 预览 | **按简历类型分支分类**查看本机正式版与 Git 提交/CI 时间线、对应版本文件和 YAML 数据快照；临时预览不会显示，页面严格只读 |
 | Git 同步看板 | 分支/远程/领先落后/未同步文件可视化；提交、提交并推送、拉取；文件级 diff；提交历史时间线 |
 | 设置 | 数据仓路径、**PDF 编译开关**、GitHub Token（**自动检测 + 教程引导**）、提交身份、隐私说明 |
 
@@ -70,7 +70,7 @@ npm start            # 启动服务: http://127.0.0.1:8787
 
 | 开关 | 默认 | 控制内容 |
 | --- | --- | --- |
-| **本地编译 PDF** | 开启 ✅ | 「简历定制」页保存模板与布局时生成 PDF 预览。**需要安装 [yamlresume](https://www.npmjs.com/package/yamlresume)**（`npm install -g yamlresume`）及 XeTeX/Tectonic 排版引擎 |
+| **本地编译 PDF** | 开启 ✅ | 「简历定制」页预览或发布 LaTeX 版本时生成 PDF。**需要安装 [yamlresume](https://www.npmjs.com/package/yamlresume)**（`npm install -g yamlresume`）及 XeTeX/Tectonic 排版引擎 |
 | **GitHub 编译 PDF** | 关闭 ❌ | 是否触发私有仓 GitHub Action；状态保存在本机并同步为 `RESUME_MANAGER_PDF_BUILD` Actions 仓库变量，不修改私有仓文件 |
 
 > 📌 **本地编译需要安装 yamlresume**：https://www.npmjs.com/package/yamlresume

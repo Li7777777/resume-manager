@@ -58,14 +58,29 @@ const pdf = await page.evaluate(() => ({
 }))
 const pdfOk =
   pdf.text.includes('resume/general') &&
-  pdf.text.includes('此页面只查看已有 PDF') &&
-  !pdf.text.includes('构建简历 PDF') &&
+  pdf.text.includes('此页面只显示正式版与 Git 版本') &&
+  !pdf.text.includes('本地预览') &&
+  !pdf.text.includes('定制页本地预览') &&
   !pdf.actions.some((label) => label.includes('本地构建') || label.includes('从 GitHub 同步'))
 console.log('PDF 页:', pdfOk)
 
 console.log('=== 简历定制与 YAML ===')
 const customizer = await visit('customizer', 'rm-smoke-customizer.png')
 const templateNames = ['ModernCV Banking', 'ModernCV Casual', 'ModernCV Classic', "Jake's Resume", 'Calm', 'VS Code']
+const releasesBeforePreview = await page.evaluate(async () => {
+  const result = await (await fetch('/api/history?variant=general&limit=50')).json()
+  return (result.items || []).filter((item) => item.kind === 'release').length
+})
+await page.evaluate(() => {
+  const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === '预览')
+  if (button instanceof HTMLButtonElement) button.click()
+})
+await page.waitForFunction(() => document.body.innerText.includes('预览已更新'), { timeout: 180000 })
+const releasesAfterPreview = await page.evaluate(async () => {
+  const result = await (await fetch('/api/history?variant=general&limit=50')).json()
+  return (result.items || []).filter((item) => item.kind === 'release').length
+})
+const previewDidNotPublish = releasesAfterPreview === releasesBeforePreview
 await page.evaluate(() => {
   const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.includes('YAML 源码'))
   if (button instanceof HTMLButtonElement) button.click()
@@ -93,7 +108,10 @@ const draftPreserved = await page.$eval('.cm-content', (element) => element.text
 await page.click('button[aria-label="放弃修改"]')
 const customizerOk =
   templateNames.every((name) => customizer.text.includes(name)) &&
-  customizer.buttons.some((label) => label.includes('保存并预览')) &&
+  customizer.buttons.some((label) => label === '预览') &&
+  customizer.buttons.some((label) => label.includes('保存发布正式版')) &&
+  !customizer.buttons.some((label) => label.includes('保存并预览')) &&
+  previewDidNotPublish &&
   customizer.text.includes('模板预览') &&
   customizer.text.includes('YAML 源码') &&
   yamlWorkspace.hasEditor &&

@@ -13,7 +13,7 @@ import {
   ExternalLink,
   GitBranch,
   Eye,
-  RefreshCw,
+  PackageCheck,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Entry, Variant } from '../types'
@@ -67,7 +67,7 @@ function sectionsFromVariant(variant?: Variant): Section[] {
     .map((key) => {
       const block = variant.blocks?.[key]
       if (!block) return null
-      if (block.include === 'all' || block.include === 'true') return { key, mode: 'all' as const }
+      if (block.include === 'all' || block.include === 'true' || block.include === true) return { key, mode: 'all' as const }
       if (Array.isArray(block.ids)) return { key, mode: 'ids' as const, ids: [...block.ids] }
       if (Array.isArray(block.tags)) return { key, mode: 'tags' as const, tags: [...block.tags] }
       return null
@@ -93,12 +93,14 @@ export default function Customizer() {
   const [summary, setSummary] = useState('')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewEngine, setPreviewEngine] = useState<'latex' | 'html'>('latex')
-  const [rendering, setRendering] = useState(false)
+  const [busyAction, setBusyAction] = useState<'preview' | 'release' | null>(null)
+  const [lastAction, setLastAction] = useState<'preview' | 'release' | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
   const [workspaceMode, setWorkspaceMode] = useState<'visual' | 'yaml'>('visual')
   const [yamlDirty, setYamlDirty] = useState(false)
   const [yamlRevision, setYamlRevision] = useState(0)
   const [loading, setLoading] = useState(true)
+  const rendering = busyAction !== null
 
   useEffect(() => {
     Promise.all([
@@ -143,6 +145,7 @@ export default function Customizer() {
     )
     setTemplate(variant?.layout?.template || defaults.layout?.template || 'moderncv-banking')
     setPreviewUrl(null)
+    setLastAction(null)
   }
 
   const selected = types.find((item) => item.name === selectedType)
@@ -153,6 +156,7 @@ export default function Customizer() {
   const commit = (next: Section[]) => {
     setSections(next)
     setPreviewUrl(null)
+    setLastAction(null)
   }
 
   const onDragStart = (data: { type: 'entry' | 'section'; key: string; id?: string }) => (event: React.DragEvent) => {
@@ -204,37 +208,51 @@ export default function Customizer() {
     commit(next)
   }
 
-  const buildPreview = async () => {
+  const renderCurrent = async (publish: boolean) => {
     if (yamlDirty) {
       toast('warn', '请先保存或放弃 YAML 修改')
       return
     }
-    if (!selectedType || !activeTemplate || sections.length === 0) return
-    setRendering(true)
+    if (!selectedType) return
+    if (workspaceMode === 'visual' && (!activeTemplate || sections.length === 0)) return
+    setBusyAction(publish ? 'release' : 'preview')
     try {
-      const result = await api.post<{ preview: string | null; engine: 'latex' | 'html'; output?: string }>('/api/custom/layout', {
-        variant: selectedType,
-        sections,
-        template: activeTemplate.id,
-        overrides: {
-          basics: {
-            ...(headline.trim() ? { headline: headline.trim() } : {}),
-            ...(summary.trim() ? { summary: summary.split('\n').map((line) => line.trim()).filter(Boolean) } : {}),
-          },
-        },
-      })
-      if (!result.preview) throw new Error(result.output || '构建未生成预览')
+      const body = workspaceMode === 'visual'
+        ? {
+            variant: selectedType,
+            sections,
+            template: activeTemplate!.id,
+            overrides: {
+              basics: {
+                ...(headline.trim() ? { headline: headline.trim() } : {}),
+                ...(summary.trim() ? { summary: summary.split('\n').map((line) => line.trim()).filter(Boolean) } : {}),
+              },
+            },
+          }
+        : { variant: selectedType }
+      const result = await api.post<{
+        preview: string | null
+        engine: 'latex' | 'html'
+        output?: string
+        release?: { id: string; timestamp: number } | null
+      }>(publish ? '/api/custom/release' : '/api/custom/preview', body)
+      if (!result.preview) throw new Error(result.output || (publish ? '正式版发布失败' : '构建未生成预览'))
       setPreviewEngine(result.engine)
       setPreviewUrl(`${result.preview}?t=${Date.now()}`)
-      setYamlRevision((value) => value + 1)
-      toast('success', `${activeTemplate.name} 模板已保存并生成预览`)
-      const refreshed = await api.get<{ variants: Variant[]; defaults?: { layout?: { engine?: string; template?: string } } }>('/api/variants').catch(() => ({ variants, defaults: undefined }))
-      setVariants(refreshed.variants)
-      if (refreshed.defaults) setVariantDefaults(refreshed.defaults)
+      setLastAction(publish ? 'release' : 'preview')
+      if (publish) {
+        setYamlRevision((value) => value + 1)
+        toast('success', '正式版已保存并发布到版本时间轴')
+        const refreshed = await api.get<{ variants: Variant[]; defaults?: { layout?: { engine?: string; template?: string } } }>('/api/variants').catch(() => ({ variants, defaults: undefined }))
+        setVariants(refreshed.variants)
+        if (refreshed.defaults) setVariantDefaults(refreshed.defaults)
+      } else {
+        toast('success', '预览已更新，不会进入版本时间轴')
+      }
     } catch (err: any) {
       toast('error', err.message)
     } finally {
-      setRendering(false)
+      setBusyAction(null)
     }
   }
 
@@ -246,32 +264,20 @@ export default function Customizer() {
     ])
     setEntries(entryData.entries)
     setVariants(variantData.variants)
+    setVariantDefaults(variantData.defaults || {})
     if (categoryData.categories?.length) {
       setCats(categoryData.categories.filter((item) => item.visible !== false).map((item) => ({ key: item.key, label: item.label })))
     }
     applyVariant(selectedType, variantData.variants, variantData.defaults)
   }
 
-  const previewSavedYaml = async () => {
-    if (!selectedType) return
-    setRendering(true)
+  const handleYamlSaved = async () => {
     try {
       await refreshFromYaml()
-      if (!canCustomize) {
-        toast('warn', 'YAML 已保存；切换到对应类型分支后可同步预览')
-        return
-      }
-      const result = await api.post<{ preview: string | null; engine: 'latex' | 'html'; output?: string }>('/api/custom/preview', {
-        variant: selectedType,
-      })
-      if (!result.preview) throw new Error(result.output || '构建未生成预览')
-      setPreviewEngine(result.engine)
-      setPreviewUrl(`${result.preview}?t=${Date.now()}`)
-      toast('success', 'YAML 与预览已同步')
+      setPreviewUrl(null)
+      setLastAction(null)
     } catch (err: any) {
-      toast('error', `YAML 已保存，但预览更新失败：${err.message}`)
-    } finally {
-      setRendering(false)
+      toast('error', `YAML 已保存，但工作区刷新失败：${err.message}`)
     }
   }
 
@@ -377,7 +383,9 @@ export default function Customizer() {
         </div>
         <div className="flex items-center gap-2 text-xs text-zinc-500">
           {yamlDirty ? <Badge tone="amber">YAML 未保存</Badge> : <Badge tone="zinc">磁盘已同步</Badge>}
-          {previewUrl && !yamlDirty && <Badge tone="emerald">预览已更新</Badge>}
+          {previewUrl && !yamlDirty && (
+            <Badge tone="emerald">{lastAction === 'release' ? '正式版已发布' : '预览已更新'}</Badge>
+          )}
         </div>
       </div>
 
@@ -521,10 +529,9 @@ export default function Customizer() {
         <div className={workspaceMode === 'yaml' ? 'min-h-0 min-w-0 flex-1' : 'hidden'}>
           <YamlWorkspace
             disabled={rendering}
-            canPreview={canCustomize}
             revision={yamlRevision}
             onDirtyChange={setYamlDirty}
-            onSaved={previewSavedYaml}
+            onSaved={handleYamlSaved}
           />
         </div>
 
@@ -535,38 +542,39 @@ export default function Customizer() {
           pad={false}
           fill
           actions={
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                title="按已保存 YAML 刷新预览"
-                aria-label="按已保存 YAML 刷新预览"
-                disabled={!canCustomize || rendering || yamlDirty}
-                onClick={previewSavedYaml}
-                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                <RefreshCw size={13} />
-              </button>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
               {previewUrl && <a href={previewUrl} target="_blank" rel="noreferrer" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-indigo-300" title="新窗口打开"><ExternalLink size={13} /></a>}
-              {workspaceMode === 'visual' && <Button
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={busyAction === 'preview'}
+                disabled={!canCustomize || rendering || yamlDirty || (workspaceMode === 'visual' && (sections.length === 0 || !activeTemplate))}
+                onClick={() => renderCurrent(false)}
+              >
+                {busyAction === 'preview' ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} 预览
+              </Button>
+              <Button
                 size="sm"
                 variant="primary"
-                loading={rendering}
-                disabled={!canEditVisual || sections.length === 0 || !activeTemplate}
-                onClick={buildPreview}
+                loading={busyAction === 'release'}
+                disabled={!canCustomize || rendering || yamlDirty || (workspaceMode === 'visual' && (sections.length === 0 || !activeTemplate))}
+                onClick={() => renderCurrent(true)}
               >
-                {rendering ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} 保存并预览
-              </Button>}
+                {busyAction === 'release' ? <Loader2 size={13} className="animate-spin" /> : <PackageCheck size={13} />} 保存发布正式版
+              </Button>
             </div>
           }
         >
           <div className="min-h-0 flex-1">
             {rendering ? (
-              <div className="flex h-full items-center justify-center"><Spinner label="正在组合并生成预览…" /></div>
+              <div className="flex h-full items-center justify-center">
+                <Spinner label={busyAction === 'release' ? '正在生成并归档正式版…' : '正在组合并生成预览…'} />
+              </div>
             ) : previewUrl ? (
               previewEngine === 'latex' ? <PdfViewer url={previewUrl} /> : <iframe key={previewUrl} src={previewUrl} className="h-full w-full bg-white" title="HTML 简历预览" />
             ) : (
               <div className="flex h-full items-center justify-center">
-                <EmptyState icon={<FileCode2 size={30} />} title="选择模板并生成预览" desc="构建只发生在简历定制页；PDF 预览页仅查看历史版本。" />
+                <EmptyState icon={<FileCode2 size={30} />} title="选择模板并预览" desc="预览只用于检查效果，不进入版本时间轴；确认后再发布正式版。" />
               </div>
             )}
           </div>

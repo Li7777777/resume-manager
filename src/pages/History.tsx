@@ -9,7 +9,7 @@ import {
   FileCode2,
   History,
   GitBranch,
-  HardDrive,
+  PackageCheck,
   Cloud,
 } from 'lucide-react'
 import { api } from '../api'
@@ -29,7 +29,7 @@ interface ResumeType {
 }
 
 interface TimelineItem {
-  kind: 'local' | 'github'
+  kind: 'release' | 'github'
   id: string
   timestamp: number
   variant?: string
@@ -42,7 +42,8 @@ interface TimelineItem {
   sha?: string | null
   headMessage?: string | null
   status?: string
-  pdfs?: string[]
+  engine?: 'latex' | 'html'
+  artifacts?: string[]
 }
 
 const YAML_SNAPSHOT_FILES = [
@@ -65,6 +66,7 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true)
   const [loadingPdf, setLoadingPdf] = useState(false)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [artifactEngine, setArtifactEngine] = useState<'latex' | 'html'>('latex')
   const [pdfInfo, setPdfInfo] = useState<{ runNumber?: number; cached?: boolean; note?: string } | null>(null)
   const [pdfError, setPdfError] = useState<string | null>(null)
   const [tab, setTab] = useState<'pdf' | 'yaml'>('pdf')
@@ -81,11 +83,14 @@ export default function HistoryPage() {
     setTab('pdf')
     setLoadingPdf(true)
     try {
-      if (item.kind === 'local') {
-        const file = item.pdfs?.find((name) => name === `${typeName}.pdf`) || item.pdfs?.[0] || `${typeName}.pdf`
-        setPdfUrl(`/api/pdf/${encodeURIComponent(file)}`)
-        setPdfInfo({ note: '定制页生成的本地预览' })
+      if (item.kind === 'release') {
+        const file = item.artifacts?.[0]
+        if (!file) throw new Error('该正式版没有归档产物')
+        setArtifactEngine(item.engine === 'html' ? 'html' : 'latex')
+        setPdfUrl(`/api/release/history/${encodeURIComponent(file)}`)
+        setPdfInfo({ note: '本机正式版' })
       } else {
+        setArtifactEngine('latex')
         if (!item.run || item.run.conclusion !== 'success') {
           setPdfError(
             !item.run
@@ -179,14 +184,14 @@ export default function HistoryPage() {
   }
 
   const nodeIcon = (item: TimelineItem) => {
-    if (item.kind === 'local') return <HardDrive size={12} className="text-indigo-400" />
+    if (item.kind === 'release') return <PackageCheck size={12} className="text-indigo-400" />
     if (item.run?.conclusion === 'success') return <CheckCircle2 size={12} className="text-emerald-400" />
     if (item.run?.status === 'in_progress') return <LoaderCircle size={12} className="animate-spin text-sky-400" />
     return <GitCommitHorizontal size={12} className="text-zinc-500" />
   }
 
   const itemBadge = (item: TimelineItem) => {
-    if (item.kind === 'local') return <Badge tone="indigo">本地预览</Badge>
+    if (item.kind === 'release') return <Badge tone="indigo">正式版</Badge>
     if (!item.run) return <Badge tone="zinc">仅提交</Badge>
     if (item.run.conclusion === 'success') return <Badge tone="emerald">CI #{item.run.run_number}</Badge>
     if (item.run.status === 'in_progress') return <Badge tone="sky">CI 运行中</Badge>
@@ -216,7 +221,7 @@ export default function HistoryPage() {
         </Select>
         <code className="text-xs text-indigo-300">{branch || '—'}</code>
         <Badge tone={branchExists ? 'emerald' : 'amber'}>{branchExists ? '分支时间线' : '分支尚未创建'}</Badge>
-        <span className="text-xs text-zinc-600">此页面只查看已有 PDF；生成与模板设置请前往「简历定制」。</span>
+        <span className="text-xs text-zinc-600">此页面只显示正式版与 Git 版本；临时预览不会进入时间轴。</span>
         <Button size="sm" variant="ghost" className="ml-auto" onClick={() => loadHistory(selectedType, true)} title="刷新时间线">
           <RefreshCw size={13} />
         </Button>
@@ -235,8 +240,8 @@ export default function HistoryPage() {
               <ol className="max-h-[calc(100vh-260px)] overflow-auto p-3">
                 {items.map((item, index) => {
                   const active = selected?.id === item.id
-                  const title = item.kind === 'local' ? '定制页本地预览' : item.short || ''
-                  const desc = item.kind === 'local' ? item.headMessage : item.message
+                  const title = item.kind === 'release' ? '本机正式版' : item.short || ''
+                  const desc = item.kind === 'release' ? item.headMessage : item.message
                   return (
                     <li key={item.id} className="relative flex gap-3 pb-4 pl-1">
                       {index < items.length - 1 && <span className="absolute left-[13px] top-6 h-full w-px bg-zinc-800" />}
@@ -254,7 +259,7 @@ export default function HistoryPage() {
                           {itemBadge(item)}
                         </div>
                         <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{desc || '—'}</p>
-                        <p className="mt-0.5 text-[10px] text-zinc-600">{item.kind === 'local' ? '本机' : item.author} · {relativeTime(item.timestamp * 1000)}</p>
+                        <p className="mt-0.5 text-[10px] text-zinc-600">{item.kind === 'release' ? '本机发布' : item.author} · {relativeTime(item.timestamp * 1000)}</p>
                       </button>
                     </li>
                   )
@@ -267,21 +272,32 @@ export default function HistoryPage() {
         <div className="min-w-0 flex-1">
           <Card
             title="版本详情"
-            desc={selected ? (selected.kind === 'local' ? `${branch} · 本地预览` : `${selected.short} · ${selected.message}`) : '从左侧时间轴选择版本'}
+            desc={selected ? (selected.kind === 'release' ? `${branch} · 正式版` : `${selected.short} · ${selected.message}`) : '从左侧时间轴选择版本'}
           >
             <div className="mb-3 flex items-center gap-2 border-b border-zinc-800 pb-3">
-              <button onClick={() => setTab('pdf')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${tab === 'pdf' ? 'bg-indigo-500/15 text-indigo-200' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                <FileText size={14} /> PDF
+              <button
+                onClick={() => setTab('pdf')}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
+                  tab === 'pdf'
+                    ? 'bg-indigo-500/15 text-indigo-100'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <FileText size={14} /> 版本文件
               </button>
               <button
                 onClick={() => { setTab('yaml'); if (selected) loadYamlSnapshot(yamlFile) }}
-                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${tab === 'yaml' ? 'bg-indigo-500/15 text-indigo-200' : 'text-zinc-500 hover:text-zinc-300'}`}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
+                  tab === 'yaml'
+                    ? 'bg-indigo-500/15 text-indigo-100'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
               >
                 <FileCode2 size={14} /> 数据快照
               </button>
               <span className="ml-auto flex items-center gap-1.5 text-[11px] text-zinc-600">
-                {selected?.kind === 'github' ? <Cloud size={12} /> : <HardDrive size={12} />}
-                {selected ? (selected.kind === 'github' ? `提交 ${selected.short}` : `HEAD ${selected.sha?.slice(0, 7) || '—'}`) : '—'}
+                {selected?.kind === 'github' ? <Cloud size={12} /> : <PackageCheck size={12} />}
+                {selected ? (selected.kind === 'github' ? `提交 ${selected.short}` : `正式版 · HEAD ${selected.sha?.slice(0, 7) || '—'}`) : '—'}
                 {pdfInfo?.runNumber && <Badge tone="sky">CI #{pdfInfo.runNumber}</Badge>}
                 {pdfInfo?.note && <Badge tone="indigo">{pdfInfo.note}</Badge>}
               </span>
@@ -289,11 +305,13 @@ export default function HistoryPage() {
 
             {tab === 'pdf' ? (
               loadingPdf ? (
-                <Spinner label="加载已有 PDF…" />
+                <Spinner label="加载版本文件…" />
               ) : pdfError ? (
-                <EmptyState icon={<FileText size={32} />} title="该版本没有可用 PDF" desc={pdfError} />
+                <EmptyState icon={<FileText size={32} />} title="该版本没有可用产物" desc={pdfError} />
               ) : pdfUrl ? (
-                <PdfViewer url={pdfUrl} />
+                artifactEngine === 'html'
+                  ? <iframe src={pdfUrl} className="h-[72vh] w-full bg-white" title="HTML 正式版" />
+                  : <PdfViewer url={pdfUrl} />
               ) : (
                 <EmptyState title="请选择一个已有版本" />
               )
@@ -304,7 +322,11 @@ export default function HistoryPage() {
                     <button
                       key={file.path}
                       onClick={() => selected && loadYamlSnapshot(file.path)}
-                      className={`block w-full truncate rounded-md px-2.5 py-1.5 text-left text-xs transition ${yamlFile === file.path ? 'bg-indigo-500/15 text-indigo-200' : 'text-zinc-500 hover:bg-zinc-900'}`}
+                      className={`block w-full truncate rounded-md px-2.5 py-1.5 text-left text-xs transition ${
+                        yamlFile === file.path
+                          ? 'bg-indigo-500/15 text-indigo-100'
+                          : 'text-zinc-500 hover:bg-zinc-900'
+                      }`}
                     >
                       <span className="font-mono">{file.path}</span>
                       <span className="ml-1 text-[10px] text-zinc-600">{file.label}</span>

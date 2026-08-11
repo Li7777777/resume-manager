@@ -39,7 +39,7 @@ function run(cmd, args, cwd) {
 }
 
 // 构建某个方向的 PDF（自动先组合）
-export async function buildVariant(repo, variant, { verbose = true } = {}) {
+export async function buildVariant(repo, variant, { verbose = true, compose = true } = {}) {
   if (!/^[\w-]+$/.test(variant)) {
     return { ok: false, output: `非法方向名：${variant}` }
   }
@@ -47,10 +47,12 @@ export async function buildVariant(repo, variant, { verbose = true } = {}) {
   if (!env.yamlresume) {
     return { ok: false, output: '未找到 yamlresume CLI，请先安装：npm install -g yamlresume' }
   }
-  try {
-    generateAll(repo, [variant])
-  } catch (err) {
-    return { ok: false, output: `组合失败：${err.message}` }
+  if (compose) {
+    try {
+      generateAll(repo, [variant])
+    } catch (err) {
+      return { ok: false, output: `组合失败：${err.message}` }
+    }
   }
   const args = ['build', `resumes/${variant}.yml`, '-t', '120']
   if (verbose) args.unshift('-v')
