@@ -83,6 +83,7 @@ export default function Customizer() {
   const [cats, setCats] = useState<{ key: string; label: string }[]>(DEFAULT_CATS)
   const [cat, setCat] = useState('work')
   const [variants, setVariants] = useState<Variant[]>([])
+  const [variantDefaults, setVariantDefaults] = useState<{ layout?: { engine?: string; template?: string } }>({})
   const [types, setTypes] = useState<ResumeType[]>([])
   const [selectedType, setSelectedType] = useState('')
   const [templates, setTemplates] = useState<TemplateItem[]>([])
@@ -102,7 +103,7 @@ export default function Customizer() {
   useEffect(() => {
     Promise.all([
       api.get<{ entries: Record<string, Entry[]> }>('/api/entries').catch(() => ({ entries: {} })),
-      api.get<{ variants: Variant[] }>('/api/variants').catch(() => ({ variants: [] })),
+      api.get<{ variants: Variant[]; defaults?: { layout?: { engine?: string; template?: string } } }>('/api/variants').catch(() => ({ variants: [], defaults: undefined })),
       api.get<{ types: ResumeType[] }>('/api/resume-types').catch(() => ({ types: [] })),
       api.get<{ templates: TemplateItem[] }>('/api/templates').catch(() => ({ templates: [] })),
       api.get<{ categories: { key: string; label: string; visible: boolean }[] }>('/api/categories').catch(() => ({ categories: [] })),
@@ -110,6 +111,7 @@ export default function Customizer() {
       .then(([entryData, variantData, typeData, templateData, categoryData]) => {
         setEntries(entryData.entries)
         setVariants(variantData.variants)
+        setVariantDefaults(variantData.defaults || {})
         setTypes(typeData.types)
         setTemplates(templateData.templates)
         if (categoryData.categories?.length) {
@@ -118,7 +120,7 @@ export default function Customizer() {
         const initial = typeData.types.find((item) => item.current) || typeData.types[0]
         if (initial) {
           setSelectedType(initial.name)
-          applyVariant(initial.name, variantData.variants)
+          applyVariant(initial.name, variantData.variants, variantData.defaults)
         }
       })
       .catch((err) => toast('error', err.message))
@@ -126,7 +128,11 @@ export default function Customizer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const applyVariant = (name: string, source = variants) => {
+  const applyVariant = (
+    name: string,
+    source = variants,
+    defaults = variantDefaults,
+  ) => {
     const variant = source.find((item) => item.name === name)
     setSections(sectionsFromVariant(variant))
     setHeadline(variant?.overrides?.basics?.headline || '')
@@ -135,7 +141,7 @@ export default function Customizer() {
         ? variant!.overrides!.basics!.summary!.join('\n')
         : '',
     )
-    setTemplate(variant?.layout?.template || 'moderncv-banking')
+    setTemplate(variant?.layout?.template || defaults.layout?.template || 'moderncv-banking')
     setPreviewUrl(null)
   }
 
@@ -222,8 +228,9 @@ export default function Customizer() {
       setPreviewUrl(`${result.preview}?t=${Date.now()}`)
       setYamlRevision((value) => value + 1)
       toast('success', `${activeTemplate.name} 模板已保存并生成预览`)
-      const refreshed = await api.get<{ variants: Variant[] }>('/api/variants').catch(() => ({ variants }))
+      const refreshed = await api.get<{ variants: Variant[]; defaults?: { layout?: { engine?: string; template?: string } } }>('/api/variants').catch(() => ({ variants, defaults: undefined }))
       setVariants(refreshed.variants)
+      if (refreshed.defaults) setVariantDefaults(refreshed.defaults)
     } catch (err: any) {
       toast('error', err.message)
     } finally {
@@ -234,7 +241,7 @@ export default function Customizer() {
   const refreshFromYaml = async () => {
     const [entryData, variantData, categoryData] = await Promise.all([
       api.get<{ entries: Record<string, Entry[]> }>('/api/entries'),
-      api.get<{ variants: Variant[] }>('/api/variants'),
+      api.get<{ variants: Variant[]; defaults?: { layout?: { engine?: string; template?: string } } }>('/api/variants'),
       api.get<{ categories: { key: string; label: string; visible: boolean }[] }>('/api/categories'),
     ])
     setEntries(entryData.entries)
@@ -242,7 +249,7 @@ export default function Customizer() {
     if (categoryData.categories?.length) {
       setCats(categoryData.categories.filter((item) => item.visible !== false).map((item) => ({ key: item.key, label: item.label })))
     }
-    applyVariant(selectedType, variantData.variants)
+    applyVariant(selectedType, variantData.variants, variantData.defaults)
   }
 
   const previewSavedYaml = async () => {

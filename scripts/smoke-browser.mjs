@@ -57,7 +57,7 @@ const pdf = await page.evaluate(() => ({
   actions: [...document.querySelectorAll('main button')].map((button) => button.innerText.trim()).filter(Boolean),
 }))
 const pdfOk =
-  pdf.text.includes('resume/frontend') &&
+  pdf.text.includes('resume/general') &&
   pdf.text.includes('此页面只查看已有 PDF') &&
   !pdf.text.includes('构建简历 PDF') &&
   !pdf.actions.some((label) => label.includes('本地构建') || label.includes('从 GitHub 同步'))
