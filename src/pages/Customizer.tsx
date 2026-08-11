@@ -13,12 +13,14 @@ import {
   ExternalLink,
   GitBranch,
   Eye,
+  RefreshCw,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Entry, Variant } from '../types'
 import { useToast } from '../toast'
 import { Badge, Button, Card, EmptyState, Input, Select, Spinner, TagChip, Textarea } from '../components/ui'
 import PdfViewer from '../components/PdfViewer'
+import YamlWorkspace from '../components/YamlWorkspace'
 
 const DEFAULT_CATS: { key: string; label: string }[] = [
   { key: 'basics', label: '基础信息' },
@@ -92,6 +94,9 @@ export default function Customizer() {
   const [previewEngine, setPreviewEngine] = useState<'latex' | 'html'>('latex')
   const [rendering, setRendering] = useState(false)
   const [dragOver, setDragOver] = useState<string | null>(null)
+  const [workspaceMode, setWorkspaceMode] = useState<'visual' | 'yaml'>('visual')
+  const [yamlDirty, setYamlDirty] = useState(false)
+  const [yamlRevision, setYamlRevision] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -137,6 +142,7 @@ export default function Customizer() {
   const selected = types.find((item) => item.name === selectedType)
   const activeTemplate = templates.find((item) => item.id === template)
   const canCustomize = !!selected?.current && selected.configured
+  const canEditVisual = canCustomize && !yamlDirty
 
   const commit = (next: Section[]) => {
     setSections(next)
@@ -193,6 +199,10 @@ export default function Customizer() {
   }
 
   const buildPreview = async () => {
+    if (yamlDirty) {
+      toast('warn', '请先保存或放弃 YAML 修改')
+      return
+    }
     if (!selectedType || !activeTemplate || sections.length === 0) return
     setRendering(true)
     try {
@@ -210,6 +220,7 @@ export default function Customizer() {
       if (!result.preview) throw new Error(result.output || '构建未生成预览')
       setPreviewEngine(result.engine)
       setPreviewUrl(`${result.preview}?t=${Date.now()}`)
+      setYamlRevision((value) => value + 1)
       toast('success', `${activeTemplate.name} 模板已保存并生成预览`)
       const refreshed = await api.get<{ variants: Variant[] }>('/api/variants').catch(() => ({ variants }))
       setVariants(refreshed.variants)
@@ -218,6 +229,53 @@ export default function Customizer() {
     } finally {
       setRendering(false)
     }
+  }
+
+  const refreshFromYaml = async () => {
+    const [entryData, variantData, categoryData] = await Promise.all([
+      api.get<{ entries: Record<string, Entry[]> }>('/api/entries'),
+      api.get<{ variants: Variant[] }>('/api/variants'),
+      api.get<{ categories: { key: string; label: string; visible: boolean }[] }>('/api/categories'),
+    ])
+    setEntries(entryData.entries)
+    setVariants(variantData.variants)
+    if (categoryData.categories?.length) {
+      setCats(categoryData.categories.filter((item) => item.visible !== false).map((item) => ({ key: item.key, label: item.label })))
+    }
+    applyVariant(selectedType, variantData.variants)
+  }
+
+  const previewSavedYaml = async () => {
+    if (!selectedType) return
+    setRendering(true)
+    try {
+      await refreshFromYaml()
+      if (!canCustomize) {
+        toast('warn', 'YAML 已保存；切换到对应类型分支后可同步预览')
+        return
+      }
+      const result = await api.post<{ preview: string | null; engine: 'latex' | 'html'; output?: string }>('/api/custom/preview', {
+        variant: selectedType,
+      })
+      if (!result.preview) throw new Error(result.output || '构建未生成预览')
+      setPreviewEngine(result.engine)
+      setPreviewUrl(`${result.preview}?t=${Date.now()}`)
+      toast('success', 'YAML 与预览已同步')
+    } catch (err: any) {
+      toast('error', `YAML 已保存，但预览更新失败：${err.message}`)
+    } finally {
+      setRendering(false)
+    }
+  }
+
+  const changeType = (name: string) => {
+    if (yamlDirty) {
+      toast('warn', '请先保存或放弃 YAML 修改')
+      return
+    }
+    setSelectedType(name)
+    applyVariant(name)
+    setYamlRevision((value) => value + 1)
   }
 
   const listOf = (key: string): Entry[] => (Array.isArray(entries[key]) ? entries[key] : [])
@@ -242,10 +300,7 @@ export default function Customizer() {
             <GitBranch size={15} className="text-zinc-500" />
             <Select
               value={selectedType}
-              onChange={(event) => {
-                setSelectedType(event.target.value)
-                applyVariant(event.target.value)
-              }}
+              onChange={(event) => changeType(event.target.value)}
               className="w-52"
             >
               {types.map((type) => (
@@ -268,7 +323,7 @@ export default function Customizer() {
             return (
               <button
                 key={item.id}
-                disabled={!canCustomize}
+                disabled={!canEditVisual}
                 onClick={() => {
                   setTemplate(item.id)
                   setPreviewUrl(null)
@@ -292,24 +347,53 @@ export default function Customizer() {
         </div>
       </div>
 
-      <div className="flex gap-4" style={{ height: 'calc(100vh - 300px)', minHeight: 560 }}>
-        <Card title="简历信息库" desc="拖拽条目或章节到布局" className="w-72 shrink-0" pad={false} fill>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-1" role="tablist" aria-label="定制工作区">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={workspaceMode === 'visual'}
+            onClick={() => setWorkspaceMode('visual')}
+            className={`inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition ${workspaceMode === 'visual' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'}`}
+          >
+            <Layers size={13} /> 可视化编排
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={workspaceMode === 'yaml'}
+            onClick={() => setWorkspaceMode('yaml')}
+            className={`inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition ${workspaceMode === 'yaml' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'}`}
+          >
+            <FileCode2 size={13} /> YAML 源码
+          </button>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-zinc-500">
+          {yamlDirty ? <Badge tone="amber">YAML 未保存</Badge> : <Badge tone="zinc">磁盘已同步</Badge>}
+          {previewUrl && !yamlDirty && <Badge tone="emerald">预览已更新</Badge>}
+        </div>
+      </div>
+
+      <div className="flex min-h-[640px] flex-col gap-4 xl:h-[calc(100vh-245px)] xl:min-h-[620px] xl:flex-row">
+        {workspaceMode === 'visual' && (
+          <>
+        <Card title="简历信息库" desc="拖拽条目或章节到布局" className="w-full shrink-0 xl:w-72" pad={false} fill>
           <div className="flex flex-wrap gap-1 border-b border-zinc-800 p-2">
             {cats.map((item) => (
               <button
                 key={item.key}
                 onClick={() => setCat(item.key)}
                 className={`rounded-md px-2 py-1 text-[11px] transition ${
-                  cat === item.key ? 'bg-indigo-500/20 text-indigo-200' : 'text-zinc-500 hover:text-zinc-300'
+                  cat === item.key ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
-                {item.label}<span className="ml-1 text-zinc-600">{categoryCount(item.key)}</span>
+                {item.label}<span className={`ml-1 ${cat === item.key ? 'text-zinc-400' : 'text-zinc-600'}`}>{categoryCount(item.key)}</span>
               </button>
             ))}
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-2">
             <div
-              draggable={canCustomize}
+              draggable={canEditVisual}
               onDragStart={onDragStart({ type: 'section', key: cat })}
               className="mb-2 flex cursor-grab items-center gap-2 rounded-md border border-dashed border-indigo-500/40 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-300"
             >
@@ -325,7 +409,7 @@ export default function Customizer() {
                 return (
                   <div
                     key={entry.id}
-                    draggable={canCustomize}
+                    draggable={canEditVisual}
                     onDragStart={onDragStart({ type: 'entry', key: cat, id: entry.id })}
                     className={`mb-1.5 cursor-grab rounded-md border px-3 py-2 ${
                       inLayout ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-zinc-800 bg-zinc-950/50 hover:border-indigo-500/40'
@@ -354,19 +438,19 @@ export default function Customizer() {
           className="min-w-0 flex-1"
           pad={false}
           fill
-          actions={<Button size="sm" variant="ghost" disabled={!canCustomize} onClick={() => commit([])}><Trash2 size={12} /> 清空</Button>}
+          actions={<Button size="sm" variant="ghost" disabled={!canEditVisual} onClick={() => commit([])}><Trash2 size={12} /> 清空</Button>}
         >
           <div className="space-y-2 border-b border-zinc-800 p-3">
             <Input
               value={headline}
-              disabled={!canCustomize}
+              disabled={!canEditVisual}
               onChange={(event) => { setHeadline(event.target.value); setPreviewUrl(null) }}
               placeholder="针对该类型的职位头衔"
               className="text-xs"
             />
             <Textarea
               value={summary}
-              disabled={!canCustomize}
+              disabled={!canEditVisual}
               onChange={(event) => { setSummary(event.target.value); setPreviewUrl(null) }}
               placeholder="针对该类型的个人简介，每行一条"
               className="min-h-[68px] text-xs"
@@ -374,7 +458,7 @@ export default function Customizer() {
           </div>
           <div
             className={`min-h-0 flex-1 overflow-auto p-3 ${dragOver === 'canvas' ? 'ring-2 ring-inset ring-indigo-500/40' : ''}`}
-            onDragOver={(event) => { if (canCustomize) { event.preventDefault(); setDragOver('canvas') } }}
+            onDragOver={(event) => { if (canEditVisual) { event.preventDefault(); setDragOver('canvas') } }}
             onDragLeave={() => setDragOver(null)}
             onDrop={onCanvasDrop}
           >
@@ -385,7 +469,7 @@ export default function Customizer() {
                 {sections.map((section, index) => (
                   <div
                     key={section.key}
-                    onDragOver={(event) => { if (canCustomize) { event.preventDefault(); setDragOver(section.key) } }}
+                    onDragOver={(event) => { if (canEditVisual) { event.preventDefault(); setDragOver(section.key) } }}
                     onDragLeave={() => setDragOver(null)}
                     onDrop={(event) => onSectionDrop(event, section)}
                     className={`rounded-md border p-2.5 ${dragOver === section.key ? 'border-indigo-500/60 bg-indigo-500/5' : 'border-zinc-800 bg-zinc-950/40'}`}
@@ -397,9 +481,9 @@ export default function Customizer() {
                         {section.mode === 'all' ? '全部' : section.mode === 'ids' ? `${(section.ids || []).length} 条` : `${(section.tags || []).length} 标签`}
                       </Badge>
                       <div className="ml-auto flex gap-0.5">
-                        <button disabled={!canCustomize} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(index, -1)}><ArrowUp size={12} /></button>
-                        <button disabled={!canCustomize} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(index, 1)}><ArrowDown size={12} /></button>
-                        <button disabled={!canCustomize} className="rounded p-1 text-zinc-600 hover:bg-red-500/20 hover:text-red-400" onClick={() => commit(sections.filter((item) => item !== section))}><Trash2 size={12} /></button>
+                        <button disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(index, -1)}><ArrowUp size={12} /></button>
+                        <button disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(index, 1)}><ArrowDown size={12} /></button>
+                        <button disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-red-400" onClick={() => commit(sections.filter((item) => item !== section))}><Trash2 size={12} /></button>
                       </div>
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-5">
@@ -411,7 +495,7 @@ export default function Customizer() {
                           return (
                             <span key={id} className="inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300">
                               {entry ? entryTitle(section.key, entry) : id}
-                              <button disabled={!canCustomize} className="text-zinc-600 hover:text-red-400" onClick={() => commit(sections.map((item) => item === section ? { ...item, ids: (item.ids || []).filter((value) => value !== id) } : item))}><Trash2 size={10} /></button>
+                              <button disabled={!canEditVisual} className="text-zinc-600 hover:text-red-400" onClick={() => commit(sections.map((item) => item === section ? { ...item, ids: (item.ids || []).filter((value) => value !== id) } : item))}><Trash2 size={10} /></button>
                             </span>
                           )
                         })
@@ -425,25 +509,46 @@ export default function Customizer() {
             )}
           </div>
         </Card>
+          </>
+        )}
+        <div className={workspaceMode === 'yaml' ? 'min-h-0 min-w-0 flex-1' : 'hidden'}>
+          <YamlWorkspace
+            disabled={rendering}
+            canPreview={canCustomize}
+            revision={yamlRevision}
+            onDirtyChange={setYamlDirty}
+            onSaved={previewSavedYaml}
+          />
+        </div>
 
         <Card
           title="模板预览"
           desc={activeTemplate ? `${activeTemplate.name} · ${activeTemplate.engine === 'html' ? 'HTML' : 'LaTeX PDF'}` : '选择模板'}
-          className="w-[46%] shrink-0"
+          className="min-h-[560px] w-full shrink-0 xl:min-h-0 xl:w-[46%]"
           pad={false}
           fill
           actions={
             <div className="flex items-center gap-1">
-              {previewUrl && <a href={previewUrl} target="_blank" rel="noreferrer" className="rounded p-1 text-zinc-500 hover:text-indigo-300" title="新窗口打开"><ExternalLink size={13} /></a>}
-              <Button
+              <button
+                type="button"
+                title="按已保存 YAML 刷新预览"
+                aria-label="按已保存 YAML 刷新预览"
+                disabled={!canCustomize || rendering || yamlDirty}
+                onClick={previewSavedYaml}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <RefreshCw size={13} />
+              </button>
+              {previewUrl && <a href={previewUrl} target="_blank" rel="noreferrer" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-indigo-300" title="新窗口打开"><ExternalLink size={13} /></a>}
+              {workspaceMode === 'visual' && <Button
                 size="sm"
                 variant="primary"
                 loading={rendering}
-                disabled={!canCustomize || sections.length === 0 || !activeTemplate}
+                disabled={!canEditVisual || sections.length === 0 || !activeTemplate}
                 onClick={buildPreview}
               >
                 {rendering ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} 保存并预览
-              </Button>
+              </Button>}
             </div>
           }
         >

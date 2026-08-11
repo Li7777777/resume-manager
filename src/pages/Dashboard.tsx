@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   FileText,
   FolderGit2,
+  DraftingCompass,
 } from 'lucide-react'
 import { api } from '../api'
 import type { ProjectStatus, Variant, Entry } from '../types'
@@ -199,9 +200,9 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
           {[
             { label: '编辑信息', desc: '管理全部个人信息与标签', icon: <Database size={18} />, to: 'entries' },
             { label: '管理简历类型', desc: '每个类型对应一个 Git 分支', icon: <GitBranch size={18} />, to: 'variants' },
+            { label: '简历定制', desc: '编排内容、编辑 YAML 并同步预览', icon: <DraftingCompass size={18} />, to: 'customizer' },
             { label: '查看 PDF 时间线', desc: '按类型分支查看已有版本', icon: <FileText size={18} />, to: 'pdf' },
             { label: 'Git 同步', desc: '提交、推送、拉取与历史', icon: <CloudUpload size={18} />, to: 'git' },
-            { label: '编辑 YAML', desc: '直接查看/修改数据文件', icon: <FileText size={18} />, to: 'yaml' },
             { label: '连接数据仓', desc: '配置路径或生成新仓库骨架', icon: <FolderGit2 size={18} />, to: 'settings' },
           ].map((a) => (
             <button

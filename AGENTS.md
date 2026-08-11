@@ -30,7 +30,7 @@ npm run typecheck  # 前端 TS 检查
 | `server/lib/git-service.js` | isomorphic-git 封装（status/log/commit/push/pull/diff） |
 | `server/config.js` | 设置存取 `~/.resume-manager/settings.json` |
 | `server/lib/github-auth.js` | GitHub 凭据自动检测（环境变量 / gh CLI） |
-| `src/pages/*.tsx` | 八个页面（总览/信息/方向/YAML/PDF/Git/模板/设置） |
+| `src/pages/*.tsx` | 七个页面（总览/信息/类型/定制/PDF/Git/设置）；YAML 编辑内嵌于定制页 |
 | `src/components/ui.tsx` | UI 组件库（Button/Card/Modal/TagInput…） |
 | `templates/private-repo/` | 私有数据仓模板（新用户初始化用） |
 | `docs/DATA-FORMAT.md` | 数据格式契约（改格式先读它） |
@@ -50,5 +50,5 @@ npm run typecheck  # 前端 TS 检查
 - **新增信息分类**（如 awards）：1) `server/lib/data-store.js` 的 `CATEGORIES` 加项；
   2) `src/pages/Entries.tsx` 的 `FIELDS` 加字段配置；3) 模板 `templates/private-repo/data/` 加文件；4) 更新 docs/DATA-FORMAT.md。
 - **新增 API**：`server/routes/api.js` 注册路由 → `src/api.ts` 已是通用 client，前端直接调。
-- **新增页面**：`src/pages/X.tsx` → `src/App.tsx` 的 `NAV`/`TITLES` 注册（支持 hash 直达 `#/x`）。
+- **新增页面**：`src/pages/X.tsx` → `src/App.tsx` 的 `NAV` 注册（支持 hash 直达 `#/x`）；页面自行提供必要的局部标题，主内容区没有全局 header。
 - **编译开关**：`localPdfBuild`（本地，默认开）/ `githubPdfBuild`（CI，默认关）；本机保存并通过 GitHub Actions 仓库变量同步，不写私有仓文件。详见 docs/DEVELOPMENT.md §9。

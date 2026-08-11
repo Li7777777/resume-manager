@@ -6,9 +6,9 @@
 
 ```
 ┌── 前端 src/ (React 18 + Vite + Tailwind 4) ──┐
-│  pages/  Dashboard Entries Variants YamlPage │
-│          History GitBoard Customizer Settings │
-│  components/ ui.tsx YamlEditor.tsx            │
+│  pages/  Dashboard Entries Variants Customizer │
+│          History GitBoard Settings              │
+│  components/ ui.tsx YamlEditor YamlWorkspace   │
 │  api.ts types.ts toast.tsx                    │
 └──────────────┬────────────────────────────────┘
                │ HTTP /api（dev 时 Vite proxy → :8787）
@@ -48,7 +48,9 @@
 ```
 信息管理页  ──POST /api/entries/:cat──►  data-store.js ──► data/<cat>.yml
 简历类型页  ──/api/resume-types───────►  git-service.js  ──► resume/<type> 分支
-简历定制页  ──POST /api/custom/layout─►  compose + builder ──► HTML/PDF 预览
+简历定制页  ──POST /api/custom/layout─►  可视化配置写入配方 + HTML/PDF 预览
+YAML 工作区  ──PUT /api/yaml───────────►  保存源码
+             └─POST /api/custom/preview►  按落盘 YAML 重建同页预览
 PDF 预览页  ──GET /api/history?variant►  指定类型分支提交/CI/本地预览记录（只读）
 Git 看板    ──/api/git/*────────────►  git-service.js ──► 仓库 .git（isomorphic-git）
 ```
@@ -121,7 +123,8 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | --- | --- | --- |
 | GET | `/api/templates` | 全部官网 LaTeX/HTML 模板元数据；由简历定制页使用 |
 | GET | `/api/html/:name` | 已生成的 HTML 简历预览（no-cache） |
-| POST | `/api/custom/layout` | `{variant, sections, template, overrides}`：仅允许当前类型分支，保存内容/模板后生成 HTML 或 PDF 预览；LaTeX 成功时写入该分支本地时间线 |
+| POST | `/api/custom/layout` | `{variant, sections, template, overrides}`：仅允许当前类型分支，保存可视化内容/模板后生成 HTML 或 PDF 预览，并反向刷新配方编辑器；LaTeX 成功时写入该分支本地时间线 |
+| POST | `/api/custom/preview` | `{variant}`：不覆写配方，完全按已落盘的 data/ 与 variants.yml 重建 HTML/PDF 预览；供同页 YAML 保存后同步预览 |
 | POST | `/api/template/apply` | 旧客户端兼容端点；当前 UI 不再使用，模板入口已合并至简历定制 |
 
 ### 模板
@@ -132,7 +135,8 @@ Git 看板    ──/api/git/*────────────►  git-servi
 
 ## 5. 前端结构要点
 
-- **页面切换**：`App.tsx` 用 state 切换 + 轻量 hash 导航（`#/entries` 等可直达）；新增页面 = 写 `pages/X.tsx` + 在 `NAV`/`TITLES` 注册。
+- **页面切换**：`App.tsx` 用 state + hash 导航（`#/entries` 等可直达）；导航顺序为信息/类型/定制/PDF/Git，旧 `#/yaml` 自动重定向到 `#/customizer`，主内容区没有独立顶栏。
+- **定制工作区**：`pages/Customizer.tsx` 在可视化编排与 YAML 源码间切换，右侧预览常驻；`components/YamlWorkspace.tsx` 负责文件选择、未保存保护、CodeMirror 保存与同步状态。
 - **组件库** `components/ui.tsx`：Button/Card/Field/Input/Textarea/Select/Modal/TagChip/TagInput/Badge/Spinner/EmptyState/relativeTime。
 - **表单字段配置** `pages/Entries.tsx` 的 `FIELDS`：新增分类时在此登记字段（type: text/textarea/select/tags/summary/achievements），并同步 `server/lib/data-store.js` 的 `CATEGORIES`。
 - **编辑器** `components/YamlEditor.tsx`：CodeMirror 6 + lang-yaml + oneDark。
@@ -153,9 +157,9 @@ Git 看板    ──/api/git/*────────────►  git-servi
 1. 设置指向一个**测试副本**数据仓（勿在真实仓上做破坏性操作）；
 2. 信息管理：新增/编辑/删除条目、标签筛选、搜索；
 3. 简历类型：为旧类型创建分支 → 切换类型 → 有未提交改动时验证切换被拒绝；
-4. 简历定制：在当前类型中拖拽内容，分别选择 LaTeX/HTML 模板并生成预览；
-5. PDF 预览：切换类型后仅出现该 `resume/*` 分支时间线，页面不存在构建/同步按钮；
-6. YAML 页：修改保存、非法 YAML 报错回滚；
+4. 简历定制：确认侧栏中位于 PDF 预览之前；可视化保存后 `variants.yml` 编辑内容刷新；YAML 保存后当前模板预览自动重建；非法 YAML 保持未保存状态并显示错误；
+5. 兼容路由：访问 `#/yaml` 自动进入 `#/customizer`，侧栏无独立 YAML 入口，主内容区无 header；
+6. PDF 预览：切换类型后仅出现该 `resume/*` 分支时间线，页面不存在构建/同步按钮；
 7. Git 看板：改文件 → 状态出现 → 提交 → 推送（测试用一次性临时私有仓）；
 8. 设置连接空目录：生成骨架 → 目录结构核对 → `yamlresume validate` 通过。
 

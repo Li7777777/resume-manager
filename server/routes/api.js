@@ -981,6 +981,38 @@ router.get('/html/:name', (req, res) => {
 
 /* ---------- 简历定制（内容 + 模板 → 在定制页构建预览） ---------- */
 // PDF 预览页保持只读；所有模板切换、组合与构建统一在这里完成。
+async function renderCustomizedVariant(repo, variant, engine, branch) {
+  compose.generateAll(repo, [variant])
+  const result = engine === 'html'
+    ? await builder.buildHtmlVariant(repo, variant)
+    : await builder.buildVariant(repo, variant)
+  const preview = result.ok
+    ? engine === 'html'
+      ? `/api/html/${encodeURIComponent(variant)}`
+      : `/api/pdf/${encodeURIComponent(variant)}.pdf`
+    : null
+  if (result.ok && engine === 'latex') {
+    try {
+      const head = (await gitSvc.getLog(repo, 1))[0] || null
+      recordBuild({
+        kind: 'local',
+        repoPath: repo,
+        variant,
+        branch,
+        sha: head?.oid || null,
+        headMessage: head?.message || null,
+        timestamp: Math.floor(Date.now() / 1000),
+        status: 'success',
+        pdfs: [`${variant}.pdf`],
+        output: (result.output || '').slice(0, 500),
+      })
+    } catch {
+      /* 记录失败不影响预览 */
+    }
+  }
+  return { result, preview }
+}
+
 router.post('/custom/layout', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
@@ -1027,39 +1059,50 @@ router.post('/custom/layout', async (req, res) => {
       overrides: overrides?.basics ? { ...(current.overrides || {}), basics: overrides.basics } : current.overrides,
     }
     compose.saveVariantsDoc(repo, doc)
-    compose.generateAll(repo, [variant])
-    const result = tpl.engine === 'html'
-      ? await builder.buildHtmlVariant(repo, variant)
-      : await builder.buildVariant(repo, variant)
-    const preview = result.ok
-      ? tpl.engine === 'html'
-        ? `/api/html/${encodeURIComponent(variant)}`
-        : `/api/pdf/${encodeURIComponent(variant)}.pdf`
-      : null
-    if (result.ok && tpl.engine === 'latex') {
-      try {
-        const head = (await gitSvc.getLog(repo, 1))[0] || null
-        recordBuild({
-          kind: 'local',
-          repoPath: repo,
-          variant,
-          branch: expectedBranch,
-          sha: head?.oid || null,
-          headMessage: head?.message || null,
-          timestamp: Math.floor(Date.now() / 1000),
-          status: 'success',
-          pdfs: [`${variant}.pdf`],
-          output: (result.output || '').slice(0, 500),
-        })
-      } catch {
-        /* 记录失败不影响预览 */
-      }
-    }
+    const { result, preview } = await renderCustomizedVariant(repo, variant, tpl.engine, expectedBranch)
     res.json({
       ok: result.ok,
       preview,
       engine: tpl.engine,
       template: tpl.id,
+      error: result.ok ? undefined : (result.output || '预览构建失败').slice(-500),
+      output: (result.output || '').slice(-500),
+    })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+// YAML 工作区保存后按落盘数据重建预览，不覆写 variants.yml 中的任何配置。
+router.post('/custom/preview', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const variant = String(req.body?.variant || '')
+  if (!TYPE_NAME_RE.test(variant)) return res.json({ ok: false, error: '请选择有效的简历类型' })
+  try {
+    const doc = compose.loadVariantsDoc(repo)
+    const current = doc.variants?.[variant]
+    if (!current) return res.json({ ok: false, error: `当前 YAML 中不存在简历类型 ${variant}` })
+    const expectedBranch = typeBranch(repo, variant)
+    const activeBranch = await gitSvc.currentBranchSafe(repo)
+    if (activeBranch !== expectedBranch) {
+      return res.json({ ok: false, error: `请先在「简历类型」页切换到 ${expectedBranch}，再更新预览` })
+    }
+    const layout = { ...(doc.defaults?.layout || {}), ...(current.layout || {}) }
+    const template = TEMPLATES.find((item) => item.id === layout.template)
+    if (!template) return res.json({ ok: false, error: `当前 YAML 使用了未知模板 ${layout.template || '—'}` })
+    const engine = layout.engine || template.engine
+    if (engine !== 'latex' && engine !== 'html') return res.json({ ok: false, error: `不支持的预览引擎 ${engine}` })
+    if (engine === 'latex' && getSettings().localPdfBuild === false) {
+      return res.json({ ok: false, error: '本地 PDF 编译已关闭，请在「设置」页开启后再更新 LaTeX 预览' })
+    }
+    const { result, preview } = await renderCustomizedVariant(repo, variant, engine, expectedBranch)
+    res.json({
+      ok: result.ok,
+      preview,
+      engine,
+      template: template.id,
+      error: result.ok ? undefined : (result.output || '预览构建失败').slice(-500),
       output: (result.output || '').slice(-500),
     })
   } catch (err) {
