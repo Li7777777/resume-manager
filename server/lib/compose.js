@@ -161,7 +161,7 @@ export function listVariants(repo) {
       const n = selectEntries(readCategory(repo, block), cfg).length
       if (n > 0) counts[block] = n
     }
-    return { name, label: v.label || name, ...v, matched: counts }
+    return { name, label: v.label || name, ...v, branch: v.branch || `resume/${name}`, matched: counts }
   })
 }
 

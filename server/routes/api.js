@@ -279,6 +279,156 @@ router.put('/variants', (req, res) => {
   }
 })
 
+/* ---------- 简历类型（每个类型对应一个 Git 分支） ---------- */
+const TYPE_NAME_RE = /^[a-z][a-z0-9_-]*$/
+const TYPE_BRANCH_RE = /^resume\/[a-z][a-z0-9._/-]*$/
+const typeBranch = (name, variant) => variant?.branch || `resume/${name}`
+
+router.get('/resume-types', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  try {
+    const doc = compose.loadVariantsDoc(repo)
+    const branches = await gitSvc.listBranches(repo)
+    const byName = new Map()
+    for (const [name, variant] of Object.entries(doc.variants || {})) {
+      const branch = typeBranch(name, variant)
+      byName.set(name, {
+        name,
+        label: variant.label || name,
+        branch,
+        configured: true,
+        current: branches.current === branch,
+        local: branches.local.includes(branch),
+        remote: branches.remote.includes(branch),
+      })
+    }
+    for (const branch of [...branches.local, ...branches.remote]) {
+      if (!branch.startsWith('resume/')) continue
+      const name = branch.slice('resume/'.length)
+      if (!name || byName.has(name)) continue
+      byName.set(name, {
+        name,
+        label: name,
+        branch,
+        configured: false,
+        current: branches.current === branch,
+        local: branches.local.includes(branch),
+        remote: branches.remote.includes(branch),
+      })
+    }
+    const types = [...byName.values()].sort((a, b) => Number(b.current) - Number(a.current) || a.name.localeCompare(b.name))
+    res.json({ ok: true, types, currentBranch: branches.current })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+router.post('/resume-types', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const name = String(req.body?.name || '').trim()
+  const label = String(req.body?.label || '').trim()
+  const branch = String(req.body?.branch || `resume/${name}`).trim()
+  if (!TYPE_NAME_RE.test(name)) return res.json({ ok: false, error: '类型标识只能使用小写字母、数字、下划线和连字符，且必须以字母开头' })
+  if (!TYPE_BRANCH_RE.test(branch)) return res.json({ ok: false, error: '分支必须以 resume/ 开头，并使用合法的 Git 分支字符' })
+  try {
+    const doc = compose.loadVariantsDoc(repo)
+    doc.variants = doc.variants || {}
+    if (doc.variants[name]) return res.json({ ok: false, error: `简历类型 ${name} 已存在` })
+    const branches = await gitSvc.listBranches(repo)
+    if (branches.local.includes(branch)) return res.json({ ok: false, error: `Git 分支 ${branch} 已存在` })
+    await gitSvc.createBranch(repo, branch)
+    await gitSvc.checkoutBranch(repo, branch)
+    doc.variants[name] = {
+      label: label || name,
+      branch,
+      blocks: {
+        basics: { include: 'all' },
+        work: { include: 'all' },
+        education: { include: 'all' },
+        projects: { include: 'all' },
+        skills: { include: 'all' },
+      },
+      sectionOrder: ['basics', 'skills', 'work', 'projects', 'education'],
+      layout: { engine: 'latex', template: doc.defaults?.layout?.template || 'moderncv-banking' },
+    }
+    compose.saveVariantsDoc(repo, doc)
+    res.json({ ok: true, type: { name, label: label || name, branch, configured: true, current: true, local: true, remote: false } })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+router.put('/resume-types/:name', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const name = String(req.params.name || '')
+  const label = String(req.body?.label || '').trim()
+  if (!label) return res.json({ ok: false, error: '类型名称不能为空' })
+  try {
+    const doc = compose.loadVariantsDoc(repo)
+    if (!doc.variants?.[name]) return res.json({ ok: false, error: `简历类型 ${name} 不存在` })
+    doc.variants[name].label = label
+    doc.variants[name].branch = typeBranch(name, doc.variants[name])
+    compose.saveVariantsDoc(repo, doc)
+    res.json({ ok: true, name, label, branch: doc.variants[name].branch })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+router.post('/resume-types/:name/ensure-branch', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const name = String(req.params.name || '')
+  try {
+    const doc = compose.loadVariantsDoc(repo)
+    const variant = doc.variants?.[name]
+    if (!variant) return res.json({ ok: false, error: `简历类型 ${name} 不存在` })
+    const branch = typeBranch(name, variant)
+    const result = await gitSvc.createBranch(repo, branch)
+    res.json({ ok: true, name, branch, created: result.created })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+router.post('/resume-types/:name/checkout', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const name = String(req.params.name || '')
+  try {
+    const doc = compose.loadVariantsDoc(repo)
+    const variant = doc.variants?.[name]
+    const branch = typeBranch(name, variant)
+    const branches = await gitSvc.listBranches(repo)
+    if (!branches.local.includes(branch)) return res.json({ ok: false, error: `类型分支 ${branch} 尚未创建` })
+    await gitSvc.checkoutBranch(repo, branch)
+    res.json({ ok: true, name, branch })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+router.delete('/resume-types/:name', async (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const name = String(req.params.name || '')
+  try {
+    const doc = compose.loadVariantsDoc(repo)
+    const variant = doc.variants?.[name]
+    if (!variant) return res.json({ ok: false, error: `简历类型 ${name} 不存在` })
+    const branch = typeBranch(name, variant)
+    await gitSvc.deleteBranch(repo, branch)
+    delete doc.variants[name]
+    compose.saveVariantsDoc(repo, doc)
+    res.json({ ok: true, name, branch, note: '远程分支如已推送，请在 GitHub 上按需删除' })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
 /* ---------- YAML 文件编辑 ---------- */
 router.get('/files', (req, res) => {
   const repo = getRepoPath()
@@ -343,6 +493,7 @@ router.post('/build', async (req, res) => {
           kind: 'local',
           repoPath: repo,
           variant,
+          branch: (await gitSvc.currentBranchSafe(repo)) || null,
           sha: head?.oid || null,
           headMessage: head?.message || null,
           timestamp: Math.floor(Date.now() / 1000),
@@ -588,14 +739,23 @@ router.get('/history', async (req, res) => {
   const settings = getSettings()
   const limit = Math.min(Number(req.query.limit) || 30, 50)
   try {
-    const commits = await gitSvc.getLog(repo, limit)
+    const doc = compose.loadVariantsDoc(repo)
+    const names = Object.keys(doc.variants || {})
+    const variant = String(req.query.variant || names[0] || '')
+    const cfg = doc.variants?.[variant]
+    if (!cfg) return res.json({ ok: false, error: `简历类型 ${variant || '—'} 不存在` })
+    // 分支由类型配置决定，前端不能注入任意 ref
+    const branch = typeBranch(variant, cfg)
+    const branches = await gitSvc.listBranches(repo)
+    const ref = branches.local.includes(branch) ? branch : branches.remote.includes(branch) ? `origin/${branch}` : null
+    const commits = ref ? await gitSvc.getLog(repo, limit, ref) : []
     const remoteUrl = await gitSvc.getRemoteUrl(repo)
     const parsed = parseRemoteUrl(remoteUrl)
     let runMap = {}
     if (parsed && settings.token) {
       try {
         const runs = await ghApi(
-          `/repos/${parsed.owner}/${parsed.repo}/actions/runs?branch=${encodeURIComponent((await gitSvc.currentBranchSafe(repo)) || 'main')}&per_page=50`,
+          `/repos/${parsed.owner}/${parsed.repo}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=50`,
           settings.token,
         )
         runMap = Object.fromEntries(
@@ -605,7 +765,7 @@ router.get('/history', async (req, res) => {
           ]),
         )
       } catch {
-        /* token 权限不足或网络问题：仅展示提交 */
+        /* token 权限不足或网络问题：仅展示该分支的本地提交 */
       }
     }
     const githubItems = commits.map((c) => ({
@@ -616,17 +776,25 @@ router.get('/history', async (req, res) => {
       message: c.message,
       author: c.author,
       timestamp: c.timestamp,
+      variant,
+      branch,
       run: runMap[c.oid] || null,
     }))
-    // 本地构建记录（当前数据仓的）
-    const localItems = listBuilds(repo).map((b) => ({ ...b, kind: 'local' }))
-    // 合并按时间倒序（github 提交时间戳 / 本地构建时间戳）
+    // 本地构建也按简历类型/分支过滤；旧记录没有 branch 时用 variant 兼容
+    const localItems = ref
+      ? listBuilds(repo)
+          .filter((b) => b.branch === branch || (!b.branch && b.variant === variant))
+          .map((b) => ({ ...b, kind: 'local', branch }))
+      : []
     const items = [...githubItems, ...localItems]
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
       .slice(0, limit)
     res.json({
       ok: true,
       items,
+      variant,
+      branch,
+      branchExists: !!ref,
       owner: parsed?.owner || null,
       repo: parsed?.repo || null,
     })
@@ -641,7 +809,9 @@ router.get('/github/history/pdf', async (req, res) => {
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   const settings = getSettings()
   const sha = String(req.query.sha || '').trim()
+  const variant = String(req.query.variant || '').trim()
   if (!/^[0-9a-f]{7,40}$/.test(sha)) return res.json({ ok: false, error: '无效的提交标识' })
+  if (variant && !TYPE_NAME_RE.test(variant)) return res.json({ ok: false, error: '无效的简历类型' })
   if (!settings.token) return res.json({ ok: false, error: '未配置 GitHub Token，无法拉取历史产物' })
   try {
     const remoteUrl = await gitSvc.getRemoteUrl(repo)
@@ -649,8 +819,11 @@ router.get('/github/history/pdf', async (req, res) => {
     if (!parsed) return res.json({ ok: false, error: '无法解析远程仓库地址' })
     // 短 sha 先展开为完整 oid（GitHub API head_sha 需要完整 40 位）
     const fullSha = await gitSvc.expandOid(repo, sha)
-    // 1. 找到该提交的运行
-    const runs = await ghApi(`/repos/${parsed.owner}/${parsed.repo}/actions/runs?head_sha=${fullSha}&per_page=1`, settings.token)
+    const doc = compose.loadVariantsDoc(repo)
+    const branch = variant && doc.variants?.[variant] ? typeBranch(variant, doc.variants[variant]) : null
+    // 1. 找到该提交在对应类型分支上的运行（新分支可能共享同一初始 SHA，必须同时按 branch 过滤）
+    const branchQuery = branch ? `&branch=${encodeURIComponent(branch)}` : ''
+    const runs = await ghApi(`/repos/${parsed.owner}/${parsed.repo}/actions/runs?head_sha=${fullSha}${branchQuery}&per_page=1`, settings.token)
     const run = runs.workflow_runs?.[0]
     if (!run) {
       return res.json({ ok: false, error: '该提交没有对应的 CI 运行（可能 GitHub 编译未开启）', sha })
@@ -668,21 +841,25 @@ router.get('/github/history/pdf', async (req, res) => {
     const cacheDir = HISTORY_DIR(repo)
     fs.mkdirSync(cacheDir, { recursive: true })
     const short = sha.slice(0, 7)
-    const existing = fs.readdirSync(cacheDir).filter((f) => f.startsWith(`${short}-`))
+    const existing = fs.readdirSync(cacheDir).filter((f) => f.startsWith(`${short}-`) && (!variant || f === `${short}-${variant}.pdf`))
     if (existing.length > 0) {
-      return res.json({ ok: true, pdfs: existing, sha, runNumber: run.run_number, cached: true })
+      return res.json({ ok: true, pdfs: existing, sha, variant: variant || null, runNumber: run.run_number, cached: true })
     }
     const zipBuf = await ghDownload(`/repos/${parsed.owner}/${parsed.repo}/actions/artifacts/${art.id}/zip`, settings.token)
     const zip = new AdmZip(zipBuf)
     const pdfs = []
     for (const e of zip.getEntries()) {
       if (e.entryName.toLowerCase().endsWith('.pdf')) {
-        const fname = `${short}-${path.basename(e.entryName)}`
+        const base = path.basename(e.entryName)
+        const fname = `${short}-${base}`
         fs.writeFileSync(path.join(cacheDir, fname), e.getData())
-        pdfs.push(fname)
+        if (!variant || base === `${variant}.pdf`) pdfs.push(fname)
       }
     }
-    res.json({ ok: true, pdfs, sha, runNumber: run.run_number, cached: false })
+    if (variant && pdfs.length === 0) {
+      return res.json({ ok: false, error: `该运行没有 ${variant}.pdf 产物`, sha, variant, runNumber: run.run_number })
+    }
+    res.json({ ok: true, pdfs, sha, variant: variant || null, runNumber: run.run_number, cached: false })
   } catch (err) {
     sendError(res, err)
   }
@@ -778,45 +955,89 @@ router.get('/html/:name', (req, res) => {
   fs.createReadStream(p).pipe(res)
 })
 
-/* ---------- 简历定制（拖拽布局 → 实时渲染 HTML） ---------- */
-// 定制布局文档：{ sections: [{key, mode: 'all'|'ids'|'tags', ids?, tags?}], overrides? }
-// 映射为 variants.custom（html 引擎）→ compose → 构建 HTML
+/* ---------- 简历定制（内容 + 模板 → 在定制页构建预览） ---------- */
+// PDF 预览页保持只读；所有模板切换、组合与构建统一在这里完成。
 router.post('/custom/layout', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
-  const { sections = [], overrides, template = 'calm' } = req.body || {}
+  const { variant, sections = [], overrides, template } = req.body || {}
+  if (!TYPE_NAME_RE.test(String(variant || ''))) return res.json({ ok: false, error: '请选择有效的简历类型' })
   try {
+    const doc = compose.loadVariantsDoc(repo)
+    const current = doc.variants?.[variant]
+    if (!current) return res.json({ ok: false, error: `当前分支没有简历类型 ${variant} 的配置` })
+    const expectedBranch = typeBranch(variant, current)
+    const activeBranch = await gitSvc.currentBranchSafe(repo)
+    if (activeBranch !== expectedBranch) {
+      return res.json({ ok: false, error: `请先在「简历类型」页切换到 ${expectedBranch}，再定制该类型` })
+    }
+    const tpl = TEMPLATES.find((t) => t.id === template)
+    if (!tpl) return res.json({ ok: false, error: '请选择有效的简历模板' })
+    if (tpl.engine === 'latex' && getSettings().localPdfBuild === false) {
+      return res.json({ ok: false, error: '本地 PDF 编译已关闭，请在「设置」页开启后再生成 LaTeX 预览' })
+    }
+
+    const allowed = new Set(store.getCategories(repo).map((c) => c.key))
     const blocks = {}
     const order = []
     for (const s of sections) {
-      const allowed = new Set(store.getCategories(repo).map((c) => c.key))
       if (!allowed.has(s.key)) continue
       if (s.mode === 'all') blocks[s.key] = { include: 'all' }
       else if (s.mode === 'ids' && Array.isArray(s.ids) && s.ids.length) blocks[s.key] = { ids: [...new Set(s.ids)] }
-      else if (s.mode === 'tags' && Array.isArray(s.tags) && s.tags.length) blocks[s.key] = { tags: [...s.tags] }
+      else if (s.mode === 'tags' && Array.isArray(s.tags) && s.tags.length) blocks[s.key] = { tags: [...new Set(s.tags)] }
       else continue
       order.push(s.key)
     }
-    if (Object.keys(blocks).length === 0) {
-      return res.json({ ok: false, error: '布局为空，请先拖入内容' })
-    }
-    const doc = compose.loadVariantsDoc(repo)
-    doc.variants = doc.variants || {}
-    doc.variants.custom = {
-      label: '定制简历',
-      // html 引擎：显式合法字号（覆盖 defaults 的 pt 值，避免 html 引擎校验失败）
-      layout: { engine: 'html', template, typography: { fontSize: '16px' } },
+    if (Object.keys(blocks).length === 0) return res.json({ ok: false, error: '布局为空，请先拖入内容' })
+
+    doc.variants[variant] = {
+      ...current,
+      branch: expectedBranch,
+      layout: {
+        engine: tpl.engine,
+        template: tpl.id,
+        typography: { fontSize: tpl.engine === 'html' ? '16px' : '11pt' },
+      },
+      htmlLayout: undefined,
       sectionOrder: order,
       blocks,
-      overrides: overrides?.basics ? { basics: overrides.basics } : undefined,
+      overrides: overrides?.basics ? { ...(current.overrides || {}), basics: overrides.basics } : current.overrides,
     }
     compose.saveVariantsDoc(repo, doc)
-    compose.generateAll(repo, ['custom'])
-    const r = await builder.buildHtmlVariant(repo, 'custom')
+    compose.generateAll(repo, [variant])
+    const result = tpl.engine === 'html'
+      ? await builder.buildHtmlVariant(repo, variant)
+      : await builder.buildVariant(repo, variant)
+    const preview = result.ok
+      ? tpl.engine === 'html'
+        ? `/api/html/${encodeURIComponent(variant)}`
+        : `/api/pdf/${encodeURIComponent(variant)}.pdf`
+      : null
+    if (result.ok && tpl.engine === 'latex') {
+      try {
+        const head = (await gitSvc.getLog(repo, 1))[0] || null
+        recordBuild({
+          kind: 'local',
+          repoPath: repo,
+          variant,
+          branch: expectedBranch,
+          sha: head?.oid || null,
+          headMessage: head?.message || null,
+          timestamp: Math.floor(Date.now() / 1000),
+          status: 'success',
+          pdfs: [`${variant}.pdf`],
+          output: (result.output || '').slice(0, 500),
+        })
+      } catch {
+        /* 记录失败不影响预览 */
+      }
+    }
     res.json({
-      ok: r.ok,
-      htmlUrl: r.ok ? '/api/html/custom' : null,
-      output: (r.output || '').slice(-400),
+      ok: result.ok,
+      preview,
+      engine: tpl.engine,
+      template: tpl.id,
+      output: (result.output || '').slice(-500),
     })
   } catch (err) {
     sendError(res, err)

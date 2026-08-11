@@ -54,6 +54,41 @@ export async function currentBranchSafe(dir) {
   return git.currentBranch({ fs, dir }).catch(() => null)
 }
 
+export async function listBranches(dir) {
+  const [local, remote, current] = await Promise.all([
+    git.listBranches({ fs, dir }).catch(() => []),
+    git.listBranches({ fs, dir, remote: 'origin' }).catch(() => []),
+    currentBranchSafe(dir),
+  ])
+  return { local, remote, current }
+}
+
+export async function createBranch(dir, branch) {
+  const local = await git.listBranches({ fs, dir })
+  if (local.includes(branch)) return { created: false, branch }
+  await git.branch({ fs, dir, ref: branch, checkout: false })
+  return { created: true, branch }
+}
+
+export async function checkoutBranch(dir, branch) {
+  const matrix = await git.statusMatrix({ fs, dir })
+  const dirty = matrix.filter(([, head, workdir, stage]) => !(head === 1 && workdir === 1 && stage === 1))
+  if (dirty.length > 0) {
+    throw new Error(`工作区有 ${dirty.length} 个未提交改动，请先在「Git 同步看板」提交后再切换类型`)
+  }
+  await git.checkout({ fs, dir, ref: branch })
+  return branch
+}
+
+export async function deleteBranch(dir, branch) {
+  const current = await currentBranchSafe(dir)
+  if (current === branch) throw new Error('不能删除当前正在使用的类型分支，请先切换到其他类型')
+  const local = await git.listBranches({ fs, dir })
+  if (!local.includes(branch)) return { deleted: false, branch }
+  await git.deleteBranch({ fs, dir, ref: branch })
+  return { deleted: true, branch }
+}
+
 // 读取指定提交（sha）下某文件的文本内容（用于历史版本 YAML 快照）；支持短 sha
 export async function readFileAt(dir, sha, filepath) {
   const oid = await git.expandOid({ fs, dir, oid: sha }).catch(() => sha)
@@ -91,8 +126,8 @@ export async function getStatus(dir, settings) {
   return { ok: true, branch, remoteUrl, head, files, remotes: remotes.map((r) => r.url) }
 }
 
-export async function getLog(dir, depth = 20) {
-  const commits = await git.log({ fs, dir, depth })
+export async function getLog(dir, depth = 20, ref = 'HEAD') {
+  const commits = await git.log({ fs, dir, depth, ref })
   return commits.map((c) => ({
     oid: c.oid,
     short: c.oid.slice(0, 7),

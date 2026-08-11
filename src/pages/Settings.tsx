@@ -232,7 +232,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <div className={`rounded-lg border px-3 py-2 text-xs ${connectResult.generated ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-zinc-800 bg-zinc-950/50 text-zinc-400'}`}>
                 {connectResult.generated
-                  ? `✅ 已自动生成数据仓骨架：${connectResult.target}（含示例数据、简历方向配方、CI 工作流）${connectResult.inited ? '，并已初始化 git 仓库' : ''}`
+                  ? `✅ 已自动生成数据仓骨架：${connectResult.target}（含示例数据、简历类型配置、CI 工作流）${connectResult.inited ? '，并已初始化 git 仓库' : ''}`
                   : `✅ 已连接：${connectResult.target}${connectResult.status?.isRepo ? `（git 仓库，分支 ${connectResult.status.branch}）` : ''}`}
               </div>
               {/* 折叠的建仓推送指引 */}
@@ -261,7 +261,7 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
               <div>
                 <p className="text-sm font-medium text-zinc-200">本地编译 PDF <Badge tone="emerald">默认开启</Badge></p>
                 <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
-                  在「PDF 预览」页构建并预览简历。需要本机安装
+                  在「简历定制」页选择 LaTeX 模板并生成 PDF 预览。需要本机安装
                   <a className="mx-1 text-indigo-400 underline decoration-dotted hover:text-indigo-300" href="https://www.npmjs.com/package/yamlresume" target="_blank" rel="noreferrer">yamlresume</a>
                   （<code className="text-zinc-400">npm install -g yamlresume</code>）与 XeTeX/Tectonic 排版引擎。
                 </p>

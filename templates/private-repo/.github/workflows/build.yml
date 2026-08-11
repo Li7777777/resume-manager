@@ -2,7 +2,9 @@ name: Build Resume
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'resume/**'
   workflow_dispatch:
 
 jobs:
@@ -36,21 +38,47 @@ jobs:
         if: steps.switch.outputs.enabled == 'true'
         run: python3 scripts/compose.py
 
+      - name: Select resume files for this branch
+        id: targets
+        if: steps.switch.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" == resume/* ]]; then
+            TYPE="${GITHUB_REF_NAME#resume/}"
+            FILE="resumes/${TYPE}.yml"
+            if [ ! -f "$FILE" ]; then
+              echo "::error::分支 $GITHUB_REF_NAME 没有对应的 $FILE"
+              exit 1
+            fi
+            FILES="$FILE"
+          else
+            FILES=$(find resumes -maxdepth 1 -type f -name '*.yml' | sort)
+          fi
+          if [ -z "$FILES" ]; then
+            echo "::error::没有可构建的简历文件"
+            exit 1
+          fi
+          {
+            echo 'files<<EOF'
+            echo "$FILES"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build resumes
         id: build
         if: steps.switch.outputs.enabled == 'true'
         uses: yamlresume/action@v0.2.3
         with:
-          resumes: |
-            resumes/frontend.yml
-            resumes/management.yml
+          resumes: ${{ steps.targets.outputs.files }}
           verbose: true
           version: v0.14.1
 
-      - name: Upload PDF artifacts
+      - name: Upload resume artifacts
         if: steps.switch.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: resume-pdfs
-          path: ${{ steps.build.outputs.pdf-files }}
+          name: resume-artifacts
+          path: |
+            ${{ steps.build.outputs.pdf-files }}
+            ${{ steps.build.outputs.html-files }}
           if-no-files-found: error

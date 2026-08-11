@@ -1,155 +1,204 @@
-// 简历方向页：可视化编辑 variants.yml 配方（按标签动态组稿）
-import React, { useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, Eye } from 'lucide-react'
+// 简历类型页：每个类型对应一个 resume/* Git 分支
+import React, { useEffect, useState } from 'react'
+import { GitBranch, Plus, Pencil, Trash2, RefreshCw, CheckCircle2, CircleDotDashed } from 'lucide-react'
 import { api } from '../api'
-import type { Variant } from '../types'
 import { useToast } from '../toast'
-import { Card, Button, Modal, Field, Input, Textarea, Select, TagInput, Badge, Spinner, EmptyState, Switch } from '../components/ui'
+import { Badge, Button, Card, EmptyState, Field, Input, Modal, Spinner } from '../components/ui'
 
-const TEMPLATES = ['moderncv-banking', 'moderncv-casual', 'jake']
-const HTML_TEMPLATES = ['calm', 'vscode']
-const LANGUAGES = ['zh-hans', 'zh-hant-hk', 'zh-hant-tw', 'en', 'ja', 'de', 'fr', 'es', 'pt-br']
-const DEFAULT_BLOCKS: { key: string; label: string }[] = [
-  { key: 'basics', label: '基础信息' },
-  { key: 'education', label: '教育背景' },
-  { key: 'work', label: '工作经历' },
-  { key: 'projects', label: '项目经历' },
-  { key: 'skills', label: '专业技能' },
-  { key: 'certificates', label: '证书资质' },
-  { key: 'interests', label: '兴趣爱好' },
-]
-
-interface Doc {
-  defaults: Record<string, any>
-  variants: Record<string, Variant>
+interface ResumeType {
+  name: string
+  label: string
+  branch: string
+  configured: boolean
+  current: boolean
+  local: boolean
+  remote: boolean
 }
 
 export default function Variants() {
   const toast = useToast()
-  const [doc, setDoc] = useState<Doc | null>(null)
-  const [allTags, setAllTags] = useState<string[]>([])
-  const [editing, setEditing] = useState<Variant | null>(null)
-  const [isNew, setIsNew] = useState(false)
-  const [blocks, setBlocks] = useState<{ key: string; label: string }[]>(DEFAULT_BLOCKS)
+  const [types, setTypes] = useState<ResumeType[] | null>(null)
+  const [currentBranch, setCurrentBranch] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<ResumeType | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
 
-  const load = () =>
-    Promise.all([
-      api.get<{ variants: Variant[]; defaults: Record<string, any> }>('/api/variants'),
-      api.get<{ tagCount: Record<string, number> }>('/api/entries'),
-      api.get<{ categories: { key: string; label: string; visible: boolean }[] }>('/api/categories').catch(() => ({ categories: [] })),
-    ])
-      .then(([v, e, c]) => {
-        const variants: Record<string, Variant> = {}
-        v.variants.forEach((x) => {
-          variants[x.name] = x
-        })
-        setDoc({ defaults: v.defaults, variants })
-        setAllTags(Object.keys(e.tagCount).sort())
-        if (c.categories?.length) setBlocks(c.categories.filter((x) => x.visible !== false).map((x) => ({ key: x.key, label: x.label })))
-      })
-      .catch((err) => toast('error', err.message))
+  const load = async () => {
+    try {
+      const data = await api.get<{ types: ResumeType[]; currentBranch: string | null }>('/api/resume-types')
+      setTypes(data.types)
+      setCurrentBranch(data.currentBranch)
+    } catch (err: any) {
+      toast('error', err.message)
+      setTypes([])
+    }
+  }
 
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const saveDoc = async (next: Doc) => {
+  const ensureBranch = async (type: ResumeType) => {
+    setBusy(type.name)
     try {
-      await api.put('/api/variants', next)
-      setDoc(next)
-      toast('success', '配方已保存')
-    } catch (e: any) {
-      toast('error', e.message)
+      const result = await api.post<{ branch: string; created: boolean }>(
+        `/api/resume-types/${encodeURIComponent(type.name)}/ensure-branch`,
+        {},
+      )
+      toast('success', result.created ? `已创建分支 ${result.branch}` : `分支 ${result.branch} 已存在`)
+      await load()
+    } catch (err: any) {
+      toast('error', err.message)
+    } finally {
+      setBusy(null)
     }
   }
 
-  const remove = async (name: string) => {
-    if (!confirm(`确定删除方向「${name}」吗？`)) return
-    const next = { ...doc!, variants: { ...doc!.variants } }
-    delete next.variants[name]
-    await saveDoc(next)
+  const checkout = async (type: ResumeType) => {
+    setBusy(type.name)
+    try {
+      await api.post(`/api/resume-types/${encodeURIComponent(type.name)}/checkout`, {})
+      toast('success', `已切换到「${type.label}」`)
+      await load()
+    } catch (err: any) {
+      toast('error', err.message)
+    } finally {
+      setBusy(null)
+    }
   }
 
-  if (!doc) return <Spinner label="加载方向…" />
+  const remove = async (type: ResumeType) => {
+    if (!confirm(`确定删除简历类型「${type.label}」和本地分支 ${type.branch} 吗？\n远程分支不会自动删除。`)) return
+    setBusy(type.name)
+    try {
+      await api.del(`/api/resume-types/${encodeURIComponent(type.name)}`)
+      toast('success', `已删除简历类型「${type.label}」`)
+      await load()
+    } catch (err: any) {
+      toast('error', err.message)
+    } finally {
+      setBusy(null)
+    }
+  }
 
-  const variants = Object.values(doc.variants)
+  if (types === null) return <Spinner label="加载简历类型…" />
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-zinc-500">
-          每个方向 = 一套"筛选标签 + 模板 + 章节顺序"配方，从<code className="text-indigo-300">data/</code> 信息全集动态组稿，无需把一份简历拆成多个 YAML。
-        </p>
-        <Button
-          variant="primary"
-          onClick={() => {
-            setEditing({ name: '', label: '', blocks: { basics: { include: 'true' } }, sectionOrder: ['skills', 'work', 'projects', 'education'] })
-            setIsNew(true)
-          }}
-        >
-          <Plus size={15} /> 新增方向
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-zinc-300">一个简历类型对应一个独立 Git 分支。</p>
+          <p className="mt-1 text-xs text-zinc-600">
+            当前工作分支：<code className="text-indigo-300">{currentBranch || '—'}</code>。内容、模板与布局统一在「简历定制」中设置。
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="ghost" onClick={load} title="刷新类型状态">
+            <RefreshCw size={14} />
+          </Button>
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus size={15} /> 新增类型
+          </Button>
+        </div>
       </div>
 
-      {variants.length === 0 ? (
-        <EmptyState title="还没有简历方向" desc="新增一个方向，选择标签与模板，即可动态生成一份简历。" />
+      {types.length === 0 ? (
+        <EmptyState
+          icon={<GitBranch size={30} />}
+          title="还没有简历类型"
+          desc="新增类型后会创建并切换到对应的 resume/* 分支。"
+        />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {variants.map((v) => (
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+          {types.map((type) => (
             <Card
-              key={v.name}
-              title={<span className="font-mono">{v.name}</span>}
-              desc={v.label}
+              key={type.branch}
+              title={type.label}
+              desc={type.name}
               actions={
                 <>
-                  <Button size="sm" variant="ghost" onClick={() => { setEditing({ ...v }); setIsNew(false) }}>
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(type)} title="修改类型名称">
                     <Pencil size={13} />
                   </Button>
-                  <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={() => remove(v.name)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-400 hover:text-red-300"
+                    disabled={type.current || busy === type.name}
+                    onClick={() => remove(type)}
+                    title={type.current ? '当前类型不能删除' : '删除类型'}
+                  >
                     <Trash2 size={13} />
                   </Button>
                 </>
               }
             >
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                <Badge tone="zinc">{v.locale || doc.defaults.locale || 'zh-hans'}</Badge>
-                <Badge tone="zinc">{v.layout?.template || doc.defaults.layout?.template || '—'}</Badge>
-                {Object.entries(v.matched || {}).map(([block, n]) => (
-                  <Badge key={block} tone="sky">
-                    {blocks.find((b) => b.key === block)?.label || block}: {n} 条
-                  </Badge>
-                ))}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+                  <GitBranch size={14} className={type.current ? 'text-emerald-400' : 'text-zinc-500'} />
+                  <code className="min-w-0 flex-1 truncate text-xs text-zinc-300">{type.branch}</code>
+                  {type.current ? <Badge tone="emerald">当前</Badge> : <Badge tone="zinc">未切换</Badge>}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge tone={type.configured ? 'sky' : 'zinc'}>{type.configured ? '配置已载入' : '分支类型'}</Badge>
+                  <Badge tone={type.local ? 'indigo' : 'zinc'}>本地 {type.local ? '有' : '无'}</Badge>
+                  <Badge tone={type.remote ? 'emerald' : 'zinc'}>远程 {type.remote ? '有' : '无'}</Badge>
+                </div>
+                <div className="flex justify-end gap-2">
+                  {!type.local ? (
+                    <Button size="sm" variant="secondary" loading={busy === type.name} onClick={() => ensureBranch(type)}>
+                      <CircleDotDashed size={13} /> 创建分支
+                    </Button>
+                  ) : type.current ? (
+                    <Button size="sm" disabled>
+                      <CheckCircle2 size={13} /> 正在使用
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="secondary" loading={busy === type.name} onClick={() => checkout(type)}>
+                      <GitBranch size={13} /> 切换到此类型
+                    </Button>
+                  )}
+                </div>
               </div>
-              {v.sectionOrder && v.sectionOrder.length > 0 && (
-                <p className="mt-3 text-xs text-zinc-600">
-                  章节顺序：{v.sectionOrder.map((s) => blocks.find((b) => b.key === s)?.label || s).join(' → ')}
-                </p>
-              )}
             </Card>
           ))}
         </div>
       )}
 
-      {editing && (
-        <VariantModal
-          variant={editing}
-          isNew={isNew}
-          allTags={allTags}
-          defaults={doc.defaults}
-          blocks={blocks}
-          onClose={() => setEditing(null)}
-          onSave={async (name, v) => {
-            const next = { ...doc, variants: { ...doc.variants } }
-            if (isNew) {
-              if (!name.trim()) return toast('error', '方向名称不能为空')
-              if (next.variants[name]) return toast('error', `方向 ${name} 已存在`)
-            } else {
-              delete next.variants[editing.name]
+      {creating && (
+        <TypeModal
+          title="新增简历类型"
+          onClose={() => setCreating(false)}
+          onSave={async ({ name, label, branch }) => {
+            setBusy(name)
+            try {
+              await api.post('/api/resume-types', { name, label, branch })
+              toast('success', `已创建并切换到「${label}」`)
+              setCreating(false)
+              await load()
+            } catch (err: any) {
+              toast('error', err.message)
+            } finally {
+              setBusy(null)
             }
-            next.variants[name] = v
-            await saveDoc(next)
-            setEditing(null)
+          }}
+        />
+      )}
+
+      {editing && (
+        <RenameModal
+          type={editing}
+          onClose={() => setEditing(null)}
+          onSave={async (label) => {
+            try {
+              await api.put(`/api/resume-types/${encodeURIComponent(editing.name)}`, { label })
+              toast('success', '类型名称已更新')
+              setEditing(null)
+              await load()
+            } catch (err: any) {
+              toast('error', err.message)
+            }
           }}
         />
       )}
@@ -157,237 +206,55 @@ export default function Variants() {
   )
 }
 
-/* ---------- 方向编辑弹窗 ---------- */
-function VariantModal({
-  variant,
-  isNew,
-  allTags,
-  defaults,
-  blocks,
+function TypeModal({
+  title,
   onClose,
   onSave,
 }: {
-  variant: Variant
-  isNew: boolean
-  allTags: string[]
-  defaults: Record<string, any>
-  blocks: { key: string; label: string }[]
+  title: string
   onClose: () => void
-  onSave: (name: string, v: Variant) => void
+  onSave: (value: { name: string; label: string; branch: string }) => void
 }) {
-  const [name, setName] = useState(variant.name || '')
-  const [form, setForm] = useState<Variant>(() => ({
-    ...variant,
-    blocks: variant.blocks ? JSON.parse(JSON.stringify(variant.blocks)) : {},
-    overrides: variant.overrides ? JSON.parse(JSON.stringify(variant.overrides)) : {},
-    sectionOrder: variant.sectionOrder ? [...variant.sectionOrder] : [],
-  }))
-
-  const set = (patch: Partial<Variant>) => setForm((f) => ({ ...f, ...patch }))
-
-  const setBlock = (key: string, patch: Record<string, unknown>) => {
-    setForm((f) => ({
-      ...f,
-      blocks: { ...f.blocks, [key]: { ...(f.blocks?.[key] || {}), ...patch } },
-    }))
-  }
-
-  const blockMode = (key: string) => {
-    const b = form.blocks?.[key]
-    if (!b) return 'none'
-    if (b.include === 'all') return 'all'
-    if (b.ids?.length) return 'ids'
-    return 'tags'
-  }
-
-  const setBlockMode = (key: string, mode: string) => {
-    if (mode === 'none') {
-      const next = { ...form.blocks }
-      delete next[key]
-      setForm((f) => ({ ...f, blocks: next }))
-    } else if (mode === 'all') {
-      setBlock(key, { include: 'all' })
-      delete (form.blocks?.[key] as any)?.tags
-      delete (form.blocks?.[key] as any)?.ids
-    } else if (mode === 'tags') {
-      setBlock(key, { tags: [] })
-      delete (form.blocks?.[key] as any)?.include
-      delete (form.blocks?.[key] as any)?.ids
-    } else if (mode === 'ids') {
-      setBlock(key, { ids: [] })
-      delete (form.blocks?.[key] as any)?.include
-      delete (form.blocks?.[key] as any)?.tags
-    }
-  }
-
-  const moveOrder = (idx: number, dir: -1 | 1) => {
-    const order = [...(form.sectionOrder || [])]
-    const j = idx + dir
-    if (j < 0 || j >= order.length) return
-    ;[order[idx], order[j]] = [order[j], order[idx]]
-    set({ sectionOrder: order })
-  }
-
-  const summaryText =
-    Array.isArray(form.overrides?.basics?.summary) ? form.overrides!.basics!.summary!.join('\n') : form.overrides?.basics?.summary || ''
-
-  const matchedPreview = useMemo<{ block: string; cfg: any }[]>(() => {
-    if (!form.blocks) return []
-    return Object.entries(form.blocks)
-      .filter(([k]) => k !== 'basics')
-      .map(([k]) => ({ block: k, cfg: form.blocks![k] }))
-  }, [form.blocks])
+  const [name, setName] = useState('')
+  const [label, setLabel] = useState('')
+  const branch = `resume/${name || 'type'}`
 
   return (
-    <Modal open title={isNew ? '新增简历方向' : `编辑方向：${variant.name}`} onClose={onClose} wide>
-      <div className="space-y-5">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="方向标识" hint="文件名，如 frontend（字母数字）">
-            <Input value={name} onChange={(e) => setName(e.target.value)} disabled={!isNew} className="font-mono" />
-          </Field>
-          <Field label="展示名称" hint="如：前端工程师方向">
-            <Input value={form.label || ''} onChange={(e) => set({ label: e.target.value })} />
-          </Field>
-          <Field label="语言">
-            <Select value={form.locale || defaults.locale || 'zh-hans'} onChange={(e) => set({ locale: e.target.value })}>
-              {LANGUAGES.map((l) => (
-                <option key={l} value={l}>{l}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="LaTeX 模板">
-            <Select
-              value={form.layout?.template || defaults.layout?.template || 'moderncv-banking'}
-              onChange={(e) => set({ layout: { ...(form.layout || {}), template: e.target.value } })}
-            >
-              {TEMPLATES.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="同时生成 HTML" hint="开启后构建同时产出网页版简历（复用 PDF 预览页）">
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={!!form.htmlLayout}
-                onChange={(on) =>
-                  set(on ? { htmlLayout: { engine: 'html', template: 'calm' } } : { htmlLayout: undefined })
-                }
-              />
-              {form.htmlLayout && (
-                <Select
-                  value={form.htmlLayout.template || 'calm'}
-                  onChange={(e) => set({ htmlLayout: { ...form.htmlLayout, template: e.target.value } })}
-                  className="w-32"
-                >
-                  {HTML_TEMPLATES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </Select>
-              )}
-            </div>
-          </Field>
-        </div>
-
-        {/* 章节顺序 */}
-        <Field label="章节顺序" hint="排在前面的优先显示，未列出的按默认顺序排在后面">
-          <div className="flex flex-wrap gap-2">
-            {(form.sectionOrder || []).map((s, i) => (
-              <div key={s} className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-300">
-                {blocks.find((b) => b.key === s)?.label || s}
-                <button className="text-zinc-600 hover:text-zinc-300" onClick={() => moveOrder(i, -1)}><ArrowUp size={12} /></button>
-                <button className="text-zinc-600 hover:text-zinc-300" onClick={() => moveOrder(i, 1)}><ArrowDown size={12} /></button>
-              </div>
-            ))}
-          </div>
+    <Modal open title={title} onClose={onClose}>
+      <div className="space-y-4">
+        <Field label="类型名称" hint="例如：前端工程师、技术管理">
+          <Input value={label} onChange={(e) => setLabel(e.target.value)} autoFocus />
         </Field>
-
-        {/* 章节内容筛选 */}
-        <Field label="章节内容（按标签筛选信息全集）">
-          <div className="space-y-2">
-            {blocks.map((b) => {
-              const mode = blockMode(b.key)
-              return (
-                <div key={b.key} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="w-20 text-xs font-medium text-zinc-400">{b.label}</span>
-                    {['none', 'all', 'tags', 'ids'].map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setBlockMode(b.key, m)}
-                        className={`rounded-md px-2 py-1 text-[11px] transition ${
-                          mode === m ? 'bg-indigo-500/20 text-indigo-200' : 'text-zinc-500 hover:text-zinc-300'
-                        }`}
-                      >
-                        {m === 'none' ? '不包含' : m === 'all' ? '全部' : m === 'tags' ? '按标签' : '指定 ID'}
-                      </button>
-                    ))}
-                  </div>
-                  {mode === 'tags' && (
-                    <div className="mt-2 pl-20">
-                      <TagInput
-                        value={(form.blocks?.[b.key]?.tags as string[]) || []}
-                        onChange={(v) => setBlock(b.key, { tags: v })}
-                        suggestions={allTags}
-                        placeholder="+ 命中任一标签即入选"
-                      />
-                    </div>
-                  )}
-                  {mode === 'ids' && (
-                    <div className="mt-2 pl-20">
-                      <Input
-                        value={(form.blocks?.[b.key]?.ids as string[])?.join(', ') || ''}
-                        onChange={(e) =>
-                          setBlock(b.key, { ids: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })
-                        }
-                        placeholder="条目 id，逗号分隔"
-                        className="font-mono"
-                      />
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+        <Field label="类型标识" hint="用于文件名与分支名，仅限小写字母、数字、下划线和连字符">
+          <Input value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} className="font-mono" />
         </Field>
-
-        {/* 基础信息覆盖 */}
-        <Field label="基础信息覆盖（针对该方向）" hint="留空则使用 data/basics.yml">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              value={form.overrides?.basics?.headline || ''}
-              onChange={(e) => set({ overrides: { basics: { ...(form.overrides?.basics || {}), headline: e.target.value } } })}
-              placeholder="职位头衔，如：前端技术负责人"
-            />
-          </div>
-          <div className="mt-2">
-            <Textarea
-              value={summaryText}
-              onChange={(e) =>
-                set({
-                  overrides: {
-                    basics: {
-                      ...(form.overrides?.basics || {}),
-                      summary: e.target.value.split('\n').filter(Boolean),
-                    },
-                  },
-                })
-              }
-              placeholder="针对该方向的个人简介（每行一条）"
-              className="min-h-[70px]"
-            />
-          </div>
+        <Field label="Git 分支">
+          <div className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-indigo-300">{branch}</div>
         </Field>
-
-        {matchedPreview.length > 0 && (
-          <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-            <Eye size={12} />
-            保存后可在「PDF 预览」页构建；组合结果由服务端按相同规则自动计算。
-          </div>
-        )}
-
+        <p className="text-xs leading-relaxed text-zinc-600">创建类型需要工作区无未提交改动；创建后系统会直接切换到新分支。</p>
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>取消</Button>
-          <Button variant="primary" onClick={() => onSave(name, form)}>保存配方</Button>
+          <Button variant="primary" disabled={!name || !label.trim()} onClick={() => onSave({ name, label: label.trim(), branch })}>
+            <GitBranch size={14} /> 创建并切换
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function RenameModal({ type, onClose, onSave }: { type: ResumeType; onClose: () => void; onSave: (label: string) => void }) {
+  const [label, setLabel] = useState(type.label)
+  return (
+    <Modal open title="修改类型名称" onClose={onClose}>
+      <div className="space-y-4">
+        <Field label="类型名称">
+          <Input value={label} onChange={(e) => setLabel(e.target.value)} autoFocus />
+        </Field>
+        <p className="text-xs text-zinc-600">类型标识和分支名保持不变：<code>{type.branch}</code></p>
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" disabled={!label.trim()} onClick={() => onSave(label.trim())}>保存</Button>
         </div>
       </div>
     </Modal>

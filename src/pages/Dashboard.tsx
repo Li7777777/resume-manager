@@ -6,7 +6,6 @@ import {
   GitCommitHorizontal,
   CloudUpload,
   AlertTriangle,
-  CheckCircle2,
   FileText,
   FolderGit2,
 } from 'lucide-react'
@@ -46,7 +45,7 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
       <EmptyState
         icon={<FolderGit2 size={40} />}
         title="尚未配置私有数据仓"
-        desc="先在「设置」中填写私有数据仓的本地路径（例如 E:\\code\\my-resume-data），或到「模板初始化」一键生成数据仓骨架。"
+        desc="前往「设置」连接私有数据仓；目录不存在或为空时会自动生成骨架并初始化 Git。"
         action={
           <button
             className="rounded-lg bg-indigo-500 px-4 py-2 text-sm text-white hover:bg-indigo-400"
@@ -75,7 +74,7 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
 
   const stats = [
     { label: '信息条目', value: totalEntries, icon: <Database size={16} />, to: 'entries' },
-    { label: '简历方向', value: variants.length, icon: <GitBranch size={16} />, to: 'variants' },
+    { label: '简历类型', value: variants.length, icon: <GitBranch size={16} />, to: 'variants' },
     {
       label: '未同步修改',
       value: status.dirty ?? 0,
@@ -199,11 +198,11 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[
             { label: '编辑信息', desc: '管理全部个人信息与标签', icon: <Database size={18} />, to: 'entries' },
-            { label: '配置简历方向', desc: '按标签动态组稿多份简历', icon: <GitBranch size={18} />, to: 'variants' },
-            { label: '构建并预览 PDF', desc: '生成并在线查看各方向简历', icon: <FileText size={18} />, to: 'pdf' },
+            { label: '管理简历类型', desc: '每个类型对应一个 Git 分支', icon: <GitBranch size={18} />, to: 'variants' },
+            { label: '查看 PDF 时间线', desc: '按类型分支查看已有版本', icon: <FileText size={18} />, to: 'pdf' },
             { label: 'Git 同步', desc: '提交、推送、拉取与历史', icon: <CloudUpload size={18} />, to: 'git' },
             { label: '编辑 YAML', desc: '直接查看/修改数据文件', icon: <FileText size={18} />, to: 'yaml' },
-            { label: '模板初始化', desc: '为新人生成数据仓骨架', icon: <CheckCircle2 size={18} />, to: 'templates' },
+            { label: '连接数据仓', desc: '配置路径或生成新仓库骨架', icon: <FolderGit2 size={18} />, to: 'settings' },
           ].map((a) => (
             <button
               key={a.label}

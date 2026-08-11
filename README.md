@@ -14,12 +14,12 @@
 │  私有数据仓 (PRIVATE)    │  ◄──── │  本管理端 (PUBLIC, 本地运行)   │
 │                         │        │                              │
 │  data/work.yml          │ 读写   │  · 信息管理（标签分类/增删改） │
-│    - company: 某公司    │        │  · 简历方向（可视化配方）      │
+│    - company: 某公司    │        │  · 简历类型（每类一个 Git 分支）│
 │      tags: [frontend]   │        │  · YAML 编辑                  │
-│      achievements: [...]│        │  · PDF 预览（本地构建）       │
-│  scripts/variants.yml   │        │  · Git 同步看板（提交/推送）   │
-│  .github/workflows      │        └──────────────────────────────┘
-└─────────────────────────┘
+│      achievements: [...]│        │  · PDF 预览（按分支只读时间线）│
+│  scripts/variants.yml   │        │  · 简历定制（模板/构建/预览）  │
+│  .github/workflows      │        │  · Git 同步看板（提交/推送）   │
+└─────────────────────────┘        └──────────────────────────────┘
         │ git push（数据流向 GitHub 私有仓，不经过第三方）
         ▼
   GitHub Actions 自动组合 + 构建 PDF → Artifact（私有保存）
@@ -42,8 +42,7 @@ npm start            # 启动服务: http://127.0.0.1:8787
 
 ### 2. 准备私有数据仓（二选一）
 
-- **用内置模板生成**：打开管理端 →「模板初始化」→ 填目标目录 → 生成骨架 → 推送到新建的
-  GitHub **私有**仓库（页面提供可复制的命令）；
+- **管理端自动连接**：打开「设置」→「连接数据仓」，选择不存在或空目录时会自动生成骨架并执行 `git init`；
 - **手动准备**：参考 [`templates/private-repo/`](./templates/private-repo/) 或
   [数据格式规范](./docs/DATA-FORMAT.md)，从零创建 `data/` + `scripts/variants.yml`。
 
@@ -62,24 +61,22 @@ npm start            # 启动服务: http://127.0.0.1:8787
 | --- | --- |
 | 总览 | 数据统计、仓库同步状态、最近提交、标签云、快捷入口 |
 | 信息管理 | 分类管理（工作/教育/项目/技能/证书/兴趣/基础信息），标签筛选与搜索，可视化增删改，成就点逐条打标签 |
-| 简历方向 | 可视化编辑配方：按标签筛选各章节、模板、语言、章节顺序、基础信息覆盖；实时显示命中条目数 |
+| 简历类型 | 轻量管理多个简历类型；每个类型对应 `resume/<type>` Git 分支，支持创建、切换、改名和删除 |
 | YAML 编辑 | 内置 CodeMirror 语法高亮编辑全部数据文件，保存时校验 |
-| PDF 预览 | **本地构建与 GitHub 提交的统一时间轴（左）+ 对应版本 PDF（右，react-pdf 渲染、限宽居中）+ YAML 数据**——本地构建同样记录在时间轴 |
+| PDF 预览 | **按简历类型分支分类**查看本地预览记录与 GitHub 提交/CI 时间线、对应 PDF 和 YAML 数据快照；页面严格只读，不触发构建 |
 | Git 同步看板 | 分支/远程/领先落后/未同步文件可视化；提交、提交并推送、拉取；文件级 diff；提交历史时间线 |
-| 模板初始化 | 按数据格式一键生成私有数据仓骨架 + 建仓推送指引 |
-| 简历模板 | **官网模板管理**：载入 ModernCV Banking/Casual/Classic、Jake、Calm、VS Code 全部模板；选择方向后一键应用并实时切换预览（LaTeX→PDF / HTML→网页） |
-| 简历定制 | **拖拽式 HTML 简历定制**：左侧信息库（条目/整章节可拖拽）→ 中间布局画布（排序/删除/指定条目）→ 右侧实时渲染 HTML 简历（防抖自动重建） |
+| 简历定制 | 选择简历类型与全部官方模板（ModernCV/Jake/Calm/VS Code），拖拽内容与章节、设置头衔/简介，并在本页构建和预览 LaTeX PDF 或 HTML |
 | 设置 | 数据仓路径、**PDF 编译开关**、GitHub Token（**自动检测 + 教程引导**）、提交身份、隐私说明 |
 
 ## PDF 编译开关（设置页）
 
 | 开关 | 默认 | 控制内容 |
 | --- | --- | --- |
-| **本地编译 PDF** | 开启 ✅ | 「PDF 预览」页的本地构建。**需要安装 [yamlresume](https://www.npmjs.com/package/yamlresume)**（`npm install -g yamlresume`）及 XeTeX/Tectonic 排版引擎 |
+| **本地编译 PDF** | 开启 ✅ | 「简历定制」页保存模板与布局时生成 PDF 预览。**需要安装 [yamlresume](https://www.npmjs.com/package/yamlresume)**（`npm install -g yamlresume`）及 XeTeX/Tectonic 排版引擎 |
 | **GitHub 编译 PDF** | 关闭 ❌ | push 后是否触发私有数据仓的 GitHub Action 编译 PDF。开启后需点击「同步并推送」把开关写入私有仓 `resume-manager.config.json` 才会生效 |
 
 > 📌 **本地编译需要安装 yamlresume**：https://www.npmjs.com/package/yamlresume
-> （`npm install -g yamlresume`），未安装时 PDF 预览不可用，其余功能不受影响。
+> （`npm install -g yamlresume`）。未安装时无法在简历定制页生成 LaTeX PDF，其余功能不受影响。
 
 ## 隐私与安全
 

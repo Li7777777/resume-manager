@@ -118,10 +118,12 @@ summary:              # 字符串数组或字符串（markdown 列表）
   keywords: [技术写作]
 ```
 
-## 4. 简历方向配方（scripts/variants.yml）
+## 4. 简历类型配置（scripts/variants.yml）
+
+每个 `variants` 条目是一个简历类型，并映射到独立的 `resume/<type>` Git 分支。管理端在当前类型分支中维护内容选择和模板；PDF 预览按该分支读取独立时间线。
 
 ```yaml
-defaults:                 # 全局默认，可被方向覆盖
+defaults:                 # 全局默认，可被类型覆盖
   locale: zh-hans
   layout:
     engine: latex
@@ -130,8 +132,9 @@ defaults:                 # 全局默认，可被方向覆盖
       fontSize: 11pt
 
 variants:
-  frontend:               # 方向名 = 生成的 resumes/<name>.yml
+  frontend:               # 类型标识 = 生成的 resumes/<name>.yml
     label: 前端工程师方向   # 展示名
+    branch: resume/frontend # 一个类型对应一个 Git 分支
     locale: zh-hans       # 可选，覆盖 defaults
     sectionOrder: [skills, work, projects, education]  # 原生章节顺序，未列出的按默认排后
     overrides:            # 针对该方向覆盖 basics 字段
@@ -160,6 +163,8 @@ variants:
 
 ### 组合输出规则
 
+- `branch` 必须以 `resume/` 开头；未填写时按 `resume/<类型标识>` 推导；
+- 类型页只负责类型/分支 CRUD 与切换，`blocks/sectionOrder/layout/overrides` 由简历定制页可视化维护；
 - 剥除所有元数据键（`id/tags/notes/_*`、`achievements`）；
 - `work.company` → `name`；`achievements` → `summary`（markdown 列表字符串）；
 - `summary` 统一转字符串（数组 → `- 项` 列表）；

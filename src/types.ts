@@ -28,6 +28,7 @@ export interface Settings {
 export interface Variant {
   name: string
   label?: string
+  branch?: string
   locale?: string
   layout?: { engine?: string; template?: string; typography?: { fontSize?: string } }
   htmlLayout?: { engine?: string; template?: string; typography?: { fontSize?: string } }

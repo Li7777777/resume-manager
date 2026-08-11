@@ -15,9 +15,9 @@ data/                     信息全集（按主题分类，每条条目可打 ta
 ├── certificates.yml      证书资质
 └── interests.yml         兴趣爱好
 scripts/
-├── variants.yml          简历方向配方（选哪些信息、什么模板、章节顺序）
+├── variants.yml          简历类型配置（每个类型映射一个 resume/* 分支）
 └── compose.py            组合器（CI 用）
-resumes/                  生成的各方向简历（gitignore，不提交）
+resumes/                  生成的各类型简历（gitignore，不提交）
 resume-manager.config.json GitHub 编译 PDF 开关（默认关闭）
 ```
 
@@ -25,14 +25,15 @@ resume-manager.config.json GitHub 编译 PDF 开关（默认关闭）
 
 | 开关 | 默认 | 说明 |
 | --- | --- | --- |
-| **本地编译 PDF** | 开启 | 在 Resume Manager「PDF 预览」页构建，或本地 CLI 构建。**需要安装 [yamlresume](https://www.npmjs.com/package/yamlresume)**：`npm install -g yamlresume`（另需 XeTeX/Tectonic 排版引擎） |
+| **本地编译 PDF** | 开启 | 在 Resume Manager「简历定制」页选择 LaTeX 模板并生成预览，或使用本地 CLI。**需要安装 [yamlresume](https://www.npmjs.com/package/yamlresume)**：`npm install -g yamlresume`（另需 XeTeX/Tectonic 排版引擎） |
 | **GitHub 编译 PDF** | 关闭 | push 后由 GitHub Action 自动编译 PDF。在 Resume Manager 设置页打开并「同步并推送」后生效（写入本仓 `resume-manager.config.json`） |
 
 ## 工作流
 
-1. 修改 `data/` 下的信息（示例内容全部替换为真实信息）；
-2. 本地构建：`python scripts/compose.py && yamlresume build resumes/<方向>.yml`；
-3. 或在 Resume Manager 开启 GitHub 编译后 push 到 main，由 Action 自动组合并构建。
+1. 在 Resume Manager「简历类型」页为每个类型创建 `resume/<type>` 分支并切换；
+2. 在「简历定制」页选择内容与模板，生成 HTML/PDF 预览；
+3. 本地 CLI：`python scripts/compose.py && yamlresume build resumes/<类型>.yml`；
+4. 或开启 GitHub 编译后把各类型分支推送到远程；Action 会按分支名只构建对应类型，`main` 构建全部类型。
 
 ## 隐私
 

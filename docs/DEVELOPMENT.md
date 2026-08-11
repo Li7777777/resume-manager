@@ -7,7 +7,7 @@
 ```
 ┌── 前端 src/ (React 18 + Vite + Tailwind 4) ──┐
 │  pages/  Dashboard Entries Variants YamlPage │
-│          PdfPreview GitBoard Templates Settings│
+│          History GitBoard Customizer Settings │
 │  components/ ui.tsx YamlEditor.tsx            │
 │  api.ts types.ts toast.tsx                    │
 └──────────────┬────────────────────────────────┘
@@ -47,8 +47,9 @@
 
 ```
 信息管理页  ──POST /api/entries/:cat──►  data-store.js ──► data/<cat>.yml
-简历方向页  ──PUT /api/variants──────►  compose.js     ──► scripts/variants.yml
-PDF 预览页  ──POST /api/build────────►  compose.generateAll + builder.buildVariant ──► resumes/<v>.pdf
+简历类型页  ──/api/resume-types───────►  git-service.js  ──► resume/<type> 分支
+简历定制页  ──POST /api/custom/layout─►  compose + builder ──► HTML/PDF 预览
+PDF 预览页  ──GET /api/history?variant►  指定类型分支提交/CI/本地预览记录（只读）
 Git 看板    ──/api/git/*────────────►  git-service.js ──► 仓库 .git（isomorphic-git）
 ```
 
@@ -77,19 +78,24 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | PUT | `/api/entries/:cat/:id` | 更新（按 id） |
 | DELETE | `/api/entries/:cat/:id` | 删除 |
 
-### 方向 / YAML / 构建
+### 简历类型 / YAML / 构建
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/variants` | 方向列表（含每个方向的命中条目统计 `matched`）+ defaults |
-| PUT | `/api/variants` | 整体保存 variants 文档 `{defaults, variants}` |
+| GET | `/api/resume-types` | 类型列表；合并 `variants.yml` 与 `resume/*` 分支，返回本地/远程/当前状态 |
+| POST | `/api/resume-types` | 新建类型、创建 `resume/<name>` 分支并切换；要求工作区干净 |
+| PUT | `/api/resume-types/:name` | 修改类型展示名称，类型标识与分支名保持稳定 |
+| POST | `/api/resume-types/:name/ensure-branch` | 为旧类型初始化对应本地分支 |
+| POST | `/api/resume-types/:name/checkout` | 安全切换类型分支；有未提交改动时拒绝 |
+| DELETE | `/api/resume-types/:name` | 删除类型配置与本地分支（不自动删除远程分支，当前分支不可删除） |
+| GET | `/api/variants` | 兼容层：类型内容/模板配置与命中统计；每项含 `branch` |
+| PUT | `/api/variants` | 整体保存 variants 文档 `{defaults, variants}`（内部/兼容用途） |
 | GET | `/api/files` | 可编辑文件列表 |
 | GET | `/api/yaml?path=` | 读文件（路径必须位于数据仓内） |
 | PUT | `/api/yaml` | 写文件（先做 YAML 语法校验） |
-| POST | `/api/build` | `{variant}` → 组合 + 构建 → `{pdf: "/api/pdf/<v>.pdf"}`；**受 `localPdfBuild` 开关门控（服务端强制）** |
+| POST | `/api/build` | 兼容 API：`{variant}` → 组合 + 构建；前端 PDF 预览页不调用此端点 |
 | GET | `/api/pdf/history/:file` | 历史版本 PDF 预览（`resumes/history/` 缓存目录） |
-| GET | `/api/history` | **合并时间轴**：本地构建记录（`~/.resume-manager/builds.json`，kind=local）+ GitHub 提交与 CI 运行匹配（kind=github），按时间倒序 |
-| POST | `/api/build` | 本地构建成功自动写入本地构建历史（时间轴记录：variant/sha/headMessage/pdf） |
-| GET | `/api/github/history/pdf?sha=` | 下载指定提交 CI 构建的产物 PDF（缓存到 `resumes/history/`，二次请求命中缓存） |
+| GET | `/api/history?variant=<type>` | 仅返回该类型 `resume/*` 分支的本地 PDF 预览记录、提交与 CI 运行，按时间倒序 |
+| GET | `/api/github/history/pdf?sha=&variant=` | 下载指定提交中该类型的 PDF 产物（缓存到 `resumes/history/`） |
 | GET | `/api/git/file-at?sha=&path=` | 读取指定提交下的文件内容（仅限 `data/`、`scripts/`），历史版本 YAML 快照 |
 | POST | `/api/github/pdf-sync` | 从私有仓 GitHub Actions 最近成功运行拉取 `resume-pdfs` artifact，解压 PDF 写入 `resumes/` 供预览（GitHub 编译方式的预览链路） |
 
@@ -113,10 +119,10 @@ Git 看板    ──/api/git/*────────────►  git-servi
 ### 模板与定制
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/templates` | 官网模板元数据（LaTeX/HTML）+ 各方向当前模板映射 |
-| POST | `/api/template/apply` | `{variant, template, engine}` 应用模板到方向，重新 compose + 构建并返回预览 URL（实时切换） |
-| GET | `/api/html/:name` | 已生成的 HTML 简历预览（html 引擎产物，no-cache） |
-| POST | `/api/custom/layout` | `{sections:[{key,mode,ids,tags}], template, overrides}` 保存 variants.custom（html 引擎）+ compose + 构建 HTML，返回实时渲染 URL |
+| GET | `/api/templates` | 全部官网 LaTeX/HTML 模板元数据；由简历定制页使用 |
+| GET | `/api/html/:name` | 已生成的 HTML 简历预览（no-cache） |
+| POST | `/api/custom/layout` | `{variant, sections, template, overrides}`：仅允许当前类型分支，保存内容/模板后生成 HTML 或 PDF 预览；LaTeX 成功时写入该分支本地时间线 |
+| POST | `/api/template/apply` | 旧客户端兼容端点；当前 UI 不再使用，模板入口已合并至简历定制 |
 
 ### 模板
 | 方法 | 路径 | 说明 |
@@ -130,7 +136,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - **组件库** `components/ui.tsx`：Button/Card/Field/Input/Textarea/Select/Modal/TagChip/TagInput/Badge/Spinner/EmptyState/relativeTime。
 - **表单字段配置** `pages/Entries.tsx` 的 `FIELDS`：新增分类时在此登记字段（type: text/textarea/select/tags/summary/achievements），并同步 `server/lib/data-store.js` 的 `CATEGORIES`。
 - **编辑器** `components/YamlEditor.tsx`：CodeMirror 6 + lang-yaml + oneDark。
-- **PDF 渲染** `pages/PdfPreview.tsx`：pdfjs-dist v4，worker 通过 `?url` 导入。
+- **PDF 渲染** `pages/History.tsx` + `components/PdfViewer.tsx`：按类型分支读取时间线与已有 PDF；pdfjs worker 通过 `?url` 导入；本页禁止构建。
 - **Toast** `toast.tsx`：`useToast()` 返回 `(type, message) => void`。
 - **样式** `src/styles.css`：Tailwind 4 `@theme` 定义字体；全站深色主题（zinc + indigo 强调色）。
 
@@ -146,10 +152,12 @@ Git 看板    ──/api/git/*────────────►  git-servi
 
 1. 设置指向一个**测试副本**数据仓（勿在真实仓上做破坏性操作）；
 2. 信息管理：新增/编辑/删除条目、标签筛选、搜索；
-3. 简历方向：新增方向 → 保存 → PDF 页构建 → 预览；
-4. YAML 页：修改保存、非法 YAML 报错回滚；
-5. Git 看板：改文件 → 状态出现 → 提交 → 推送（测试用一次性临时私有仓）；
-6. 模板初始化：生成 → 目录结构核对 → `yamlresume validate` 通过。
+3. 简历类型：为旧类型创建分支 → 切换类型 → 有未提交改动时验证切换被拒绝；
+4. 简历定制：在当前类型中拖拽内容，分别选择 LaTeX/HTML 模板并生成预览；
+5. PDF 预览：切换类型后仅出现该 `resume/*` 分支时间线，页面不存在构建/同步按钮；
+6. YAML 页：修改保存、非法 YAML 报错回滚；
+7. Git 看板：改文件 → 状态出现 → 提交 → 推送（测试用一次性临时私有仓）；
+8. 设置连接空目录：生成骨架 → 目录结构核对 → `yamlresume validate` 通过。
 
 ## 8. 隐私红线（评审时检查）
 
@@ -161,7 +169,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 ## 9. PDF 编译开关实现要点
 
 - 设置键：`localPdfBuild`（默认 true）、`githubPdfBuild`（默认 false），存于 `~/.resume-manager/settings.json`；
-- 本地开关：`server/routes/api.js` 的 `POST /api/build` 做服务端门控（`getSettings().localPdfBuild === false` 时拒绝），前端 `PdfPreview.tsx` 同步禁用按钮并提示；
+- 本地开关：`server/routes/api.js` 的兼容端点 `POST /api/build` 仍做服务端门控；当前 UI 的 LaTeX 构建入口只在简历定制页，PDF 预览页严格只读；
 - GitHub 开关：通过私有仓根目录 `resume-manager.config.json`（`{"githubPdfBuild": bool}`）控制 CI。workflow 模板（`templates/private-repo/.github/workflows/build.yml`）第一步读取该文件，为 false 时跳过全部构建步骤（默认关闭，安全回退）；
 - 同步链路：设置页开关 → `POST /api/repo/pdf-config {commit:true, push:true}` → `git-service.commitFile`（仅提交该文件）→ push；未配 Token 时落本地并提示去 Git 看板推送；
 - 代理支持：`server/lib/git-service.js` 读取 `HTTP(S)_PROXY` 环境变量，用 `https-proxy-agent` 包装 http 客户端注入每次请求（isomorphic-git 的 push 不透传 agent 参数，必须包装）；无代理变量时不影响；

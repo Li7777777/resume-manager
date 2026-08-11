@@ -1,75 +1,68 @@
-// 浏览器冒烟测试：驱动系统 Edge 验证 History 页（react-pdf 渲染）与 PdfPreview 页
+// 浏览器冒烟测试：简历类型分支、PDF 只读时间线、定制页模板合并
 import puppeteer from 'puppeteer-core'
 
-const EDGE =
-  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
+const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 const BASE = 'http://127.0.0.1:8787'
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
-async function checkPdfRender(page, label) {
-  // 等待 react-pdf 渲染出 canvas（真实等待，不依赖虚拟时间）
-  try {
-    await page.waitForSelector('canvas', { timeout: 60000 })
-    await sleep(1500)
-    // 验证 canvas 有实际像素（PDF 已绘制）
-    const info = await page.evaluate(() => {
-      const c = document.querySelector('canvas')
-      if (!c) return { ok: false, reason: 'no canvas' }
-      const ctx = c.getContext('2d')
-      const d = ctx.getImageData(0, 0, Math.min(c.width, 400), Math.min(c.height, 60)).data
-      let white = 0
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i] > 240 && d[i + 1] > 240 && d[i + 2] > 240) white++
-      }
-      return { ok: white > d.length / 4 / 4, whiteRatio: (white / (d.length / 4)).toFixed(2), canvas: `${c.width}x${c.height}` }
-    })
-    console.log(`[${label}] canvas:`, JSON.stringify(info))
-    await page.screenshot({ path: `C:/Users/Tech7/AppData/Local/Temp/rm-${label}.png` })
-    return info.ok
-  } catch (e) {
-    console.log(`[${label}] 渲染失败:`, String(e.message).slice(0, 120))
-    // 抓取页面上的错误提示
-    const body = await page.evaluate(() => document.body.innerText.slice(0, 400))
-    console.log('  页面文本:', body.replace(/\n+/g, ' | ').slice(0, 300))
-    return false
-  }
-}
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const browser = await puppeteer.launch({ executablePath: EDGE, headless: 'new' })
 const page = await browser.newPage()
-page.on('console', (m) => m.type() === 'error' && console.log('  [console.error]', m.text().slice(0, 150)))
-page.on('pageerror', (e) => console.log('  [pageerror]', String(e).slice(0, 150)))
-
-// 1. 合并预览页（#pdf：时间轴 + PDF）
-console.log('=== 合并预览页 ===')
-await page.goto(`${BASE}/#pdf`, { waitUntil: 'networkidle2', timeout: 60000 })
-await sleep(3000)
-const timeline = await page.evaluate(() => {
-  const el = document.querySelector('main')
-  return (el?.innerText || '').includes('版本时间轴') && (el?.innerText || '').includes('构建简历 PDF')
+const errors = []
+page.on('console', (message) => {
+  if (message.type() === 'error') errors.push(`[console] ${message.text()}`)
 })
-console.log('时间轴渲染:', timeline)
-const ok1 = await checkPdfRender(page, 'history')
+page.on('pageerror', (error) => errors.push(`[page] ${String(error)}`))
+await page.setViewport({ width: 1600, height: 950 })
 
-// 2. 本地构建流程（点击「本地构建」→ 时间轴新增 + 渲染）
-console.log('=== 本地构建流程 ===')
-const clicked = await page.evaluate(() => {
-  const btns = [...document.querySelectorAll('button')]
-  const b = btns.find((x) => x.innerText.includes('本地构建'))
-  if (b) { b.click(); return true }
-  return false
-})
-console.log('点击本地构建:', clicked)
-if (clicked) {
-  for (let i = 0; i < 30; i++) {
-    await sleep(3000)
-    const has = await page.evaluate(() => !!document.querySelector('canvas') || document.body.innerText.includes('已记录到时间轴'))
-    if (has) break
-  }
+async function visit(hash, screenshot) {
+  await page.goto(`${BASE}/#/${hash}`, { waitUntil: 'networkidle2', timeout: 60000 })
+  await sleep(1000)
+  await page.screenshot({ path: `C:/Users/Tech7/AppData/Local/Temp/${screenshot}` })
+  return page.evaluate(() => ({
+    text: document.body.innerText,
+    buttons: [...document.querySelectorAll('button')].map((button) => button.innerText.trim()).filter(Boolean),
+    options: [...document.querySelectorAll('option')].map((option) => option.textContent?.trim() || ''),
+  }))
 }
-const ok2 = await checkPdfRender(page, 'pdf')
 
+console.log('=== 简历类型分支 ===')
+const types = await visit('variants', 'rm-smoke-types.png')
+const typesOk =
+  types.text.includes('一个简历类型对应一个独立 Git 分支') &&
+  types.text.includes('resume/frontend') &&
+  types.text.includes('resume/management') &&
+  types.text.includes('resume/custom') &&
+  !types.text.includes('章节内容（按标签筛选信息全集）') &&
+  !types.text.includes('简历模板')
+console.log('类型页:', typesOk)
+
+console.log('=== PDF 只读时间线 ===')
+await visit('pdf', 'rm-smoke-pdf.png')
+await page.select('select', 'frontend')
+await sleep(1000)
+const pdf = await page.evaluate(() => ({
+  text: document.body.innerText,
+  actions: [...document.querySelectorAll('main button')].map((button) => button.innerText.trim()).filter(Boolean),
+}))
+const pdfOk =
+  pdf.text.includes('resume/frontend') &&
+  pdf.text.includes('此页面只查看已有 PDF') &&
+  !pdf.text.includes('构建简历 PDF') &&
+  !pdf.actions.some((label) => label.includes('本地构建') || label.includes('从 GitHub 同步'))
+console.log('PDF 页:', pdfOk)
+
+console.log('=== 简历定制模板 ===')
+const customizer = await visit('customizer', 'rm-smoke-customizer.png')
+const templateNames = ['ModernCV Banking', 'ModernCV Casual', 'ModernCV Classic', "Jake's Resume", 'Calm', 'VS Code']
+const customizerOk =
+  templateNames.every((name) => customizer.text.includes(name)) &&
+  customizer.buttons.some((label) => label.includes('保存并预览')) &&
+  customizer.text.includes('模板预览')
+console.log('定制页:', customizerOk)
+
+if (errors.length) console.log('浏览器错误:', errors.slice(0, 5))
 await browser.close()
-console.log(ok1 && ok2 ? 'ALL_RENDER_OK' : 'RENDER_ISSUE')
-process.exit(ok1 && ok2 ? 0 : 1)
+
+const ok = typesOk && pdfOk && customizerOk && errors.length === 0
+console.log(ok ? 'ALL_RENDER_OK' : 'RENDER_ISSUE')
+process.exit(ok ? 0 : 1)

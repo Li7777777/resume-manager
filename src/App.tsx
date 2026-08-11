@@ -8,7 +8,6 @@ import {
   FileText,
   GitPullRequestArrow,
   Settings,
-  ShieldCheck,
   FolderGit2,
   DraftingCompass,
 } from 'lucide-react'
@@ -21,18 +20,16 @@ import Variants from './pages/Variants'
 import YamlPage from './pages/YamlPage'
 import HistoryPage from './pages/History'
 import GitBoard from './pages/GitBoard'
-import TemplateManager from './pages/TemplateManager'
 import Customizer from './pages/Customizer'
 import SettingsPage from './pages/Settings'
 
 const NAV = [
   { key: 'dashboard', label: '总览', icon: <LayoutDashboard size={16} /> },
   { key: 'entries', label: '信息管理', icon: <Database size={16} /> },
-  { key: 'variants', label: '简历方向', icon: <GitBranch size={16} /> },
+  { key: 'variants', label: '简历类型', icon: <GitBranch size={16} /> },
   { key: 'yaml', label: 'YAML 编辑', icon: <FileCode2 size={16} /> },
   { key: 'pdf', label: 'PDF 预览', icon: <FileText size={16} /> },
   { key: 'git', label: 'Git 同步看板', icon: <GitPullRequestArrow size={16} /> },
-  { key: 'tmpl-manage', label: '简历模板', icon: <ShieldCheck size={16} /> },
   { key: 'customizer', label: '简历定制', icon: <DraftingCompass size={16} /> },
   { key: 'settings', label: '设置', icon: <Settings size={16} /> },
 ]
@@ -40,12 +37,11 @@ const NAV = [
 const TITLES: Record<string, [string, string]> = {
   dashboard: ['总览', '数据仓状态与快捷操作'],
   entries: ['信息管理', '按标签分类管理全部个人信息，随时查看删改'],
-  variants: ['简历方向', '可视化编辑配方，按标签动态组稿多份简历'],
+  variants: ['简历类型', '每个简历类型对应一个独立 Git 分支'],
   yaml: ['YAML 编辑', '直接查看与编辑数据文件（保存时校验语法）'],
-  pdf: ['PDF 预览', '本地构建与 GitHub 提交的统一时间轴 + 对应版本 PDF/YAML'],
+  pdf: ['PDF 预览', '按简历类型分支查看版本时间线、PDF 与数据快照'],
   git: ['Git 同步看板', '本地与 GitHub 私有仓的可视化同步'],
-  'tmpl-manage': ['简历模板', '官网模板载入与实时切换预览'],
-  customizer: ['简历定制', '拖拽信息到布局，实时渲染 HTML 简历'],
+  customizer: ['简历定制', '为当前类型设置内容、模板并生成 HTML/PDF 预览'],
   settings: ['设置', '数据仓路径、GitHub 凭据与提交身份'],
 }
 
@@ -151,7 +147,6 @@ function Shell() {
           {page === 'yaml' && <YamlPage />}
           {page === 'pdf' && <HistoryPage />}
           {page === 'git' && <GitBoard />}
-          {page === 'tmpl-manage' && <TemplateManager go={go} />}
           {page === 'customizer' && <Customizer />}
           {page === 'settings' && <SettingsPage />}
         </div>

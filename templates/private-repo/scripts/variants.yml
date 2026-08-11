@@ -1,5 +1,5 @@
-# 简历方向配方：每种简历"选哪些信息、按什么标签过滤、用什么模板/章节顺序"
-# 新增方向：在 variants 下加一个条目；详情见 docs/DATA-FORMAT.md
+# 简历类型配置：每个类型对应一个 resume/* Git 分支；内容与模板在 Resume Manager「简历定制」中维护
+# 新增类型优先使用管理端，详情见 docs/DATA-FORMAT.md
 # blocks 规则：
 #   {include: all}          -> 全部条目
 #   {tags: [a, b]}          -> 只选命中任一标签的条目；成就点同规则过滤（无标签=通用保留）
@@ -17,6 +17,7 @@ defaults:
 variants:
   frontend:
     label: 前端工程师方向
+    branch: resume/frontend
     sectionOrder: [skills, work, projects, education]
     overrides:
       basics:
@@ -35,6 +36,7 @@ variants:
 
   management:
     label: 技术管理方向
+    branch: resume/management
     sectionOrder: [work, skills, projects, education]
     overrides:
       basics:
