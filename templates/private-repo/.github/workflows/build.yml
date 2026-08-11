@@ -14,21 +14,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # GitHub 编译 PDF 开关：由 resume-manager.config.json 控制（Resume Manager 设置页可配置）
+      # 管理开关存 GitHub Actions 仓库变量，不写入简历数据仓文件。
       - name: Check PDF build switch
         id: switch
+        env:
+          RESUME_MANAGER_PDF_BUILD: ${{ vars.RESUME_MANAGER_PDF_BUILD }}
         run: |
-          ENABLED="false"
-          if [ -f resume-manager.config.json ]; then
-            ENABLED=$(python3 -c "import json;print(str(json.load(open('resume-manager.config.json')).get('githubPdfBuild',False)).lower())" 2>/dev/null || echo "false")
-          fi
+          ENABLED="${RESUME_MANAGER_PDF_BUILD:-false}"
+          ENABLED=$(echo "$ENABLED" | tr '[:upper:]' '[:lower:]')
           echo "enabled=$ENABLED" >> "$GITHUB_OUTPUT"
           echo "GitHub PDF 编译开关: $ENABLED"
 
       - name: GitHub PDF 编译已关闭（默认）
         if: steps.switch.outputs.enabled != 'true'
         run: |
-          echo "::notice::GitHub PDF 编译已关闭，跳过构建。如需开启：在 Resume Manager 设置页打开「GitHub 编译 PDF」并同步到私有数据仓。"
+          echo "::notice::GitHub PDF 编译已关闭，跳过构建。如需开启：在 Resume Manager 设置页同步 Actions 仓库变量。"
 
       - name: Install PyYAML
         if: steps.switch.outputs.enabled == 'true'

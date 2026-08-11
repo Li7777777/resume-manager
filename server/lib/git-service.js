@@ -155,17 +155,6 @@ export async function commitAll(dir, message, settings) {
   return oid
 }
 
-// 提交单个文件（用于同步 resume-manager.config.json 等仓库级配置）
-export async function commitFile(dir, filepath, message, settings) {
-  const author = {
-    name: settings.gitUsername || 'resume-manager',
-    email: settings.gitEmail || 'resume-manager@localhost',
-  }
-  await git.add({ fs, dir, filepath })
-  const oid = await git.commit({ fs, dir, message, author, committer: author })
-  return oid
-}
-
 export async function fetchRemote(dir, settings, remote = 'origin') {
   await git.fetch({
     fs,

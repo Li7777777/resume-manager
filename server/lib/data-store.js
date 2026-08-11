@@ -1,10 +1,16 @@
-// 数据存储：读写私有数据仓 data/*.yml 的信息全集
-// 设计见 docs/DATA-FORMAT.md —— 每条条目可携带元数据（id/tags/notes/_*），
-// 这些元数据只用于筛选与分类，绝不进入最终简历。
+// 数据存储：读写私有数据仓 data/*.yml 的信息全集。
+// id/tags 参与组稿；notes 等管理状态位于 ~/.resume-manager/repos/，不会写入私有仓。
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import yaml from 'js-yaml'
+import {
+  deleteEntryNote,
+  getEntryNote,
+  getManagerState,
+  setEntryNote,
+  updateManagerState,
+} from './manager-state.js'
 
 export const DEFAULT_CATEGORIES = [
   'basics',
@@ -30,13 +36,7 @@ export const CATEGORIES = DEFAULT_CATEGORIES
 
 export const CATEGORY_LABELS = DEFAULT_CATEGORY_LABELS
 
-const CATEGORIES_FILE = 'categories.json'
 const KEY_RE = /^[a-z][a-z0-9_-]*$/
-
-// 分类定义（私有仓 categories.json）：[{key, label, visible}]
-function categoriesFile(repo) {
-  return path.join(repo, CATEGORIES_FILE)
-}
 
 // 扫描 data/*.yml 自动发现的分类 key（未配置时兜底）
 export function scanDataKeys(repo) {
@@ -52,21 +52,17 @@ export function scanDataKeys(repo) {
   }
 }
 
-// 读取私有仓分类配置（动态）：categories.json + data/*.yml 自动发现合并
-// 返回 [{key, label, visible}]（visible 默认 true）
+// 读取本机管理状态中的分类配置，并与 data/*.yml 自动发现结果合并。
+// 分类展示名/排序/显隐不写入私有数据仓。
 export function getCategories(repo) {
+  const configured = getManagerState(repo).categories
   const list = []
-  try {
-    const raw = JSON.parse(fs.readFileSync(categoriesFile(repo), 'utf8'))
-    if (Array.isArray(raw.categories)) {
-      for (const c of raw.categories) {
-        if (c && KEY_RE.test(c.key)) {
-          list.push({ key: c.key, label: (c.label || c.key), visible: c.visible !== false })
-        }
+  if (Array.isArray(configured)) {
+    for (const c of configured) {
+      if (c && KEY_RE.test(c.key)) {
+        list.push({ key: c.key, label: c.label || c.key, visible: c.visible !== false })
       }
     }
-  } catch {
-    /* 无配置文件：用默认分类 */
   }
   const keys = new Set(list.map((c) => c.key))
   // 未配置时用默认 7 类兜底
@@ -87,36 +83,23 @@ export function getCategories(repo) {
 }
 
 export function saveCategories(repo, categories) {
-  fs.mkdirSync(repo, { recursive: true })
-  fs.writeFileSync(
-    categoriesFile(repo),
-    JSON.stringify({ categories }, null, 2) + '\n',
-    'utf8',
-  )
+  updateManagerState(repo, (state) => {
+    state.categories = categories
+    return state
+  })
 }
 
-/* ---------- 标签库（tags.json，私有仓级；标签增删改） ---------- */
-function tagsFile(repo) {
-  return path.join(repo, 'tags.json')
-}
-
-// 读取标签库（预定义标签，用于新增标签入口与建议）
+/* ---------- 标签库（本机管理状态；不会写入私有仓） ---------- */
 export function libTags(repo) {
-  try {
-    const raw = JSON.parse(fs.readFileSync(tagsFile(repo), 'utf8'))
-    if (Array.isArray(raw.tags)) {
-      return raw.tags.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim())
-    }
-  } catch {
-    /* 无标签库 */
-  }
-  return []
+  return getManagerState(repo).tags
 }
 
 export function saveLibTags(repo, tags) {
-  fs.mkdirSync(repo, { recursive: true })
   const clean = [...new Set(tags.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim()))]
-  fs.writeFileSync(tagsFile(repo), JSON.stringify({ tags: clean }, null, 2) + '\n', 'utf8')
+  updateManagerState(repo, (state) => {
+    state.tags = clean
+    return state
+  })
   return clean
 }
 
@@ -167,7 +150,7 @@ export function deleteTag(repo, tag) {
   saveLibTags(repo, libTags(repo).filter((t) => t !== tag))
   return affected
 }
-// 元数据键：不进入最终简历
+// 组稿时剥除的键；notes 仅用于兼容迁移前数据。
 export const META_KEYS = new Set(['id', 'tags', 'notes'])
 
 export function dataFile(repoPath, category) {
@@ -196,13 +179,20 @@ export function readCategory(repoPath, category) {
   const file = dataFile(repoPath, category)
   if (!fs.existsSync(file)) return category === 'basics' ? {} : []
   const raw = yaml.load(fs.readFileSync(file, 'utf8')) || {}
-  if (category === 'basics') return raw
+  if (category === 'basics') {
+    const note = getEntryNote(repoPath, category, 'basics')
+    delete raw.notes
+    return note ? { ...raw, notes: note } : raw
+  }
   const list = Array.isArray(raw) ? raw : []
-  // 补齐 id 与 tags，保证后续操作稳定
+  // 补齐 id/tags 并从本机侧车恢复备注，保证后续操作稳定
   for (const e of list) {
     if (e && typeof e === 'object') {
       if (!e.id) e.id = genId()
       if (!Array.isArray(e.tags)) e.tags = []
+      const note = getEntryNote(repoPath, category, e.id)
+      if (note) e.notes = note
+      else delete e.notes
     }
   }
   return list
@@ -211,7 +201,16 @@ export function readCategory(repoPath, category) {
 export function writeCategory(repoPath, category, entries) {
   const file = dataFile(repoPath, category)
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, yaml.dump(entries, { noRefs: true, lineWidth: -1, sortKeys: false }), 'utf8')
+  const persisted = Array.isArray(entries)
+    ? entries.map((entry) => {
+        if (!entry || typeof entry !== 'object') return entry
+        const { notes, ...resumeData } = entry
+        return resumeData
+      })
+    : entries && typeof entries === 'object'
+      ? Object.fromEntries(Object.entries(entries).filter(([key]) => key !== 'notes'))
+      : entries
+  fs.writeFileSync(file, yaml.dump(persisted, { noRefs: true, lineWidth: -1, sortKeys: false }), 'utf8')
 }
 
 export function getEntry(repoPath, category, id) {
@@ -222,17 +221,30 @@ export function getEntry(repoPath, category, id) {
 
 export function upsertEntry(repoPath, category, entry) {
   if (category === 'basics') {
-    writeCategory(repoPath, category, entry)
-    return { ...entry, id: 'basics' }
+    const current = readCategory(repoPath, category)
+    const { notes, id: ignoredId, ...resumeData } = entry
+    const { notes: ignoredCurrentNotes, id: ignoredCurrentId, ...currentResumeData } = current
+    setEntryNote(repoPath, category, 'basics', notes)
+    if (JSON.stringify(currentResumeData) !== JSON.stringify(resumeData)) {
+      writeCategory(repoPath, category, resumeData)
+    }
+    return { ...resumeData, ...(notes ? { notes } : {}), id: 'basics' }
   }
   const list = readCategory(repoPath, category)
   const id = entry.id || genId()
   const idx = list.findIndex((e) => e.id === id)
-  const next = { ...entry, id }
-  if (idx >= 0) list[idx] = next
-  else list.push(next)
-  writeCategory(repoPath, category, list)
-  return next
+  const { notes, ...resumeData } = entry
+  const next = { ...resumeData, id }
+  setEntryNote(repoPath, category, id, notes)
+  if (idx >= 0) {
+    const { notes: ignoredCurrentNotes, ...currentResumeData } = list[idx]
+    list[idx] = next
+    if (JSON.stringify(currentResumeData) !== JSON.stringify(next)) writeCategory(repoPath, category, list)
+  } else {
+    list.push(next)
+    writeCategory(repoPath, category, list)
+  }
+  return { ...next, ...(notes ? { notes } : {}) }
 }
 
 export function deleteEntry(repoPath, category, id) {
@@ -240,6 +252,7 @@ export function deleteEntry(repoPath, category, id) {
   const idx = list.findIndex((e) => e.id === id)
   if (idx < 0) return false
   list.splice(idx, 1)
+  deleteEntryNote(repoPath, category, id)
   writeCategory(repoPath, category, list)
   return true
 }

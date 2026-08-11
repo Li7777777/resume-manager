@@ -161,14 +161,24 @@ export function listVariants(repo) {
       const n = selectEntries(readCategory(repo, block), cfg).length
       if (n > 0) counts[block] = n
     }
-    return { name, label: v.label || name, ...v, branch: v.branch || `resume/${name}`, matched: counts }
+    return { name, ...v, matched: counts }
   })
 }
 
 export function saveVariantsDoc(repo, doc) {
   const file = VARIANTS_FILE(repo)
+  const clean = structuredClone(doc || { defaults: {}, variants: {} })
+  clean.defaults = clean.defaults || {}
+  clean.variants = clean.variants || {}
+  for (const variant of Object.values(clean.variants)) {
+    if (!variant || typeof variant !== 'object') continue
+    delete variant.name
+    delete variant.label
+    delete variant.branch
+    delete variant.matched
+  }
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, yaml.dump(doc, { noRefs: true, lineWidth: -1, sortKeys: false }), 'utf8')
+  fs.writeFileSync(file, yaml.dump(clean, { noRefs: true, lineWidth: -1, sortKeys: false }), 'utf8')
 }
 
 export function generateAll(repo, only) {

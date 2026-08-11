@@ -13,7 +13,7 @@ const AGENT = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : undefined
 const API_BASE = 'https://api.github.com'
 const USER_AGENT = 'resume-manager'
 
-function request(url, { method = 'GET', headers = {}, accept } = {}) {
+function request(url, { method = 'GET', headers = {}, accept, body } = {}) {
   return new Promise((resolve, reject) => {
     const req = https.request(
       url,
@@ -48,6 +48,7 @@ function request(url, { method = 'GET', headers = {}, accept } = {}) {
       reject(new Error('GitHub API 请求超时'))
     })
     req.on('error', (e) => reject(new Error(`GitHub API 请求失败：${e.message}`)))
+    if (body != null) req.write(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body))
     req.end()
   })
 }
@@ -68,6 +69,7 @@ export async function ghApi(path, token, { method = 'GET', body } = {}) {
       Authorization: `Bearer ${token}`,
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
+    body: body == null ? undefined : JSON.stringify(body),
   })
   if (r.status >= 400) {
     let msg = `GitHub API ${r.status}`

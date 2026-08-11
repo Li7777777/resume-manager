@@ -1,6 +1,6 @@
 # 全部工作经历（示例数据）
 # 说明：
-# - id / tags / notes 是元数据，只用于筛选，不会进入简历
+# - id / tags 用于组稿筛选，不进入简历；个人备注由 Resume Manager 保存在本机
 # - achievements 的每条成就可打 tags；不带标签的成就视为"通用"，任何方向都保留
 - id: company-frontend
   company: 示例科技有限公司

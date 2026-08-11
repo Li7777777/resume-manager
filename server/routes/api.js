@@ -8,6 +8,7 @@ import * as store from '../lib/data-store.js'
 import * as compose from '../lib/compose.js'
 import * as builder from '../lib/builder.js'
 import * as gitSvc from '../lib/git-service.js'
+import * as managerState from '../lib/manager-state.js'
 import { detectGithubAuth, maskToken } from '../lib/github-auth.js'
 import { ghApi, ghDownload, parseRemoteUrl } from '../lib/github-api.js'
 import AdmZip from 'adm-zip'
@@ -88,7 +89,7 @@ router.get('/project/status', async (req, res) => {
 })
 
 /* ---------- 分类管理（自定义 tab：增/删/改名/排序） ---------- */
-// 分类定义存私有仓 categories.json；data/*.yml 自动发现兜底
+// 分类显示/排序存本机管理状态；只有新增/删除分类时才创建/删除 data/*.yml。
 router.get('/categories', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
@@ -138,7 +139,7 @@ router.put('/categories', (req, res) => {
 })
 
 /* ---------- 标签管理（增删改，作用于全部条目） ---------- */
-// 标签列表：标签库（tags.json）+ 全条目标签计数
+// 标签列表：本机标签库 + 私有仓条目标签计数
 router.get('/tags', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
@@ -262,7 +263,15 @@ router.get('/variants', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   try {
-    res.json({ ok: true, variants: compose.listVariants(repo), defaults: (yaml.load(fs.readFileSync(path.join(repo, 'scripts', 'variants.yml'), 'utf8')) || {}).defaults || {} })
+    const variants = compose.listVariants(repo).map((variant) => {
+      const meta = managerState.getResumeTypeMeta(repo, variant.name) || {}
+      return {
+        ...variant,
+        label: meta.label || variant.name,
+        branch: meta.branch || `resume/${variant.name}`,
+      }
+    })
+    res.json({ ok: true, variants, defaults: (yaml.load(fs.readFileSync(path.join(repo, 'scripts', 'variants.yml'), 'utf8')) || {}).defaults || {} })
   } catch (err) {
     sendError(res, err)
   }
@@ -272,7 +281,16 @@ router.put('/variants', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   try {
-    compose.saveVariantsDoc(repo, req.body || { defaults: {}, variants: {} })
+    const doc = req.body || { defaults: {}, variants: {} }
+    for (const [name, variant] of Object.entries(doc.variants || {})) {
+      if (variant?.label || variant?.branch) {
+        managerState.setResumeTypeMeta(repo, name, {
+          ...(variant.label ? { label: variant.label } : {}),
+          ...(variant.branch ? { branch: variant.branch } : {}),
+        })
+      }
+    }
+    compose.saveVariantsDoc(repo, doc)
     res.json({ ok: true })
   } catch (err) {
     sendError(res, err)
@@ -282,7 +300,8 @@ router.put('/variants', (req, res) => {
 /* ---------- 简历类型（每个类型对应一个 Git 分支） ---------- */
 const TYPE_NAME_RE = /^[a-z][a-z0-9_-]*$/
 const TYPE_BRANCH_RE = /^resume\/[a-z][a-z0-9._/-]*$/
-const typeBranch = (name, variant) => variant?.branch || `resume/${name}`
+const typeBranch = (repo, name) => managerState.getResumeTypeMeta(repo, name)?.branch || `resume/${name}`
+const typeLabel = (repo, name) => managerState.getResumeTypeMeta(repo, name)?.label || name
 
 router.get('/resume-types', async (req, res) => {
   const repo = getRepoPath()
@@ -291,11 +310,11 @@ router.get('/resume-types', async (req, res) => {
     const doc = compose.loadVariantsDoc(repo)
     const branches = await gitSvc.listBranches(repo)
     const byName = new Map()
-    for (const [name, variant] of Object.entries(doc.variants || {})) {
-      const branch = typeBranch(name, variant)
+    for (const [name] of Object.entries(doc.variants || {})) {
+      const branch = typeBranch(repo, name)
       byName.set(name, {
         name,
-        label: variant.label || name,
+        label: typeLabel(repo, name),
         branch,
         configured: true,
         current: branches.current === branch,
@@ -309,7 +328,7 @@ router.get('/resume-types', async (req, res) => {
       if (!name || byName.has(name)) continue
       byName.set(name, {
         name,
-        label: name,
+        label: typeLabel(repo, name),
         branch,
         configured: false,
         current: branches.current === branch,
@@ -341,8 +360,6 @@ router.post('/resume-types', async (req, res) => {
     await gitSvc.createBranch(repo, branch)
     await gitSvc.checkoutBranch(repo, branch)
     doc.variants[name] = {
-      label: label || name,
-      branch,
       blocks: {
         basics: { include: 'all' },
         work: { include: 'all' },
@@ -354,6 +371,7 @@ router.post('/resume-types', async (req, res) => {
       layout: { engine: 'latex', template: doc.defaults?.layout?.template || 'moderncv-banking' },
     }
     compose.saveVariantsDoc(repo, doc)
+    managerState.setResumeTypeMeta(repo, name, { label: label || name, branch })
     res.json({ ok: true, type: { name, label: label || name, branch, configured: true, current: true, local: true, remote: false } })
   } catch (err) {
     sendError(res, err)
@@ -369,10 +387,9 @@ router.put('/resume-types/:name', (req, res) => {
   try {
     const doc = compose.loadVariantsDoc(repo)
     if (!doc.variants?.[name]) return res.json({ ok: false, error: `简历类型 ${name} 不存在` })
-    doc.variants[name].label = label
-    doc.variants[name].branch = typeBranch(name, doc.variants[name])
-    compose.saveVariantsDoc(repo, doc)
-    res.json({ ok: true, name, label, branch: doc.variants[name].branch })
+    const branch = typeBranch(repo, name)
+    managerState.setResumeTypeMeta(repo, name, { label, branch })
+    res.json({ ok: true, name, label, branch })
   } catch (err) {
     sendError(res, err)
   }
@@ -386,7 +403,7 @@ router.post('/resume-types/:name/ensure-branch', async (req, res) => {
     const doc = compose.loadVariantsDoc(repo)
     const variant = doc.variants?.[name]
     if (!variant) return res.json({ ok: false, error: `简历类型 ${name} 不存在` })
-    const branch = typeBranch(name, variant)
+    const branch = typeBranch(repo, name)
     const result = await gitSvc.createBranch(repo, branch)
     res.json({ ok: true, name, branch, created: result.created })
   } catch (err) {
@@ -400,8 +417,7 @@ router.post('/resume-types/:name/checkout', async (req, res) => {
   const name = String(req.params.name || '')
   try {
     const doc = compose.loadVariantsDoc(repo)
-    const variant = doc.variants?.[name]
-    const branch = typeBranch(name, variant)
+    const branch = typeBranch(repo, name)
     const branches = await gitSvc.listBranches(repo)
     if (!branches.local.includes(branch)) return res.json({ ok: false, error: `类型分支 ${branch} 尚未创建` })
     await gitSvc.checkoutBranch(repo, branch)
@@ -419,10 +435,11 @@ router.delete('/resume-types/:name', async (req, res) => {
     const doc = compose.loadVariantsDoc(repo)
     const variant = doc.variants?.[name]
     if (!variant) return res.json({ ok: false, error: `简历类型 ${name} 不存在` })
-    const branch = typeBranch(name, variant)
+    const branch = typeBranch(repo, name)
     await gitSvc.deleteBranch(repo, branch)
     delete doc.variants[name]
     compose.saveVariantsDoc(repo, doc)
+    managerState.deleteResumeTypeMeta(repo, name)
     res.json({ ok: true, name, branch, note: '远程分支如已推送，请在 GitHub 上按需删除' })
   } catch (err) {
     sendError(res, err)
@@ -606,53 +623,60 @@ router.post('/git/push', async (req, res) => {
   }
 })
 
-/* ---------- GitHub 编译开关（私有数据仓配置同步） ---------- */
-const PDF_CONFIG_FILE = 'resume-manager.config.json'
+/* ---------- GitHub 编译开关（Actions 仓库变量；不修改私有仓文件） ---------- */
+const PDF_BUILD_VARIABLE = 'RESUME_MANAGER_PDF_BUILD'
 
-router.get('/repo/pdf-config', (req, res) => {
+async function githubRepoContext(repo, settings) {
+  const remoteUrl = await gitSvc.getRemoteUrl(repo)
+  const parsed = parseRemoteUrl(remoteUrl)
+  if (!parsed) throw new Error('无法从远程地址解析 GitHub 仓库')
+  if (!settings.token) throw new Error('未配置 GitHub Token，无法读写 Actions 仓库变量')
+  return parsed
+}
+
+router.get('/github/pdf-config', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
-  const cfgPath = path.join(repo, PDF_CONFIG_FILE)
-  let repoValue = null
-  if (fs.existsSync(cfgPath)) {
-    try {
-      repoValue = !!JSON.parse(fs.readFileSync(cfgPath, 'utf8')).githubPdfBuild
-    } catch {
-      repoValue = null
-    }
+  const settings = getSettings()
+  if (!settings.token) return res.json({ ok: true, available: false, present: false, remoteValue: null })
+  try {
+    const parsed = await githubRepoContext(repo, settings)
+    const result = await ghApi(`/repos/${parsed.owner}/${parsed.repo}/actions/variables?per_page=100`, settings.token)
+    const variable = (result.variables || []).find((item) => item.name === PDF_BUILD_VARIABLE)
+    res.json({
+      ok: true,
+      available: true,
+      present: !!variable,
+      remoteValue: variable ? String(variable.value).toLowerCase() === 'true' : false,
+      variable: PDF_BUILD_VARIABLE,
+    })
+  } catch (err) {
+    sendError(res, err)
   }
-  res.json({ ok: true, present: fs.existsSync(cfgPath), repoValue })
 })
 
-// 把当前设置写入私有数据仓 resume-manager.config.json（可选：提交/推送）
-router.post('/repo/pdf-config', async (req, res) => {
+router.post('/github/pdf-config', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
-  const { commit = false, push = false } = req.body || {}
   const settings = getSettings()
-  const value = !!settings.githubPdfBuild
-  const cfgPath = path.join(repo, PDF_CONFIG_FILE)
   try {
-    fs.writeFileSync(cfgPath, JSON.stringify({ githubPdfBuild: value }, null, 2) + '\n', 'utf8')
-    let committed = false
-    let pushed = false
-    if (commit) {
-      await gitSvc.commitFile(
-        repo,
-        PDF_CONFIG_FILE,
-        `chore: 设置 GitHub PDF 编译 = ${value ? '开启' : '关闭'}`,
-        settings,
-      )
-      committed = true
-      if (push) {
-        if (!settings.token) {
-          return res.json({ ok: false, error: '未配置 GitHub Token：已写入并提交本地，请到「Git 同步看板」推送', committed })
-        }
-        await gitSvc.pushRemote(repo, settings)
-        pushed = true
-      }
+    const parsed = await githubRepoContext(repo, settings)
+    const base = `/repos/${parsed.owner}/${parsed.repo}/actions/variables`
+    const result = await ghApi(`${base}?per_page=100`, settings.token)
+    const present = (result.variables || []).some((item) => item.name === PDF_BUILD_VARIABLE)
+    const value = String(!!settings.githubPdfBuild)
+    if (present) {
+      await ghApi(`${base}/${PDF_BUILD_VARIABLE}`, settings.token, {
+        method: 'PATCH',
+        body: { name: PDF_BUILD_VARIABLE, value },
+      })
+    } else {
+      await ghApi(base, settings.token, {
+        method: 'POST',
+        body: { name: PDF_BUILD_VARIABLE, value },
+      })
     }
-    res.json({ ok: true, committed, pushed, value, file: PDF_CONFIG_FILE })
+    res.json({ ok: true, present: true, remoteValue: value === 'true', variable: PDF_BUILD_VARIABLE })
   } catch (err) {
     sendError(res, err)
   }
@@ -745,7 +769,7 @@ router.get('/history', async (req, res) => {
     const cfg = doc.variants?.[variant]
     if (!cfg) return res.json({ ok: false, error: `简历类型 ${variant || '—'} 不存在` })
     // 分支由类型配置决定，前端不能注入任意 ref
-    const branch = typeBranch(variant, cfg)
+    const branch = typeBranch(repo, variant)
     const branches = await gitSvc.listBranches(repo)
     const ref = branches.local.includes(branch) ? branch : branches.remote.includes(branch) ? `origin/${branch}` : null
     const commits = ref ? await gitSvc.getLog(repo, limit, ref) : []
@@ -820,7 +844,7 @@ router.get('/github/history/pdf', async (req, res) => {
     // 短 sha 先展开为完整 oid（GitHub API head_sha 需要完整 40 位）
     const fullSha = await gitSvc.expandOid(repo, sha)
     const doc = compose.loadVariantsDoc(repo)
-    const branch = variant && doc.variants?.[variant] ? typeBranch(variant, doc.variants[variant]) : null
+    const branch = variant && doc.variants?.[variant] ? typeBranch(repo, variant) : null
     // 1. 找到该提交在对应类型分支上的运行（新分支可能共享同一初始 SHA，必须同时按 branch 过滤）
     const branchQuery = branch ? `&branch=${encodeURIComponent(branch)}` : ''
     const runs = await ghApi(`/repos/${parsed.owner}/${parsed.repo}/actions/runs?head_sha=${fullSha}${branchQuery}&per_page=1`, settings.token)
@@ -966,7 +990,7 @@ router.post('/custom/layout', async (req, res) => {
     const doc = compose.loadVariantsDoc(repo)
     const current = doc.variants?.[variant]
     if (!current) return res.json({ ok: false, error: `当前分支没有简历类型 ${variant} 的配置` })
-    const expectedBranch = typeBranch(variant, current)
+    const expectedBranch = typeBranch(repo, variant)
     const activeBranch = await gitSvc.currentBranchSafe(repo)
     if (activeBranch !== expectedBranch) {
       return res.json({ ok: false, error: `请先在「简历类型」页切换到 ${expectedBranch}，再定制该类型` })
@@ -992,7 +1016,6 @@ router.post('/custom/layout', async (req, res) => {
 
     doc.variants[variant] = {
       ...current,
-      branch: expectedBranch,
       layout: {
         engine: tpl.engine,
         template: tpl.id,

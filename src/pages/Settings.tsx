@@ -25,7 +25,7 @@ import { Card, Button, Field, Input, Switch, Badge, Spinner } from '../component
 export default function SettingsPage() {
   const toast = useToast()
   const [form, setForm] = useState<Settings>({})
-  const [repoCfg, setRepoCfg] = useState<{ present: boolean; repoValue: boolean | null } | null>(null)
+  const [githubCfg, setGithubCfg] = useState<{ available: boolean; present: boolean; remoteValue: boolean | null } | null>(null)
   const [detected, setDetected] = useState<{
     found: boolean
     source?: string | null
@@ -51,7 +51,7 @@ export default function SettingsPage() {
       .then((s) => setForm(s))
       .catch(() => {})
       .finally(() => setReady(true))
-    loadRepoCfg()
+    loadGithubCfg()
     runDetect()
   }, [])
 
@@ -89,11 +89,11 @@ export default function SettingsPage() {
     }
   }
 
-  const loadRepoCfg = () =>
+  const loadGithubCfg = () =>
     api
-      .get<{ present: boolean; repoValue: boolean | null }>('/api/repo/pdf-config')
-      .then(setRepoCfg)
-      .catch(() => setRepoCfg(null))
+      .get<{ available: boolean; present: boolean; remoteValue: boolean | null }>('/api/github/pdf-config')
+      .then(setGithubCfg)
+      .catch(() => setGithubCfg(null))
 
   const save = async () => {
     try {
@@ -106,7 +106,7 @@ export default function SettingsPage() {
       setForm(saved)
       toast('success', '设置已保存')
       setTestResult(null)
-      loadRepoCfg()
+      loadGithubCfg()
     } catch (e: any) {
       toast('error', e.message)
     }
@@ -128,8 +128,8 @@ export default function SettingsPage() {
     setForm((f) => ({ ...f, githubPdfBuild: v }))
     try {
       await patchSettings({ githubPdfBuild: v })
-      toast('success', `GitHub 编译 PDF 已${v ? '开启' : '关闭'}（需同步到私有仓后 CI 生效）`)
-      loadRepoCfg() // 热重载：刷新私有仓配置状态徽章
+      toast('success', `GitHub 编译 PDF 已${v ? '开启' : '关闭'}（需同步 Actions 变量后 CI 生效）`)
+      loadGithubCfg()
     } catch (e: any) {
       setForm((f) => ({ ...f, githubPdfBuild: !v }))
       toast('error', `保存失败：${e.message}`)
@@ -180,17 +180,14 @@ export default function SettingsPage() {
   }
 
 
-  // 把 GitHub 编译开关同步到私有数据仓（写入 resume-manager.config.json 并提交推送）
-  const syncGithubSwitch = async (withPush = true) => {
+  // 同步到 GitHub Actions 仓库变量；不创建、修改或提交私有仓文件。
+  const syncGithubSwitch = async () => {
     setSyncing(true)
     try {
-      const r = await api.post<{ ok?: boolean; committed: boolean; pushed: boolean; error?: string }>('/api/repo/pdf-config', {
-        commit: true,
-        push: withPush,
-      })
+      const r = await api.post<{ ok?: boolean; remoteValue: boolean; variable: string; error?: string }>('/api/github/pdf-config', {})
       if (r.ok === false) throw new Error(r.error || '同步失败')
-      toast('success', r.pushed ? '已写入私有仓并推送到 GitHub' : '已写入并提交本地（未推送）')
-      loadRepoCfg()
+      toast('success', `已同步 GitHub Actions 变量 ${r.variable}`)
+      loadGithubCfg()
     } catch (e: any) {
       toast('error', e.message)
     } finally {
@@ -200,7 +197,7 @@ export default function SettingsPage() {
 
   const localBuildOn = form.localPdfBuild !== false // 默认开启
   const githubBuildOn = form.githubPdfBuild === true // 默认关闭
-  const cfgNeedsSync = repoCfg && repoCfg.repoValue !== githubBuildOn
+  const cfgNeedsSync = githubCfg?.available && githubCfg.remoteValue !== githubBuildOn
 
   return (
     <div className="max-w-2xl space-y-5">
@@ -278,23 +275,25 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
               <div>
                 <p className="text-sm font-medium text-zinc-200">GitHub 编译 PDF <Badge tone="zinc">默认关闭</Badge></p>
                 <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
-                  开启后，push 到私有数据仓会触发 GitHub Action 自动编译 PDF（开关记录在
-                  <code className="mx-1 text-zinc-400">resume-manager.config.json</code>）。
+                  开启后，类型分支 push 会由 GitHub Action 自动编译；开关同步为 GitHub Actions 仓库变量，
+                  <strong className="text-zinc-300">不会修改私有仓文件或产生 Git diff</strong>。
                 </p>
-                {repoCfg && (
+                {githubCfg && (
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    <Badge tone={repoCfg.repoValue === githubBuildOn ? 'emerald' : 'amber'}>
-                      {repoCfg.repoValue === githubBuildOn ? (
-                        <span className="inline-flex items-center gap-1"><CheckCircle2 size={11} />私有仓已同步</span>
-                      ) : repoCfg.present ? (
-                        `私有仓当前：${repoCfg.repoValue ? '开启' : '关闭'}（未同步）`
+                    <Badge tone={githubCfg.available && githubCfg.remoteValue === githubBuildOn ? 'emerald' : 'amber'}>
+                      {githubCfg.available && githubCfg.remoteValue === githubBuildOn ? (
+                        <span className="inline-flex items-center gap-1"><CheckCircle2 size={11} />Actions 变量已同步</span>
+                      ) : !githubCfg.available ? (
+                        '配置 Token 后可同步 Actions 变量'
+                      ) : githubCfg.present ? (
+                        `Actions 当前：${githubCfg.remoteValue ? '开启' : '关闭'}（未同步）`
                       ) : (
-                        '私有仓缺少配置文件'
+                        'Actions 变量尚未创建'
                       )}
                     </Badge>
                     {cfgNeedsSync && (
-                      <Button size="sm" loading={syncing} onClick={() => syncGithubSwitch(true)}>
-                        <CloudUpload size={13} /> 同步并推送
+                      <Button size="sm" loading={syncing} onClick={syncGithubSwitch}>
+                        <CloudUpload size={13} /> 同步到 Actions
                       </Button>
                     )}
                   </div>
@@ -305,7 +304,7 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
           </div>
         </div>
         <p className="mt-3 rounded-lg bg-zinc-950/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-600">
-          开关<b className="text-zinc-400">切换即自动保存并即时生效</b>（无需点保存）；GitHub 编译开关还需「同步并推送」到私有数据仓才会让 CI 生效。
+          开关<b className="text-zinc-400">切换即保存到本机并即时生效</b>；GitHub 编译开关通过 Actions 仓库变量同步，不会改动简历数据仓。
         </p>
       </Card>
 
@@ -373,7 +372,7 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
                       （或<a className="mx-1 text-indigo-400 underline decoration-dotted hover:text-indigo-300" href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">经典 Token<ExternalLink size={10} /></a>）
                     </li>
                     <li>仓库访问 → 仅所选仓库 → 勾选你的简历私有仓</li>
-                    <li>权限 → 内容 → <span className="text-zinc-200">读写</span>（GitHub 编译开关另需工作流：读写；从 CI 同步 PDF 预览需操作：读写）</li>
+                    <li>权限：<span className="text-zinc-200">内容（读写）</span>；同步编译开关另需<span className="text-zinc-200">变量（读写）</span>；读取 CI 产物需<span className="text-zinc-200">操作（读）</span></li>
                     <li>生成令牌 → 复制 <code className="text-zinc-300">github_pat_</code> / <code className="text-zinc-300">ghp_</code> 开头的令牌，粘贴到上方输入框</li>
                   </ol>
                 </div>
@@ -403,8 +402,8 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
         <div className="flex items-start gap-2.5 text-sm text-zinc-400">
           <ShieldCheck size={16} className="mt-0.5 shrink-0 text-emerald-400" />
           <ul className="space-y-1.5 text-xs leading-relaxed">
-            <li>· 本管理端是公开项目，但<strong className="text-zinc-200">不包含任何你的数据</strong>；数据只在你的私有仓库里。</li>
-            <li>· Token 保存在 <code className="text-zinc-300">~/.resume-manager/settings.json</code>，服务仅监听 127.0.0.1。</li>
+            <li>· 私有仓只保存简历内容与组稿规则；分类显示、标签库、备注、类型展示信息等管理状态保存在 <code className="text-zinc-300">~/.resume-manager/repos/</code>。</li>
+            <li>· Token 与编译开关保存在 <code className="text-zinc-300">~/.resume-manager/settings.json</code>，服务仅监听 127.0.0.1。</li>
             <li>· 推送时数据只流向 GitHub 私有仓库，不经过任何第三方。</li>
           </ul>
         </div>

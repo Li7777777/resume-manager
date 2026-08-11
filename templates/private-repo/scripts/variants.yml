@@ -1,4 +1,4 @@
-# 简历类型配置：每个类型对应一个 resume/* Git 分支；内容与模板在 Resume Manager「简历定制」中维护
+# 简历组稿规则：只保存会影响输出的内容选择、模板与章节顺序；类型展示名/分支映射由 Resume Manager 保存在本机
 # 新增类型优先使用管理端，详情见 docs/DATA-FORMAT.md
 # blocks 规则：
 #   {include: all}          -> 全部条目
@@ -16,8 +16,6 @@ defaults:
 
 variants:
   frontend:
-    label: 前端工程师方向
-    branch: resume/frontend
     sectionOrder: [skills, work, projects, education]
     overrides:
       basics:
@@ -35,8 +33,6 @@ variants:
       interests: { include: all }
 
   management:
-    label: 技术管理方向
-    branch: resume/management
     sectionOrder: [work, skills, projects, education]
     overrides:
       basics:

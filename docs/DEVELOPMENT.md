@@ -28,8 +28,8 @@
     E:\code\my-resume-data\  (私有仓库本地副本)
 ```
 
-**关键设计**：管理端（公开仓库）是纯工具；所有用户数据在私有数据仓目录中。
-`server/config.js` 把 Token 等敏感配置写到 `~/.resume-manager/settings.json`，永不进项目。
+**关键设计**：管理端（公开仓库）是纯工具；私有仓只保存简历内容与组稿所需规则。
+`server/config.js` 把 Token/编译开关写到 `~/.resume-manager/settings.json`；`server/lib/manager-state.js` 按数据仓哈希把分类显示、标签库、备注、类型展示名/分支映射写到 `~/.resume-manager/repos/*.json`，二者都永不进入私有仓。
 
 ## 2. 运行方式
 
@@ -102,8 +102,8 @@ Git 看板    ──/api/git/*────────────►  git-servi
 ### GitHub 编译开关（私有数据仓配置同步）
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/repo/pdf-config` | 读取私有仓 `resume-manager.config.json` 的 `githubPdfBuild` 状态 |
-| POST | `/api/repo/pdf-config` | 把当前设置写入私有仓配置文件；`{commit, push}` 可选提交/推送（push 需 Token） |
+| GET | `/api/github/pdf-config` | 读取 GitHub Actions 仓库变量 `RESUME_MANAGER_PDF_BUILD`，不读取私有仓文件 |
+| POST | `/api/github/pdf-config` | 按本机 `githubPdfBuild` 设置创建/更新 Actions 仓库变量，不产生 Git diff（Token 需 Actions Variables 读写权限） |
 
 ### Git 看板
 | 方法 | 路径 | 说明 |
@@ -162,16 +162,16 @@ Git 看板    ──/api/git/*────────────►  git-servi
 ## 8. 隐私红线（评审时检查）
 
 - `server/` 不得输出任何用户数据到日志/响应之外的第三方；
-- Token 只写 `~/.resume-manager/settings.json`；
+- Token 与管理状态只写 `~/.resume-manager/`；
 - 服务仅绑定 `127.0.0.1`；
 - `templates/`、`docs/`、`src/` 不得包含真实个人信息（示例数据须明显标注）。
 
 ## 9. PDF 编译开关实现要点
 
-- 设置键：`localPdfBuild`（默认 true）、`githubPdfBuild`（默认 false），存于 `~/.resume-manager/settings.json`；
+- 设置键：`localPdfBuild`（默认 true）、`githubPdfBuild`（默认 false），只存于 `~/.resume-manager/settings.json`；
 - 本地开关：`server/routes/api.js` 的兼容端点 `POST /api/build` 仍做服务端门控；当前 UI 的 LaTeX 构建入口只在简历定制页，PDF 预览页严格只读；
-- GitHub 开关：通过私有仓根目录 `resume-manager.config.json`（`{"githubPdfBuild": bool}`）控制 CI。workflow 模板（`templates/private-repo/.github/workflows/build.yml`）第一步读取该文件，为 false 时跳过全部构建步骤（默认关闭，安全回退）；
-- 同步链路：设置页开关 → `POST /api/repo/pdf-config {commit:true, push:true}` → `git-service.commitFile`（仅提交该文件）→ push；未配 Token 时落本地并提示去 Git 看板推送；
+- GitHub 开关：workflow 读取 Actions 仓库变量 `RESUME_MANAGER_PDF_BUILD`；设置页通过 `/api/github/pdf-config` 调 GitHub REST API 同步变量，绝不创建/提交私有仓配置文件；
+- 管理状态隔离：分类显示/排序、标签库、条目备注、类型展示名/分支映射位于 `~/.resume-manager/repos/<repo-hash>.json`；新增/删除分类以及修改真实简历字段仍会改变 `data/*.yml`；
 - 代理支持：`server/lib/git-service.js` 读取 `HTTP(S)_PROXY` 环境变量，用 `https-proxy-agent` 包装 http 客户端注入每次请求（isomorphic-git 的 push 不透传 agent 参数，必须包装）；无代理变量时不影响；
 - 修改 workflow 门控逻辑时，须同步更新模板与既有私有仓（两份 workflow 保持一致）。
 

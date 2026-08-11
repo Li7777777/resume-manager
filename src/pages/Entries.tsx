@@ -484,7 +484,7 @@ function TagManagerModal({ open, onClose, onChanged }: { open: boolean; onClose:
   return (
     <Modal open={open} title="管理标签" onClose={onClose} wide>
       <p className="mb-3 text-xs leading-relaxed text-zinc-500">
-        标签用于给信息条目打方向标记（如 <code className="text-zinc-400">frontend</code>）；重命名/删除会同步作用于<b className="text-zinc-300">全部条目</b>。
+        标签库只保存在本机；新增标签不会改动私有仓。重命名或删除已被条目使用的标签会更新对应简历数据，因为标签直接参与组稿筛选。
       </p>
       <div className="flex gap-2">
         <Input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="新增标签名称（如：data）" className="flex-1 !py-1.5 text-xs" />
@@ -569,8 +569,7 @@ function CategoryManagerModal({
   return (
     <Modal open={open} title="管理分类" onClose={onClose} wide>
       <p className="mb-3 text-xs leading-relaxed text-zinc-500">
-        分类对应私有数据仓的 <code className="text-zinc-400">data/*.yml</code> 与 <code className="text-zinc-400">categories.json</code>；
-        新增分类会自动创建数据文件，删除分类会同时删除其数据。
+        分类名称、排序和显隐只保存在本机；新增分类会在私有仓创建对应的 <code className="text-zinc-400">data/*.yml</code>，删除分类会同时删除其简历数据。
       </p>
       <div className="space-y-1.5">
         {list.map((c, i) => (

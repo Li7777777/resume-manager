@@ -9,7 +9,7 @@
 
 原则：
 - data/ 是唯一真相源，本脚本只读 data/，生成的 resumes/*.yml 不应手改
-- 元数据键（id / tags / notes / 以 _ 开头）只用于筛选，绝不进入最终简历
+- 组稿键（id / tags / 以 _ 开头）不进入最终简历；notes 仅作旧数据兼容并剥除
 - achievements 每条成就可打 tags；无标签成就视为通用，任何方向都保留
 """
 import os

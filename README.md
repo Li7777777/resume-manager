@@ -73,15 +73,15 @@ npm start            # 启动服务: http://127.0.0.1:8787
 | 开关 | 默认 | 控制内容 |
 | --- | --- | --- |
 | **本地编译 PDF** | 开启 ✅ | 「简历定制」页保存模板与布局时生成 PDF 预览。**需要安装 [yamlresume](https://www.npmjs.com/package/yamlresume)**（`npm install -g yamlresume`）及 XeTeX/Tectonic 排版引擎 |
-| **GitHub 编译 PDF** | 关闭 ❌ | push 后是否触发私有数据仓的 GitHub Action 编译 PDF。开启后需点击「同步并推送」把开关写入私有仓 `resume-manager.config.json` 才会生效 |
+| **GitHub 编译 PDF** | 关闭 ❌ | 是否触发私有仓 GitHub Action；状态保存在本机并同步为 `RESUME_MANAGER_PDF_BUILD` Actions 仓库变量，不修改私有仓文件 |
 
 > 📌 **本地编译需要安装 yamlresume**：https://www.npmjs.com/package/yamlresume
 > （`npm install -g yamlresume`）。未安装时无法在简历定制页生成 LaTeX PDF，其余功能不受影响。
 
 ## 隐私与安全
 
-- 服务只监听 `127.0.0.1`；Token 保存在 `~/.resume-manager/settings.json`（用户主目录，不进仓库）；
-- 所有数据读写都发生在你配置的私有数据仓目录内；
+- 服务只监听 `127.0.0.1`；Token 与分类显示、标签库、备注、类型展示信息等管理状态保存在 `~/.resume-manager/`（用户主目录，不进仓库）；
+- 私有仓只保留简历内容、组稿所需的 `id/tags`、组稿规则与 CI，不保存管理端设置字段；
 - `git push` 仅与 GitHub 私有仓库通信，不经过任何第三方服务；
 - 本公开仓库不含 `data/`、不含 Token、不含任何个人信息。
 
