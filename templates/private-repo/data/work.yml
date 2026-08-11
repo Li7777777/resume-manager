@@ -1,44 +1,11 @@
-# 全部工作经历（示例数据）
-# 说明：
-# - id / tags 用于组稿筛选，不进入简历；个人备注由 Resume Manager 保存在本机
-# - achievements 的每条成就可打 tags；不带标签的成就视为"通用"，任何方向都保留
-- id: company-frontend
-  company: 示例科技有限公司
-  position: 高级前端工程师
-  startDate: "2021-03"
-  endDate: null            # null = 至今
-  tags: [frontend, architecture, performance]
-  keywords: [React, TypeScript, Webpack]
+# 最小示例：保留一段经历，id/tags 只用于组稿筛选。
+- id: example-work
+  company: 示例科技
+  position: 软件工程师
+  startDate: "2023-01"
+  endDate: null
+  tags: [general]
+  keywords: [JavaScript, TypeScript]
   achievements:
-    - text: 负责核心业务前端架构设计，推动微前端改造落地
-      tags: [frontend, architecture]
-    - text: 主导性能优化专项，首屏加载时间降低 45%
-      tags: [frontend, performance]
-    - text: 建立前端代码规范与 CI/CD 流水线
-      tags: [frontend]
-- id: company-management
-  company: 示例网络科技有限公司
-  position: 前端技术负责人
-  startDate: "2018-07"
-  endDate: "2021-02"
-  tags: [management, frontend]
-  keywords: [团队管理, 技术规划, React]
-  achievements:
-    - text: 组建并带领 8 人前端团队，制定季度技术目标与 OKR
-      tags: [management]
-    - text: 主导跨团队协作，推进前端基础设施统一
-      tags: [management, architecture]
-    - text: 负责核心业务前端开发与交付，保障高并发场景稳定运行
-      tags: [frontend]
-- id: company-backend
-  company: 示例数据科技有限公司
-  position: 全栈开发工程师
-  startDate: "2016-06"
-  endDate: "2018-06"
-  tags: [backend, fullstack]
-  keywords: [Node.js, Python, MySQL]
-  achievements:
-    - text: 负责后端服务开发与接口设计，支撑日均百万请求稳定访问
-      tags: [backend]
-    - text: 搭建自动化测试框架，测试覆盖率提升至 80%
-      tags: [backend]
+    - text: 交付一个可持续维护的业务功能，并建立基础自动化测试。
+      tags: [general]

@@ -1,50 +1,17 @@
-# 简历组稿规则：只保存会影响输出的内容选择、模板与章节顺序；类型展示名/分支映射由 Resume Manager 保存在本机
-# 新增类型优先使用管理端，详情见 docs/DATA-FORMAT.md
-# blocks 规则：
-#   {include: all}          -> 全部条目
-#   {tags: [a, b]}          -> 只选命中任一标签的条目；成就点同规则过滤（无标签=通用保留）
-#   {ids: [id1, id2]}       -> 精确指定条目
-#   省略该块                  -> 不生成该章节
+# 最小示例配方：只保留一个通用简历方向。
+# 先编辑 data/basics.yml、data/work.yml、data/skills.yml，再在管理端调整筛选规则。
 
 defaults:
   locale: zh-hans
   layout:
-    engine: latex
-    template: moderncv-banking
-    typography:
-      fontSize: 11pt
+    engine: html
+    template: calm
 
 variants:
-  frontend:
-    sectionOrder: [skills, work, projects, education]
-    overrides:
-      basics:
-        headline: 高级前端工程师（React / TypeScript）
-        summary:
-          - 8 年前端开发经验，深耕 React 技术栈与前端工程化
-          - 主导过微前端改造与性能优化专项
+  general:
+    sectionOrder: [skills, work, education]
     blocks:
       basics: { include: true }
+      work: { tags: [general] }
+      skills: { tags: [general] }
       education: { include: all }
-      work: { tags: [frontend] }
-      projects: { tags: [frontend] }
-      skills: { tags: [frontend] }
-      certificates: { include: all }
-      interests: { include: all }
-
-  management:
-    sectionOrder: [work, skills, projects, education]
-    overrides:
-      basics:
-        headline: 前端技术负责人
-        summary:
-          - 8 年研发经验、3 年团队管理经验，曾带领 8 人前端团队
-          - 擅长技术规划、跨团队协作与人才梯队建设
-    blocks:
-      basics: { include: true }
-      education: { include: all }
-      work: { tags: [management] }
-      projects: { tags: [management] }
-      skills: { tags: [management] }
-      certificates: { include: all }
-      interests: { include: all }

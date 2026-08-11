@@ -42,17 +42,16 @@ console.log('=== 简历类型分支 ===')
 const types = await visit('variants', 'rm-smoke-types.png')
 const typesOk =
   types.text.includes('一个简历类型对应一个独立 Git 分支') &&
-  types.text.includes('resume/frontend') &&
-  types.text.includes('resume/management') &&
-  types.text.includes('resume/custom') &&
-  !types.text.includes('章节内容（按标签筛选信息全集）') &&
+  types.text.includes('resume/general') &&
+  !types.text.includes('resume/frontend') &&
+  !types.text.includes('resume/management') &&
   !types.text.includes('简历模板')
 console.log('类型页:', typesOk)
 
 console.log('=== PDF 只读时间线 ===')
 await visit('pdf', 'rm-smoke-pdf.png')
-await page.select('select', 'frontend')
-await page.waitForFunction(() => document.body.innerText.includes('resume/frontend'), { timeout: 20000 }).catch(() => {})
+await page.select('select', 'general')
+await page.waitForFunction(() => document.body.innerText.includes('resume/general'), { timeout: 20000 }).catch(() => {})
 const pdf = await page.evaluate(() => ({
   text: document.body.innerText,
   actions: [...document.querySelectorAll('main button')].map((button) => button.innerText.trim()).filter(Boolean),

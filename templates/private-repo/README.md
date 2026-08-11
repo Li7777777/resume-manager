@@ -1,41 +1,41 @@
-# 我的简历数据仓（私有）
+# 最小简历数据仓（私有）
 
-**本仓库是简历信息的唯一真相源（PRIVATE）**。数据格式规范见
-[resume-manager 数据格式文档](https://github.com/Li7777777/resume-manager/blob/main/docs/DATA-FORMAT.md)。
+这是 Resume Manager 的可运行示例仓。连接后先编辑以下三个文件即可看到第一份预览：
 
-## 结构
+- `data/basics.yml`：姓名、职位、邮箱和简介；
+- `data/work.yml`：一段工作经历；
+- `data/skills.yml`：一组技能。
 
-```
-data/                     信息全集（按主题分类，每条条目可打 tags 标签）
-├── basics.yml            基本信息
-├── work.yml              工作经历（成就点可逐条打标签）
-├── education.yml         教育背景
-├── projects.yml          项目经历
-├── skills.yml            专业技能
-├── certificates.yml      证书资质
-└── interests.yml         兴趣爱好
+`data/education.yml` 保留一条最小教育经历；`projects.yml`、`certificates.yml` 和 `interests.yml` 暂时为空，后续按需添加数组条目。所有条目都可以用 `id` 和 `tags` 参与不同简历方向的组稿。
+
+## 目录
+
+```text
+data/                     信息全集
+├── basics.yml             基本信息（单对象）
+├── work.yml               工作经历（数组）
+├── education.yml         教育背景（数组）
+├── projects.yml           项目经历（数组）
+├── skills.yml             专业技能（数组）
+├── certificates.yml       证书资质（数组）
+└── interests.yml          兴趣爱好（数组）
 scripts/
-├── variants.yml          组稿规则（内容选择、模板、章节顺序）
-└── compose.py            组合器（CI 用）
-resumes/                  生成的各类型简历（gitignore，不提交）
+├── variants.yml           简历方向配方
+└── compose.py             组合器（CI 使用）
+resumes/                  自动生成的简历文件（gitignore）
 ```
 
-分类显示、标签库、备注、类型展示名/分支映射与编译开关均由 Resume Manager 保存在本机，不属于本数据仓。
+## 首次使用
 
-## PDF 编译开关
+1. 在 Resume Manager「设置」中填写本仓库路径，点击「连接数据仓」；空目录会自动生成本骨架并初始化 Git。
+2. 在「简历类型」页为 `general` 创建并切换到 `resume/general` 分支。
+3. 在「简历定制」页选择 `general`，编辑可视化配置或 YAML 源码，保存后查看 HTML 预览。
+4. 修改 `data/` 或 `scripts/variants.yml` 后，在 Git 同步看板提交并推送。
 
-| 开关 | 默认 | 说明 |
-| --- | --- | --- |
-| **本地编译 PDF** | 开启 | 在 Resume Manager「简历定制」页选择 LaTeX 模板并生成预览，或使用本地 CLI。**需要安装 [yamlresume](https://www.npmjs.com/package/yamlresume)**：`npm install -g yamlresume`（另需 XeTeX/Tectonic 排版引擎） |
-| **GitHub 编译 PDF** | 关闭 | workflow 读取 GitHub Actions 仓库变量 `RESUME_MANAGER_PDF_BUILD`；在 Resume Manager 设置页同步变量，不修改本仓文件 |
-
-## 工作流
-
-1. 在 Resume Manager「简历类型」页为每个类型创建 `resume/<type>` 分支并切换；
-2. 在「简历定制」页选择内容与模板，生成 HTML/PDF 预览；
-3. 本地 CLI：`python scripts/compose.py && yamlresume build resumes/<类型>.yml`；
-4. 或开启 GitHub 编译后把各类型分支推送到远程；Action 会按分支名只构建对应类型，`main` 构建全部类型。
+默认示例使用 HTML `calm` 模板，不依赖本机 LaTeX。需要 PDF 时，可在「简历定制」中改用 LaTeX 模板，并安装 `yamlresume` 与 XeTeX/Tectonic。
 
 ## 隐私
 
-仓库保持 **Private**，只保存简历信息、组稿所需 `id/tags`、输出规则和 CI；不保存管理端设置、分类展示、标签库、备注或类型展示字段。构建只在 GitHub 托管 runner 上完成，不向任何第三方上传数据；未启用 Pages 则无公网入口。
+请将本仓库设为 Private。真实简历内容只存放在这个数据仓中；管理端的分类显示、标签库、备注、类型展示名和分支映射保存在本机，不会写入仓库。
+
+完整字段和组稿规则见 [Resume Manager 数据格式规范](https://github.com/Li7777777/resume-manager/blob/main/docs/DATA-FORMAT.md)。

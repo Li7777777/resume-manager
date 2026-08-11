@@ -1,17 +1,5 @@
-# 全部技能（示例数据）
-- name: 前端开发
-  level: Expert
-  tags: [frontend]
-  keywords: [React, TypeScript, Next.js, Webpack]
-- name: 工程化与架构
-  level: Advanced
-  tags: [frontend, architecture]
-  keywords: [Monorepo, 微前端, CI/CD]
-- name: 团队与项目管理
-  level: Advanced
-  tags: [management]
-  keywords: [OKR, 跨团队协作, 招聘与梯队建设]
-- name: 后端开发
+# 最小示例：保留一组技能，替换为你的核心能力。
+- name: 软件开发
   level: Intermediate
-  tags: [backend]
-  keywords: [Node.js, Python, MySQL]
+  tags: [general]
+  keywords: [JavaScript, TypeScript]
