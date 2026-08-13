@@ -58,6 +58,7 @@ interface TemplateItem {
 
 function entryTitle(cat: string, entry: Entry) {
   if (cat === 'work') return (entry.company as string) || (entry.name as string) || '未命名'
+  if (cat === 'education') return (entry.institution as string) || (entry.name as string) || '未命名'
   return (entry.name as string) || '未命名'
 }
 

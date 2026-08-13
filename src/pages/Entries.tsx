@@ -225,7 +225,11 @@ export default function Entries() {
   }
 
   const titleOf = (e: Entry) =>
-    category === 'work' ? (e.company as string) || (e.name as string) : (e.name as string) || '未命名'
+    category === 'work'
+      ? (e.company as string) || (e.name as string)
+      : category === 'education'
+        ? (e.institution as string) || (e.name as string)
+        : (e.name as string) || '未命名'
   const subOf = (e: Entry) => {
     if (category === 'work') return `${e.position || ''} · ${e.startDate || ''} ~ ${e.endDate || '至今'}`
     if (category === 'education') return `${DEGREE_LABELS[(e.degree as string) || ''] || (e.degree as string) || ''} ${e.area || ''} · ${e.startDate || ''}`
