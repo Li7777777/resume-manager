@@ -212,7 +212,7 @@ router.get('/entries', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   const { entries, tagCount } = store.allEntries(repo)
-  res.json({ ok: true, entries, tagCount, categories: store.getCategories(repo) })
+  res.json({ ok: true, entries, tagCount, library: store.libTags(repo), categories: store.getCategories(repo) })
 })
 
 router.get('/entries/:cat', (req, res) => {

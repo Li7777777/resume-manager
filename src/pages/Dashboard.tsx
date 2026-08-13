@@ -18,6 +18,7 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
   const [status, setStatus] = useState<ProjectStatus | null>(null)
   const [entries, setEntries] = useState<Record<string, Entry[]> | null>(null)
   const [tagCount, setTagCount] = useState<Record<string, number>>({})
+  const [library, setLibrary] = useState<string[]>([])
   const [variants, setVariants] = useState<Variant[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -25,7 +26,7 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
     Promise.all([
       api.get<ProjectStatus>('/api/project/status').catch(() => null),
       api
-        .get<{ entries: Record<string, Entry[]>; tagCount: Record<string, number> }>('/api/entries')
+        .get<{ entries: Record<string, Entry[]>; tagCount: Record<string, number>; library?: string[] }>('/api/entries')
         .catch(() => null),
       api.get<{ variants: Variant[] }>('/api/variants').catch(() => null),
     ]).then(([s, e, v]) => {
@@ -33,6 +34,7 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
       if (e) {
         setEntries(e.entries)
         setTagCount(e.tagCount)
+        if (Array.isArray(e.library)) setLibrary(e.library)
       }
       if (v) setVariants(v.variants)
       setLoading(false)
@@ -174,19 +176,22 @@ export default function Dashboard({ go }: { go: (page: string) => void }) {
 
         {/* 标签云 */}
         <Card title="标签分类" desc="点击标签可在信息管理中筛选">
-          {Object.keys(tagCount).length ? (
+          {Object.keys(tagCount).length || library.length ? (
             <div className="flex flex-wrap gap-1.5">
-              {Object.entries(tagCount)
-                .sort((a, b) => b[1] - a[1])
-                .map(([tag, n]) => (
-                  <button
-                    key={tag}
-                    onClick={() => go('entries')}
-                    className={`rounded-full border px-2.5 py-1 text-xs transition hover:opacity-80 ${tagColor(tag)}`}
-                  >
-                    {tag} · {n}
-                  </button>
-                ))}
+              {Array.from(new Set([...Object.keys(tagCount), ...library]))
+                .sort()
+                .map((tag) => {
+                  const n = tagCount[tag] || 0
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => go('entries')}
+                      className={`rounded-full border px-2.5 py-1 text-xs transition hover:opacity-80 ${tagColor(tag)}`}
+                    >
+                      {tag} · {n}
+                    </button>
+                  )
+                })}
             </div>
           ) : (
             <p className="py-6 text-center text-xs text-zinc-600">暂无标签，去信息管理给条目打上标签吧</p>

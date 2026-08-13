@@ -160,6 +160,7 @@ export default function Entries() {
   const [category, setCategory] = useState<string>('work')
   const [all, setAll] = useState<Record<string, any>>({})
   const [tagCount, setTagCount] = useState<Record<string, number>>({})
+  const [library, setLibrary] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [filterTag, setFilterTag] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -170,10 +171,11 @@ export default function Entries() {
 
   const load = () =>
     api
-      .get<{ entries: Record<string, Entry[]>; tagCount: Record<string, number>; categories: { key: string; label: string; visible: boolean }[] }>('/api/entries')
+      .get<{ entries: Record<string, Entry[]>; tagCount: Record<string, number>; categories: { key: string; label: string; visible: boolean }[]; library?: string[] }>('/api/entries')
       .then((d) => {
         setAll(d.entries)
         setTagCount(d.tagCount)
+        if (Array.isArray(d.library)) setLibrary(d.library)
         if (d.categories?.length) setCategories(d.categories)
         setLoading(false)
       })
@@ -185,7 +187,7 @@ export default function Entries() {
   }, [])
 
   const entries: Entry[] = (all[category] as Entry[]) || []
-  const allTags = useMemo(() => Object.keys(tagCount).sort(), [tagCount])
+  const allTags = useMemo(() => Array.from(new Set([...Object.keys(tagCount), ...library])).sort(), [tagCount, library])
 
   const filtered = useMemo(() => {
     let list = entries
@@ -304,7 +306,7 @@ export default function Entries() {
                   : 'border-zinc-800 text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              {t} · {tagCount[t]}
+              {t} · {tagCount[t] || 0}
             </button>
           ))}
           <button
