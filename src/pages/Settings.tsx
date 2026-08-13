@@ -402,7 +402,7 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
         <div className="flex items-start gap-2.5 text-sm text-zinc-400">
           <ShieldCheck size={16} className="mt-0.5 shrink-0 text-emerald-400" />
           <ul className="space-y-1.5 text-xs leading-relaxed">
-            <li>· 私有仓只保存简历内容与组稿规则；分类显示、标签库、备注、类型展示信息等管理状态保存在 <code className="text-zinc-300">~/.resume-manager/repos/</code>。</li>
+            <li>· 私有仓保存简历内容、组稿规则、标签库与分类显示配置（随 Git 版本化，打包即可分发）；备注、类型展示信息等管理状态保存在 <code className="text-zinc-300">~/.resume-manager/repos/</code>。</li>
             <li>· Token 与编译开关保存在 <code className="text-zinc-300">~/.resume-manager/settings.json</code>，服务仅监听 127.0.0.1。</li>
             <li>· 推送时数据只流向 GitHub 私有仓库，不经过任何第三方。</li>
           </ul>

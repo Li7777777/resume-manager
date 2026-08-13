@@ -28,8 +28,8 @@
     E:\code\my-resume-data\  (私有仓库本地副本)
 ```
 
-**关键设计**：管理端（公开仓库）是纯工具；私有仓只保存简历内容与组稿所需规则。
-`server/config.js` 把 Token/编译开关写到 `~/.resume-manager/settings.json`；`server/lib/manager-state.js` 按数据仓哈希把分类显示、标签库、备注、类型展示名/分支映射写到 `~/.resume-manager/repos/*.json`，二者都永不进入私有仓。
+**关键设计**：管理端（公开仓库）是纯工具；私有仓保存简历内容与组稿所需规则，并随仓版本化标签库（`tags.yml`）与分类显示配置（`categories.yml`），打包数据仓即可直接使用。
+`server/config.js` 把 Token/编译开关写到 `~/.resume-manager/settings.json`；`server/lib/manager-state.js` 按数据仓哈希把备注、类型展示名/分支映射写到 `~/.resume-manager/repos/*.json`，二者都永不进入私有仓。
 
 ## 2. 运行方式
 
@@ -168,7 +168,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 ## 8. 隐私红线（评审时检查）
 
 - `server/` 不得输出任何用户数据到日志/响应之外的第三方；
-- Token 与管理状态只写 `~/.resume-manager/`；
+- Token 与备注、类型展示名等管理状态只写 `~/.resume-manager/`；标签库与分类配置写入私有仓 `tags.yml`/`categories.yml`；
 - 服务仅绑定 `127.0.0.1`；
 - `templates/`、`docs/`、`src/` 不得包含真实个人信息（示例数据须明显标注）。
 
@@ -177,7 +177,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - 设置键：`localPdfBuild`（默认 true）、`githubPdfBuild`（默认 false），只存于 `~/.resume-manager/settings.json`；
 - 本地开关：`server/routes/api.js` 的兼容端点 `POST /api/build` 仍做服务端门控；当前 UI 的 LaTeX 构建入口只在简历定制页，PDF 预览页严格只读；
 - GitHub 开关：workflow 读取 Actions 仓库变量 `RESUME_MANAGER_PDF_BUILD`；设置页通过 `/api/github/pdf-config` 调 GitHub REST API 同步变量，绝不创建/提交私有仓配置文件；
-- 管理状态隔离：分类显示/排序、标签库、条目备注、类型展示名/分支映射位于 `~/.resume-manager/repos/<repo-hash>.json`；新增/删除分类以及修改真实简历字段仍会改变 `data/*.yml`；
+- 管理状态隔离：标签库与分类显示/排序/显隐随仓版本化（`tags.yml` / `categories.yml`，首次读取从侧车或旧 `tags.json`/`categories.json` 一次性迁移）；条目备注、类型展示名/分支映射仍位于 `~/.resume-manager/repos/<repo-hash>.json`；新增/删除分类以及修改真实简历字段仍会改变 `data/*.yml`；
 - 代理支持：`server/lib/git-service.js` 读取 `HTTP(S)_PROXY` 环境变量，用 `https-proxy-agent` 包装 http 客户端注入每次请求（isomorphic-git 的 push 不透传 agent 参数，必须包装）；无代理变量时不影响；
 - 修改 workflow 门控逻辑时，须同步更新模板与既有私有仓（两份 workflow 保持一致）。
 

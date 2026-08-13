@@ -89,7 +89,7 @@ router.get('/project/status', async (req, res) => {
 })
 
 /* ---------- 分类管理（自定义 tab：增/删/改名/排序） ---------- */
-// 分类显示/排序存本机管理状态；只有新增/删除分类时才创建/删除 data/*.yml。
+// 分类名/排序/显隐存私有仓 categories.yml（随 Git 版本化）；只有新增/删除分类时才创建/删除 data/*.yml。
 router.get('/categories', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
@@ -139,7 +139,7 @@ router.put('/categories', (req, res) => {
 })
 
 /* ---------- 标签管理（增删改，作用于全部条目） ---------- */
-// 标签列表：本机标签库 + 私有仓条目标签计数
+// 标签列表：私有仓 tags.yml 标签库 + 条目标签计数
 router.get('/tags', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })

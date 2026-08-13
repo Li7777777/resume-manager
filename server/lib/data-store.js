@@ -1,5 +1,6 @@
 // 数据存储：读写私有数据仓 data/*.yml 的信息全集。
-// id/tags 参与组稿；notes 等管理状态位于 ~/.resume-manager/repos/，不会写入私有仓。
+// id/tags 参与组稿；标签库与分类显示配置随仓版本化（tags.yml / categories.yml），
+// notes 等其余管理状态位于 ~/.resume-manager/repos/，不会写入私有仓。
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -38,6 +39,16 @@ export const CATEGORY_LABELS = DEFAULT_CATEGORY_LABELS
 
 const KEY_RE = /^[a-z][a-z0-9_-]*$/
 
+// 标签库与分类显示配置随私有仓版本化：打包数据仓交给他人即可直接使用。
+const TAGS_FILE = (repo) => path.join(repo, 'tags.yml')
+const CATEGORIES_FILE = (repo) => path.join(repo, 'categories.yml')
+const TAGS_HEADER =
+  '# 管理端标签库：随本仓库版本化，打包分发后直接可用。\n' +
+  '# 条目内的 tags 参与组稿；此处维护标签集合（增删/重命名会同步到条目）。\n'
+const CATEGORIES_HEADER =
+  '# 管理端分类显示配置：随本仓库版本化，打包分发后直接可用。\n' +
+  '# 分类名/排序/显隐保存于此；data/<key>.yml 存放分类内容。\n'
+
 // 扫描 data/*.yml 自动发现的分类 key（未配置时兜底）
 export function scanDataKeys(repo) {
   const dir = path.join(repo, 'data')
@@ -52,10 +63,34 @@ export function scanDataKeys(repo) {
   }
 }
 
-// 读取本机管理状态中的分类配置，并与 data/*.yml 自动发现结果合并。
-// 分类展示名/排序/显隐不写入私有数据仓。
+function readRepoCategories(repo) {
+  const file = CATEGORIES_FILE(repo)
+  if (!fs.existsSync(file)) return null
+  const doc = yaml.load(fs.readFileSync(file, 'utf8')) || {}
+  return Array.isArray(doc.categories) ? doc.categories : []
+}
+
+// 分类配置：私有仓 categories.yml 为唯一权威来源；
+// 首次读取时从本机侧车或旧根目录 categories.json 一次性迁移。
+function loadCategoriesConfig(repo) {
+  const fromFile = readRepoCategories(repo)
+  if (fromFile !== null) return fromFile
+  let configured = getManagerState(repo).categories
+  if (!Array.isArray(configured)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(path.join(repo, 'categories.json'), 'utf8'))
+      configured = Array.isArray(raw.categories) ? raw.categories : []
+    } catch {
+      configured = []
+    }
+  }
+  saveCategories(repo, configured)
+  return configured
+}
+
+// 读取私有仓 categories.yml 配置，并与 data/*.yml 自动发现结果合并。
 export function getCategories(repo) {
-  const configured = getManagerState(repo).categories
+  const configured = loadCategoriesConfig(repo)
   const list = []
   if (Array.isArray(configured)) {
     for (const c of configured) {
@@ -83,23 +118,49 @@ export function getCategories(repo) {
 }
 
 export function saveCategories(repo, categories) {
-  updateManagerState(repo, (state) => {
-    state.categories = categories
-    return state
-  })
+  const seen = new Set()
+  const clean = (Array.isArray(categories) ? categories : [])
+    .filter((c) => {
+      if (!c || typeof c.key !== 'string' || !KEY_RE.test(c.key) || seen.has(c.key)) return false
+      seen.add(c.key)
+      return true
+    })
+    .map((c) => ({ key: c.key, label: String(c.label || c.key).trim() || c.key, visible: c.visible !== false }))
+  fs.mkdirSync(path.dirname(CATEGORIES_FILE(repo)), { recursive: true })
+  fs.writeFileSync(CATEGORIES_FILE(repo), CATEGORIES_HEADER + yaml.dump({ categories: clean }, { noRefs: true, lineWidth: -1 }), 'utf8')
+  return clean
 }
 
-/* ---------- 标签库（本机管理状态；不会写入私有仓） ---------- */
+/* ---------- 标签库（私有仓 tags.yml；随 Git 版本化） ---------- */
+function readRepoTags(repo) {
+  const file = TAGS_FILE(repo)
+  if (!fs.existsSync(file)) return null
+  const doc = yaml.load(fs.readFileSync(file, 'utf8')) || {}
+  return Array.isArray(doc.tags) ? doc.tags : []
+}
+
+// 标签库：私有仓 tags.yml 为唯一权威来源；
+// 首次读取时从本机侧车或旧根目录 tags.json 一次性迁移。
 export function libTags(repo) {
-  return getManagerState(repo).tags
+  const fromFile = readRepoTags(repo)
+  if (fromFile !== null) return fromFile
+  let tags = getManagerState(repo).tags
+  if (!Array.isArray(tags)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(path.join(repo, 'tags.json'), 'utf8'))
+      tags = Array.isArray(raw.tags) ? raw.tags : []
+    } catch {
+      tags = []
+    }
+  }
+  saveLibTags(repo, tags)
+  return readRepoTags(repo)
 }
 
 export function saveLibTags(repo, tags) {
   const clean = [...new Set(tags.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim()))]
-  updateManagerState(repo, (state) => {
-    state.tags = clean
-    return state
-  })
+  fs.mkdirSync(path.dirname(TAGS_FILE(repo)), { recursive: true })
+  fs.writeFileSync(TAGS_FILE(repo), TAGS_HEADER + yaml.dump({ tags: clean }, { noRefs: true, lineWidth: -1 }), 'utf8')
   return clean
 }
 

@@ -1,4 +1,5 @@
 // 每个简历数据仓的管理端状态：只保存在 ~/.resume-manager/repos/，不写入数据仓。
+// 注：tags/categories 字段仅供首次迁移回退；权威来源是私有仓 tags.yml / categories.yml。
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'

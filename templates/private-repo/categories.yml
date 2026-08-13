@@ -1,0 +1,24 @@
+# 管理端分类显示配置：随本仓库版本化，打包分发后直接可用。
+# 分类名/排序/显隐保存于此；data/<key>.yml 存放分类内容。
+categories:
+  - key: basics
+    label: 基础信息
+    visible: true
+  - key: work
+    label: 工作经历
+    visible: true
+  - key: education
+    label: 教育背景
+    visible: true
+  - key: projects
+    label: 项目经历
+    visible: true
+  - key: skills
+    label: 专业技能
+    visible: true
+  - key: certificates
+    label: 证书资质
+    visible: true
+  - key: interests
+    label: 兴趣爱好
+    visible: true

@@ -24,7 +24,7 @@ npm run typecheck  # 前端 TS 检查
 | 路径 | 作用 |
 | --- | --- |
 | `server/routes/api.js` | 所有 REST 端点（见 docs/DEVELOPMENT.md §4） |
-| `server/lib/data-store.js` | data/*.yml 读写、元数据约定（id/tags/notes/_*） |
+| `server/lib/data-store.js` | data/*.yml 读写、tags.yml/categories.yml 随仓版本化的标签库与分类配置、元数据约定（id/tags/notes/_*） |
 | `server/lib/compose.js` | 组合引擎：配方 → 简历 YAML（与 templates/private-repo/scripts/compose.py 语义一致） |
 | `server/lib/builder.js` | 调用本地 yamlresume CLI 构建 PDF |
 | `server/lib/git-service.js` | isomorphic-git 封装（status/log/commit/push/pull/diff） |
@@ -43,11 +43,12 @@ npm run typecheck  # 前端 TS 检查
 4. **组合引擎双实现同步**：`server/lib/compose.js` 与 `templates/private-repo/scripts/compose.py`
    行为必须一致，改一个必须改另一个，并用 `yamlresume validate` 验证输出。
 5. **服务器只监听 127.0.0.1**（`server/index.js` 的 HOST 常量）。
-6. 修改后跑 `npm run typecheck` 和 `npm run build`，确认无错误。
+6. **标签库与分类配置随仓版本化**：`tags.yml` / `categories.yml` 是唯一权威来源，首次读取从侧车/旧 json 一次性迁移；备注、类型展示名/分支映射仍存本机侧车，不写入私有仓。
+7. 修改后跑 `npm run typecheck` 和 `npm run build`，确认无错误。
 
 ## 常见任务示例
 
-- **新增信息分类**（如 awards）：1) `server/lib/data-store.js` 的 `CATEGORIES` 加项；
+- **新增信息分类**（如 awards）：1) `templates/private-repo/categories.yml`（或 API 保存）加项；
   2) `src/pages/Entries.tsx` 的 `FIELDS` 加字段配置；3) 模板 `templates/private-repo/data/` 加文件；4) 更新 docs/DATA-FORMAT.md。
 - **新增 API**：`server/routes/api.js` 注册路由 → `src/api.ts` 已是通用 client，前端直接调。
 - **新增页面**：`src/pages/X.tsx` → `src/App.tsx` 的 `NAV` 注册（支持 hash 直达 `#/x`）；页面自行提供必要的局部标题，主内容区没有全局 header。

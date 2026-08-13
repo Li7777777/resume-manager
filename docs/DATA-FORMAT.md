@@ -17,6 +17,8 @@
 │   ├── skills.yml             # 专业技能（数组）
 │   ├── certificates.yml       # 证书资质（数组）
 │   └── interests.yml          # 兴趣爱好（数组）
+├── tags.yml                   # 管理端标签库（随 Git 版本化）
+├── categories.yml             # 管理端分类显示/排序/显隐（随 Git 版本化）
 ├── scripts/
 │   ├── variants.yml           # 简历方向配方
 │   └── compose.py             # 组合器（CI 用）
@@ -38,7 +40,9 @@
 | `tags` | string[] | 组稿标签：配方按此筛选（如 `frontend` / `management` / `backend`） |
 | `_xxx` | any | 以 `_` 开头的扩展数据，组合器输出前剥除 |
 
-个人备注 `notes`、分类显示/排序、标签库、类型展示名/分支映射均属于管理状态，只存于本机 `~/.resume-manager/repos/*.json`，不写入私有仓。组合器仍会剥除旧数据中的 `notes` 以兼容迁移前仓库。
+个人备注 `notes`、类型展示名/分支映射属于本机管理状态，只存于 `~/.resume-manager/repos/*.json`；
+**标签库（`tags.yml`）与分类显示/排序/显隐（`categories.yml`）随私有仓版本化**，打包数据仓交给他人即可直接使用。
+组合器仍会剥除旧数据中的 `notes` 以兼容迁移前仓库。
 
 ## 3. 各分类字段
 
@@ -206,15 +210,22 @@ layouts:
       order: [skills, work, projects, education]
 ```
 
-## 5.1 管理状态不进入私有仓
+## 5.1 随仓版本化与不进入私有仓的边界
 
-以下字段保存在 `~/.resume-manager/`，修改它们不会产生私有仓 Git diff：
+以下管理数据随私有仓版本化（修改它们会产生私有仓 Git diff，打包数据仓即可分发）：
+
+- `tags.yml`：标签库集合；条目标签参与组稿，此文件维护标签集合（增删/重命名会同步到条目）；
+- `categories.yml`：分类 key、展示名、排序、显隐；`data/<key>.yml` 存放分类内容。
+
+以下字段保存在 `~/.resume-manager/`，修改它们不产生私有仓 Git diff：
 
 - `settings.json`：数据仓路径、Token、提交身份、本地/GitHub 编译开关；
-- `repos/<repo-hash>.json`：分类显示/排序/显隐、标签库、条目备注、类型展示名和分支映射；
+- `repos/<repo-hash>.json`：条目备注、类型展示名和分支映射；
 - GitHub 编译开关的远程状态使用 Actions 仓库变量 `RESUME_MANAGER_PDF_BUILD`，不使用仓库配置文件。
 
-私有仓仅保留 `data/*.yml` 简历信息、`id/tags` 组稿元数据、`scripts/variants.yml` 输出规则、组合器和 CI workflow。
+私有仓仅保留 `data/*.yml` 简历信息、`id/tags` 组稿元数据、`tags.yml` 标签库、`categories.yml` 分类配置、`scripts/variants.yml` 输出规则、组合器和 CI workflow。
+
+首次读取时若仓库缺少 `tags.yml`/`categories.yml`，管理端会从本机侧车或旧根目录 `tags.json`/`categories.json` 一次性迁移生成，此后仓库文件为唯一权威来源。
 
 ## 6. 兼容与扩展
 
