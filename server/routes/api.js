@@ -251,7 +251,8 @@ router.delete('/entries/:cat/:id', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   try {
-    store.deleteEntry(repo, req.params.cat, req.params.id)
+    const deleted = store.deleteEntry(repo, req.params.cat, req.params.id)
+    if (!deleted) return res.json({ ok: false, error: '未找到该条目，可能已删除' })
     res.json({ ok: true })
   } catch (err) {
     sendError(res, err)

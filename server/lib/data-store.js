@@ -247,15 +247,21 @@ export function readCategory(repoPath, category) {
   }
   const list = Array.isArray(raw) ? raw : []
   // 补齐 id/tags 并从本机侧车恢复备注，保证后续操作稳定
+  let idAdded = false
   for (const e of list) {
     if (e && typeof e === 'object') {
-      if (!e.id) e.id = genId()
+      if (!e.id) {
+        e.id = genId()
+        idAdded = true
+      }
       if (!Array.isArray(e.tags)) e.tags = []
       const note = getEntryNote(repoPath, category, e.id)
       if (note) e.notes = note
       else delete e.notes
     }
   }
+  // 持久化新补的 id：避免每次读取生成不同随机 id，导致按 id 删除/编辑失效
+  if (idAdded) writeCategory(repoPath, category, list)
   return list
 }
 
