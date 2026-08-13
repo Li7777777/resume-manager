@@ -37,14 +37,17 @@ const DEGREE_LABELS: Record<string, string> = {
   Master: '硕士',
   Doctor: '博士',
 }
-const LEVELS = ['Novice', 'Beginner', 'Intermediate', 'Advanced', 'Expert', 'Master']
+const LEVELS = ['skilled', 'master']
 const LEVEL_LABELS: Record<string, string> = {
-  Novice: '新手',
-  Beginner: '初级',
-  Intermediate: '中级',
-  Advanced: '高级',
-  Expert: '专家',
-  Master: '大师',
+  skilled: '熟练',
+  master: '掌握',
+  // 旧 6 级兼容显示：统一归入新 2 级
+  Novice: '熟练',
+  Beginner: '熟练',
+  Intermediate: '熟练',
+  Advanced: '掌握',
+  Expert: '掌握',
+  Master: '掌握',
 }
 
 // 自定义分类的通用字段（新增分类使用）

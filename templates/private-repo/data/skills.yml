@@ -1,5 +1,5 @@
 # 最小示例：保留一组技能，替换为你的核心能力。
 - name: 软件开发
-  level: Intermediate
+  level: skilled
   tags: [general]
   keywords: [JavaScript, TypeScript]
