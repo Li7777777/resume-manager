@@ -8,9 +8,11 @@ const CONFIG_DIR = path.join(os.homedir(), '.resume-manager')
 const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json')
 
 // 编译开关默认值：GitHub 编译 PDF 默认关闭，本地编译 PDF 默认开启
+// Git 同步开关默认开启（向后兼容现有用户）
 export const SETTINGS_DEFAULTS = {
   localPdfBuild: true,
   githubPdfBuild: false,
+  gitSyncEnabled: true,
 }
 
 export function getSettings() {

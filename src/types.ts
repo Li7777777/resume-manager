@@ -23,6 +23,8 @@ export interface Settings {
   // 编译开关：本地编译默认开启，GitHub 编译默认关闭
   localPdfBuild?: boolean
   githubPdfBuild?: boolean
+  // Git 同步开关：默认开启；关闭时折叠 git 配置、隐藏看板、时间线只显示正式版
+  gitSyncEnabled?: boolean
 }
 
 export interface Variant {
@@ -53,6 +55,7 @@ export interface Commit {
 
 export interface ProjectStatus {
   configured: boolean
+  gitSyncEnabled?: boolean
   isRepo?: boolean
   branch?: string | null
   remoteUrl?: string | null

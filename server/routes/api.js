@@ -40,13 +40,31 @@ router.get('/health', (req, res) => {
 })
 
 /* ---------- 设置 ---------- */
+// Git 同步开关：关闭时折叠 git 配置、隐藏看板、时间线只显示正式版，后端 git 端点拒绝。
+const gitSyncOn = () => getSettings().gitSyncEnabled !== false
+const gitSyncGuard = (res) => {
+  if (gitSyncOn()) return true
+  res.json({ ok: false, error: 'Git 同步已关闭，请在「设置」页开启' })
+  return false
+}
+
+// Git 同步关闭时，拒绝所有 git / github 交互端点（含自动检测、Actions 变量、CI 产物）
+router.use('/git', (req, res, next) => {
+  if (gitSyncOn()) return next()
+  res.json({ ok: false, error: 'Git 同步已关闭，请在「设置」页开启' })
+})
+router.use('/github', (req, res, next) => {
+  if (gitSyncOn()) return next()
+  res.json({ ok: false, error: 'Git 同步已关闭，请在「设置」页开启' })
+})
+
 router.get('/settings', (req, res) => {
   const s = getSettings()
   res.json({ ok: true, settings: { ...s, token: s.token ? '••••••' : '' } })
 })
 
 router.put('/settings', (req, res) => {
-  const { repoPath, token, gitUsername, gitEmail, localPdfBuild, githubPdfBuild } = req.body || {}
+  const { repoPath, token, gitUsername, gitEmail, localPdfBuild, githubPdfBuild, gitSyncEnabled } = req.body || {}
   const patch = {}
   if (typeof repoPath === 'string') patch.repoPath = repoPath
   if (typeof token === 'string' && token !== '••••••') patch.token = token
@@ -54,6 +72,7 @@ router.put('/settings', (req, res) => {
   if (typeof gitEmail === 'string') patch.gitEmail = gitEmail
   if (typeof localPdfBuild === 'boolean') patch.localPdfBuild = localPdfBuild
   if (typeof githubPdfBuild === 'boolean') patch.githubPdfBuild = githubPdfBuild
+  if (typeof gitSyncEnabled === 'boolean') patch.gitSyncEnabled = gitSyncEnabled
   const saved = saveSettings(patch)
   res.json({ ok: true, settings: { ...saved, token: saved.token ? '••••••' : '' } })
 })
@@ -81,10 +100,26 @@ router.get('/github/autodetect', async (req, res) => {
 
 /* ---------- 项目总览 ---------- */
 router.get('/project/status', async (req, res) => {
+  const repo = getRepoPath()
   try {
-    res.json(await gitSvc.projectOverview(getRepoPath(), getSettings()))
+    if (!gitSyncOn()) {
+      // Git 同步关闭：不访问 .git，git 字段全部置空
+      return res.json({
+        configured: !!repo,
+        gitSyncEnabled: false,
+        isRepo: false,
+        branch: null,
+        remoteUrl: null,
+        head: null,
+        dirty: 0,
+        ahead: 0,
+        behind: 0,
+        recentCommits: [],
+      })
+    }
+    res.json({ ...(await gitSvc.projectOverview(repo, getSettings())), gitSyncEnabled: true })
   } catch (err) {
-    res.json({ configured: !!getRepoPath(), error: String(err.message) })
+    res.json({ configured: !!repo, gitSyncEnabled: gitSyncOn(), error: String(err.message) })
   }
 })
 
@@ -351,6 +386,7 @@ router.get('/resume-types', async (req, res) => {
 router.post('/resume-types', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  if (!gitSyncGuard(res)) return
   const name = String(req.body?.name || '').trim()
   const label = String(req.body?.label || '').trim()
   const branch = String(req.body?.branch || `resume/${name}`).trim()
@@ -403,6 +439,7 @@ router.put('/resume-types/:name', (req, res) => {
 router.post('/resume-types/:name/ensure-branch', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  if (!gitSyncGuard(res)) return
   const name = String(req.params.name || '')
   try {
     const doc = compose.loadVariantsDoc(repo)
@@ -419,6 +456,7 @@ router.post('/resume-types/:name/ensure-branch', async (req, res) => {
 router.post('/resume-types/:name/checkout', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  if (!gitSyncGuard(res)) return
   const name = String(req.params.name || '')
   try {
     const doc = compose.loadVariantsDoc(repo)
@@ -435,6 +473,7 @@ router.post('/resume-types/:name/checkout', async (req, res) => {
 router.delete('/resume-types/:name', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  if (!gitSyncGuard(res)) return
   const name = String(req.params.name || '')
   try {
     const doc = compose.loadVariantsDoc(repo)
@@ -758,46 +797,49 @@ router.get('/history', async (req, res) => {
     if (!cfg) return res.json({ ok: false, error: `简历类型 ${variant || '—'} 不存在` })
     // 分支由类型配置决定，前端不能注入任意 ref
     const branch = typeBranch(repo, variant)
-    const branches = await gitSvc.listBranches(repo)
-    const ref = branches.local.includes(branch) ? branch : branches.remote.includes(branch) ? `origin/${branch}` : null
-    const commits = ref ? await gitSvc.getLog(repo, limit, ref) : []
-    const remoteUrl = await gitSvc.getRemoteUrl(repo)
-    const parsed = parseRemoteUrl(remoteUrl)
-    let runMap = {}
-    if (parsed && settings.token) {
-      try {
-        const runs = await ghApi(
-          `/repos/${parsed.owner}/${parsed.repo}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=50`,
-          settings.token,
-        )
-        runMap = Object.fromEntries(
-          (runs.workflow_runs || []).map((r) => [
-            r.head_sha,
-            { id: r.id, run_number: r.run_number, status: r.status, conclusion: r.conclusion, created_at: r.created_at, name: r.name },
-          ]),
-        )
-      } catch {
-        /* token 权限不足或网络问题：仅展示该分支的本地提交 */
+    let ref = null
+    let parsed = null
+    let githubItems = []
+    if (gitSyncOn()) {
+      const branches = await gitSvc.listBranches(repo)
+      ref = branches.local.includes(branch) ? branch : branches.remote.includes(branch) ? `origin/${branch}` : null
+      const commits = ref ? await gitSvc.getLog(repo, limit, ref) : []
+      const remoteUrl = await gitSvc.getRemoteUrl(repo)
+      parsed = parseRemoteUrl(remoteUrl)
+      let runMap = {}
+      if (parsed && settings.token) {
+        try {
+          const runs = await ghApi(
+            `/repos/${parsed.owner}/${parsed.repo}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=50`,
+            settings.token,
+          )
+          runMap = Object.fromEntries(
+            (runs.workflow_runs || []).map((r) => [
+              r.head_sha,
+              { id: r.id, run_number: r.run_number, status: r.status, conclusion: r.conclusion, created_at: r.created_at, name: r.name },
+            ]),
+          )
+        } catch {
+          /* token 权限不足或网络问题：仅展示该分支的本地提交 */
+        }
       }
+      githubItems = commits.map((c) => ({
+        kind: 'github',
+        id: c.oid,
+        oid: c.oid,
+        short: c.short,
+        message: c.message,
+        author: c.author,
+        timestamp: c.timestamp,
+        variant,
+        branch,
+        run: runMap[c.oid] || null,
+      }))
     }
-    const githubItems = commits.map((c) => ({
-      kind: 'github',
-      id: c.oid,
-      oid: c.oid,
-      short: c.short,
-      message: c.message,
-      author: c.author,
-      timestamp: c.timestamp,
-      variant,
-      branch,
-      run: runMap[c.oid] || null,
-    }))
-    // 仅显式发布的正式版进入时间轴；旧 kind=local 预览记录永久过滤。
-    const releaseItems = ref
-      ? listBuilds(repo)
-          .filter((b) => b.kind === 'release' && (b.branch === branch || (!b.branch && b.variant === variant)))
-          .map((b) => ({ ...b, kind: 'release', branch }))
-      : []
+    // 仅显式发布的正式版进入时间轴；旧 kind=local 预览记录永久过滤；Git 同步关闭时只返回正式版。
+    const releaseItems = listBuilds(repo)
+      .filter((b) => b.kind === 'release' && (b.branch === branch || (!b.branch && b.variant === variant)))
+      .map((b) => ({ ...b, kind: 'release', branch }))
     const items = [...githubItems, ...releaseItems]
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
       .slice(0, limit)

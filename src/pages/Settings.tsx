@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Sparkles,
   TerminalSquare,
+  GitPullRequestArrow,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Settings } from '../types'
@@ -51,9 +52,17 @@ export default function SettingsPage() {
       .then((s) => setForm(s))
       .catch(() => {})
       .finally(() => setReady(true))
-    loadGithubCfg()
-    runDetect()
   }, [])
+
+  // Git 同步开启时才执行 gh 状态检测与 Actions 变量同步检查；关闭时折叠且不检测。
+  const gitSyncOn = form.gitSyncEnabled !== false
+  useEffect(() => {
+    if (gitSyncOn) {
+      runDetect()
+      loadGithubCfg()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gitSyncOn])
 
   const runDetect = async (silent = false) => {
     if (!silent) setDetecting(true)
@@ -106,6 +115,7 @@ export default function SettingsPage() {
       setForm(saved)
       toast('success', '设置已保存')
       setTestResult(null)
+      window.dispatchEvent(new Event('rm-settings-saved'))
       loadGithubCfg()
     } catch (e: any) {
       toast('error', e.message)
@@ -132,6 +142,19 @@ export default function SettingsPage() {
       loadGithubCfg()
     } catch (e: any) {
       setForm((f) => ({ ...f, githubPdfBuild: !v }))
+      toast('error', `保存失败：${e.message}`)
+    }
+  }
+
+  // ★ Git 同步开关：切换即保存；关闭折叠 git 配置与看板，开启后重新检测 gh 状态
+  const toggleGitSync = async (v: boolean) => {
+    setForm((f) => ({ ...f, gitSyncEnabled: v }))
+    try {
+      await patchSettings({ gitSyncEnabled: v })
+      window.dispatchEvent(new Event('rm-settings-saved'))
+      toast('success', `Git 同步已${v ? '开启' : '关闭'}`)
+    } catch (e: any) {
+      setForm((f) => ({ ...f, gitSyncEnabled: !v }))
       toast('error', `保存失败：${e.message}`)
     }
   }
@@ -246,6 +269,24 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
         </div>
       </Card>
 
+      {/* Git 同步开关 */}
+      <Card title="Git 同步" desc="控制 Git 同步看板与 GitHub 配置的展示与使用">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className={`mt-0.5 rounded-lg p-1.5 ${gitSyncOn ? 'bg-indigo-500/15 text-indigo-300' : 'bg-zinc-800 text-zinc-500'}`}>
+              <GitPullRequestArrow size={15} />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-zinc-200">启用 Git 同步 <Badge tone="emerald">默认开启</Badge></p>
+              <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+                关闭后：折叠 GitHub 同步与 GitHub 编译配置、侧栏隐藏「Git 同步看板」、版本时间线只显示本机正式版，git 相关接口不可用；开启后自动检测 gh 状态并提醒配置。
+              </p>
+            </div>
+          </div>
+          <Switch checked={gitSyncOn} disabled={!ready} onChange={(v) => toggleGitSync(v)} />
+        </div>
+      </Card>
+
       {/* 编译开关 */}
       <Card title="PDF 编译开关" desc="控制简历 PDF 的编译方式">
         <div className="divide-y divide-zinc-800/80">
@@ -266,8 +307,9 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
             </div>
             <Switch checked={localBuildOn} disabled={!ready} onChange={(v) => toggleLocal(v)} />
           </div>
-          {/* GitHub 编译 */}
-          <div className="flex items-start justify-between gap-4 py-3.5 first:pt-0 last:pb-0">
+          {/* GitHub 编译（Git 同步关闭时折叠） */}
+          {gitSyncOn && (
+            <div className="flex items-start justify-between gap-4 py-3.5 first:pt-0 last:pb-0">
             <div className="flex items-start gap-3">
               <span className={`mt-0.5 rounded-lg p-1.5 ${githubBuildOn ? 'bg-sky-500/15 text-sky-400' : 'bg-zinc-800 text-zinc-500'}`}>
                 <CloudCog size={15} />
@@ -301,14 +343,17 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
               </div>
             </div>
             <Switch checked={githubBuildOn} disabled={!ready} onChange={(v) => toggleGithub(v)} />
-          </div>
+            </div>
+          )}
         </div>
         <p className="mt-3 rounded-lg bg-zinc-950/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-600">
           开关<b className="text-zinc-400">切换即保存到本机并即时生效</b>；GitHub 编译开关通过 Actions 仓库变量同步，不会改动简历数据仓。
         </p>
       </Card>
 
-      <Card title="GitHub 同步" desc="用于 push / pull 的凭据，仅保存在本机，不上传">
+      {/* GitHub 同步（Git 同步关闭时折叠） */}
+      {gitSyncOn && (
+        <Card title="GitHub 同步" desc="用于 push / pull 的凭据，仅保存在本机，不上传">
         <div className="space-y-4">
           <Field label="GitHub 令牌" hint="需要仓库权限（细粒度：内容读写）">
             <div className="relative">
@@ -397,6 +442,7 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
           </div>
         </div>
       </Card>
+      )}
 
       <Card title="隐私说明">
         <div className="flex items-start gap-2.5 text-sm text-zinc-400">

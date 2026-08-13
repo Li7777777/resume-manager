@@ -62,8 +62,16 @@ function Shell() {
       api.get<ProjectStatus>('/api/project/status').then(setStatus).catch(() => setStatus(null))
     load()
     const t = setInterval(load, 15000)
-    return () => clearInterval(t)
+    const onSaved = () => load()
+    window.addEventListener('rm-settings-saved', onSaved)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('rm-settings-saved', onSaved)
+    }
   }, [])
+
+  // Git 同步开关：关闭时隐藏看板入口；未加载到状态时按默认（开启）处理
+  const gitSyncOn = status?.gitSyncEnabled !== false
 
   const syncTone = !status?.configured
     ? 'zinc'
@@ -96,7 +104,7 @@ function Shell() {
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 px-2 py-2 lg:px-3">
-          {NAV.map((n) => (
+          {NAV.filter((n) => n.key !== 'git' || gitSyncOn).map((n) => (
             <button
               key={n.key}
               title={n.label}
@@ -133,7 +141,16 @@ function Shell() {
           {page === 'variants' && <Variants />}
           {page === 'customizer' && <Customizer />}
           {page === 'pdf' && <HistoryPage />}
-          {page === 'git' && <GitBoard />}
+          {page === 'git' && gitSyncOn && <GitBoard />}
+          {page === 'git' && !gitSyncOn && (
+            <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+              <GitPullRequestArrow size={36} className="text-zinc-700" />
+              <div>
+                <p className="text-base font-semibold text-zinc-300">Git 同步已关闭</p>
+                <p className="mt-1 text-sm text-zinc-500">请在「设置」页开启「Git 同步」后使用同步看板。</p>
+              </div>
+            </div>
+          )}
           {page === 'settings' && <SettingsPage />}
         </div>
       </main>
