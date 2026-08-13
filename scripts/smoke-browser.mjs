@@ -42,7 +42,8 @@ console.log('=== 简历类型分支 ===')
 const types = await visit('variants', 'rm-smoke-types.png')
 const typesOk =
   types.text.includes('一个简历类型对应一个独立 Git 分支') &&
-  types.text.includes('resume/general') &&
+  types.text.includes('main') &&
+  !types.text.includes('resume/general') &&
   !types.text.includes('resume/frontend') &&
   !types.text.includes('resume/management') &&
   !types.text.includes('简历模板')
@@ -50,14 +51,14 @@ console.log('类型页:', typesOk)
 
 console.log('=== PDF 只读时间线 ===')
 await visit('pdf', 'rm-smoke-pdf.png')
-await page.select('select', 'general')
-await page.waitForFunction(() => document.body.innerText.includes('resume/general'), { timeout: 20000 }).catch(() => {})
+await page.select('select', 'main')
+await page.waitForFunction(() => document.body.innerText.includes('main'), { timeout: 20000 }).catch(() => {})
 const pdf = await page.evaluate(() => ({
   text: document.body.innerText,
   actions: [...document.querySelectorAll('main button')].map((button) => button.innerText.trim()).filter(Boolean),
 }))
 const pdfOk =
-  pdf.text.includes('resume/general') &&
+  pdf.text.includes('main') &&
   pdf.text.includes('此页面只显示正式版与 Git 版本') &&
   !pdf.text.includes('本地预览') &&
   !pdf.text.includes('定制页本地预览') &&
@@ -68,7 +69,7 @@ console.log('=== 简历定制与 YAML ===')
 const customizer = await visit('customizer', 'rm-smoke-customizer.png')
 const templateNames = ['ModernCV Banking', 'ModernCV Casual', 'ModernCV Classic', "Jake's Resume", 'Calm', 'VS Code']
 const releasesBeforePreview = await page.evaluate(async () => {
-  const result = await (await fetch('/api/history?variant=general&limit=50')).json()
+  const result = await (await fetch('/api/history?variant=main&limit=50')).json()
   return (result.items || []).filter((item) => item.kind === 'release').length
 })
 await page.evaluate(() => {
@@ -77,7 +78,7 @@ await page.evaluate(() => {
 })
 await page.waitForFunction(() => document.body.innerText.includes('预览已更新'), { timeout: 180000 })
 const releasesAfterPreview = await page.evaluate(async () => {
-  const result = await (await fetch('/api/history?variant=general&limit=50')).json()
+  const result = await (await fetch('/api/history?variant=main&limit=50')).json()
   return (result.items || []).filter((item) => item.kind === 'release').length
 })
 const previewDidNotPublish = releasesAfterPreview === releasesBeforePreview

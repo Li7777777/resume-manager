@@ -104,7 +104,7 @@ summary:              # 字符串数组或字符串（markdown 列表）
 ```yaml
 # skills
 - name: 前端开发
-  level: skilled        # 熟练度仅 2 级：skilled（熟练）/ master（掌握）
+  level: Expert        # 熟练度仅 2 级：Expert（熟练）/ Master（掌握）
   keywords: [React, TypeScript]
   tags: [frontend]
 

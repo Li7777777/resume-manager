@@ -28,8 +28,8 @@ resumes/                  自动生成的简历文件（gitignore）
 ## 首次使用
 
 1. 在 Resume Manager「设置」中填写本仓库路径，点击「连接数据仓」；空目录会自动生成本骨架并初始化 Git。
-2. 在「简历类型」页为 `general` 创建并切换到 `resume/general` 分支。
-3. 在「简历定制」页选择 `general`，编辑可视化配置或 YAML 源码；用「预览」临时检查效果，确认后点「保存发布正式版」。
+2. 打开「简历定制」页直接编辑 `main` 类型（默认类型使用仓库主分支），或编辑 `scripts/variants.yml` 配方。
+3. 用「预览」临时检查效果，确认后点「保存发布正式版」。
 4. 修改 `data/` 或 `scripts/variants.yml` 后，在 Git 同步看板提交并推送。
 
 默认示例使用 HTML `calm` 模板，不依赖本机 LaTeX。需要 PDF 时，可在「简历定制」中改用 LaTeX 模板，并安装 `yamlresume` 与 XeTeX/Tectonic。

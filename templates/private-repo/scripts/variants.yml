@@ -8,7 +8,7 @@ defaults:
     template: calm
 
 variants:
-  general:
+  main:
     sectionOrder: [skills, work, education]
     blocks:
       basics: { include: true }

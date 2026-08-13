@@ -298,10 +298,14 @@ router.put('/variants', (req, res) => {
   }
 })
 
-/* ---------- 简历类型（每个类型对应一个 Git 分支） ---------- */
+/* ---------- 简历类型（每个类型对应一个 Git 分支；main 类型直接使用主分支） ---------- */
 const TYPE_NAME_RE = /^[a-z][a-z0-9_-]*$/
 const TYPE_BRANCH_RE = /^resume\/[a-z][a-z0-9._/-]*$/
-const typeBranch = (repo, name) => managerState.getResumeTypeMeta(repo, name)?.branch || `resume/${name}`
+const typeBranch = (repo, name) => {
+  // 默认类型 main 直接用仓库主分支，不再创建 resume/main
+  if (name === 'main') return 'main'
+  return managerState.getResumeTypeMeta(repo, name)?.branch || `resume/${name}`
+}
 const typeLabel = (repo, name) => managerState.getResumeTypeMeta(repo, name)?.label || name
 
 router.get('/resume-types', async (req, res) => {

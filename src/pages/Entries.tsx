@@ -37,17 +37,16 @@ const DEGREE_LABELS: Record<string, string> = {
   Master: '硕士',
   Doctor: '博士',
 }
-const LEVELS = ['skilled', 'master']
+// 熟练度两级：存储用 yamlresume schema 合法枚举（Expert=熟练 / Master=掌握），界面只显示中文两级
+const LEVELS = ['Expert', 'Master']
 const LEVEL_LABELS: Record<string, string> = {
-  skilled: '熟练',
-  master: '掌握',
+  Expert: '熟练',
+  Master: '掌握',
   // 旧 6 级兼容显示：统一归入新 2 级
   Novice: '熟练',
   Beginner: '熟练',
   Intermediate: '熟练',
-  Advanced: '掌握',
-  Expert: '掌握',
-  Master: '掌握',
+  Advanced: '熟练',
 }
 
 // 自定义分类的通用字段（新增分类使用）
