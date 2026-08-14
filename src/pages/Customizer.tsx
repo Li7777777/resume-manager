@@ -104,6 +104,7 @@ interface DragData {
 }
 
 const DND_MIME = 'application/x-rm-item'
+const DND_REORDER_MIME = 'application/x-rm-section-reorder'
 
 export default function Customizer() {
   const toast = useToast()
@@ -126,6 +127,9 @@ export default function Customizer() {
   const [lastAction, setLastAction] = useState<'preview' | 'release' | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([])
+  const [dragSectionKey, setDragSectionKey] = useState<string | null>(null)
+  const [reorderOverKey, setReorderOverKey] = useState<string | null>(null)
+  const [reorderSide, setReorderSide] = useState<'before' | 'after'>('before')
   const [workspaceMode, setWorkspaceMode] = useState<'visual' | 'yaml'>('visual')
   const [yamlDirty, setYamlDirty] = useState(false)
   const [yamlRevision, setYamlRevision] = useState(0)
@@ -302,46 +306,127 @@ export default function Customizer() {
     }
   }
 
-  const onSectionDrop = (event: React.DragEvent, section: Section) => {
-    event.preventDefault()
-    event.stopPropagation()
-    setDragOver(null)
-    const data = parseDrop(event)
-    if (!data) return
+  // 统一投放逻辑：条目/整章从左侧信息库拖入布局
+  const applyDrop = (data: DragData) => {
+    const label = cats.find((item) => item.key === data.key)?.label || data.key
+    const existing = sections.find((item) => item.key === data.key)
+
+    // 整章（“拖入所有”/“拖入选中”底部的整章入口）：已存在则转为“全部”，否则新增“全部”
+    if (data.type === 'section') {
+      if (existing) {
+        commit(sections.map((s) => (s === existing ? { ...s, mode: 'all', ids: undefined, tags: undefined } : s)))
+      } else {
+        commit([...sections, { key: data.key, mode: 'all' }])
+      }
+      return
+    }
+
     const incomingIds = data.type === 'entry'
       ? [data.id]
       : data.type === 'entries'
         ? data.ids || []
         : []
     const validIds = incomingIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
-    if (data.key === section.key && validIds.length > 0) {
-      if (section.mode === 'all') return
-      const ids = [...new Set([...(section.ids || []), ...validIds])]
-      commit(sections.map((item) => (item === section ? { ...item, mode: 'ids', ids, tags: undefined } : item)))
-    } else if (data.type === 'section' && data.key === section.key) {
-      commit(sections.map((item) => (item === section ? { ...item, mode: 'all', ids: undefined, tags: undefined } : item)))
+    if (validIds.length === 0) return
+
+    // 无该分类章节：新增为“ids”模式
+    if (!existing) {
+      commit([...sections, { key: data.key, mode: 'ids', ids: [...new Set(validIds)] }])
+      return
     }
+
+    // 章节已存在但展示全部/标签：无需重复添加具体条目
+    if (existing.mode !== 'ids') {
+      toast('warn', `${label} 章节已展示全部条目，无需重复添加`)
+      return
+    }
+
+    // 追加缺失的条目（修复：从布局中移除后重新拖入应能重新加入）
+    const missing = validIds.filter((id) => !(existing.ids || []).includes(id))
+    if (missing.length === 0) {
+      toast('warn', '这些条目已在布局中')
+      return
+    }
+    commit(sections.map((s) => (s === existing ? { ...s, ids: [...new Set([...(s.ids || []), ...missing])] } : s)))
+  }
+
+  // 章节拖拽排序：把 fromKey 移动到 toKey 前/后（toKey 为 null 时移到末尾）
+  const applyReorder = (fromKey: string, toKey: string | null, side: 'before' | 'after') => {
+    const from = sections.findIndex((s) => s.key === fromKey)
+    if (from < 0) return
+    let insertAt = sections.length - 1
+    if (toKey) {
+      const to = sections.findIndex((s) => s.key === toKey)
+      if (to < 0) return
+      if (to === from) return
+      let target = to + (side === 'after' ? 1 : 0)
+      if (from < to) target -= 1
+      insertAt = target
+    }
+    const next = [...sections]
+    const [moved] = next.splice(from, 1)
+    next.splice(insertAt, 0, moved)
+    commit(next)
+  }
+
+  const resetDrag = () => {
+    setDragOver(null)
+    setDragSectionKey(null)
+    setReorderOverKey(null)
+  }
+
+  const onSectionDragStart = (key: string) => (event: React.DragEvent) => {
+    event.dataTransfer.setData(DND_REORDER_MIME, key)
+    event.dataTransfer.effectAllowed = 'move'
+    setDragSectionKey(key)
+  }
+
+  const onSectionDragOver = (key: string) => (event: React.DragEvent) => {
+    if (!canEditVisual) return
+    const types = Array.from(event.dataTransfer.types)
+    if (types.includes(DND_REORDER_MIME)) {
+      if (dragSectionKey && dragSectionKey !== key) {
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'move'
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+        setReorderOverKey(key)
+        setReorderSide(event.clientY < rect.top + rect.height / 2 ? 'before' : 'after')
+      }
+      return
+    }
+    if (types.includes(DND_MIME)) {
+      event.preventDefault()
+      setDragOver(key)
+    }
+  }
+
+  const onSectionDrop = (event: React.DragEvent, key: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const reorderKey = event.dataTransfer.getData(DND_REORDER_MIME)
+    if (reorderKey) {
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+      const side = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+      applyReorder(reorderKey, key, side)
+      resetDrag()
+      return
+    }
+    const data = parseDrop(event)
+    if (data) applyDrop(data)
+    setDragOver(null)
   }
 
   const onCanvasDrop = (event: React.DragEvent) => {
     event.preventDefault()
-    setDragOver(null)
+    const reorderKey = event.dataTransfer.getData(DND_REORDER_MIME)
+    if (reorderKey) {
+      applyReorder(reorderKey, null, 'after')
+      resetDrag()
+      return
+    }
     const data = parseDrop(event)
-    if (!data) return
-    if (sections.some((item) => item.key === data.key)) {
-      return toast('warn', `${cats.find((item) => item.key === data.key)?.label || data.key} 已在布局中`)
-    }
-    const incomingIds = data.type === 'entry'
-      ? [data.id]
-      : data.type === 'entries'
-        ? data.ids || []
-        : []
-    const validIds = incomingIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
-    if (validIds.length > 0) {
-      commit([...sections, { key: data.key, mode: 'ids', ids: [...new Set(validIds)] }])
-    } else if (data.type === 'section') {
-      commit([...sections, { key: data.key, mode: 'all' }])
-    }
+    if (data) applyDrop(data)
+    setDragOver(null)
   }
 
   const move = (index: number, direction: -1 | 1) => {
@@ -716,7 +801,21 @@ export default function Customizer() {
           <div
             className={`min-h-0 flex-1 overflow-auto p-3 ${dragOver === 'canvas' ? 'ring-2 ring-inset ring-indigo-500/40' : ''}`}
             data-customizer-canvas
-            onDragOver={(event) => { if (canEditVisual) { event.preventDefault(); setDragOver('canvas') } }}
+            onDragOver={(event) => {
+              if (!canEditVisual) return
+              const types = Array.from(event.dataTransfer.types)
+              if (types.includes(DND_REORDER_MIME)) {
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                setReorderOverKey(null)
+                setDragOver('canvas')
+                return
+              }
+              if (types.includes(DND_MIME)) {
+                event.preventDefault()
+                setDragOver('canvas')
+              }
+            }}
             onDragLeave={() => setDragOver(null)}
             onDrop={onCanvasDrop}
           >
@@ -724,14 +823,34 @@ export default function Customizer() {
               <EmptyState icon={<Layers size={30} />} title="布局为空" desc="从左侧拖入信息条目或整个章节。" />
             ) : (
               <div className="space-y-2">
-                {sections.map((section, index) => (
+                {sections.map((section, index) => {
+                  const isReorderSource = dragSectionKey === section.key
+                  const isReorderTarget = reorderOverKey === section.key
+                  return (
                   <div
                     key={section.key}
-                    onDragOver={(event) => { if (canEditVisual) { event.preventDefault(); setDragOver(section.key) } }}
+                    data-section-key={section.key}
+                    draggable={canEditVisual}
+                    onDragStart={onSectionDragStart(section.key)}
+                    onDragEnd={resetDrag}
+                    onDragOver={onSectionDragOver(section.key)}
                     onDragLeave={() => setDragOver(null)}
-                    onDrop={(event) => onSectionDrop(event, section)}
-                    className={`rounded-md border p-2.5 ${dragOver === section.key ? 'border-indigo-500/60 bg-indigo-500/5' : 'border-zinc-800 bg-zinc-950/40'}`}
+                    onDrop={(event) => onSectionDrop(event, section.key)}
+                    className={`relative rounded-md border p-2.5 transition ${
+                      isReorderSource
+                        ? 'border-zinc-700 opacity-40'
+                        : dragOver === section.key
+                          ? 'border-indigo-500/60 bg-indigo-500/5'
+                          : 'border-zinc-800 bg-zinc-950/40'
+                    } ${canEditVisual ? 'cursor-grab active:cursor-grabbing' : ''}`}
                   >
+                    {isReorderTarget && (
+                      <span
+                        className={`pointer-events-none absolute left-2 right-2 h-0.5 rounded-full bg-indigo-400 ${
+                          reorderSide === 'before' ? '-top-1.5' : '-bottom-1.5'
+                        }`}
+                      />
+                    )}
                     <div className="flex items-center gap-1.5">
                       <GripVertical size={13} className="text-zinc-600" />
                       <span className="text-xs font-semibold text-zinc-200">{sectionLabel(section.key)}</span>
@@ -762,7 +881,8 @@ export default function Customizer() {
                       )}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

@@ -87,6 +87,11 @@ console.log('信息管理:', entriesDragOk)
 console.log('=== 简历定制与 YAML ===')
 const customizer = await visit('customizer', 'rm-smoke-customizer.png')
 const templateNames = ['ModernCV Banking', 'ModernCV Casual', 'ModernCV Classic', "Jake's Resume", 'Calm', 'VS Code']
+const sectionsDraggable = await page.evaluate(() => {
+  const cards = [...document.querySelectorAll('[data-section-key]')]
+  return cards.length >= 1 && cards.every((card) => card.getAttribute('draggable') === 'true')
+})
+console.log('章节可拖拽:', sectionsDraggable)
 await page.evaluate(() => {
   const category = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('项目经历'))
   if (category instanceof HTMLButtonElement) category.click()
@@ -154,7 +159,8 @@ const customizerOk =
   yamlWorkspace.hasEditor &&
   yamlWorkspace.hasVariantsFile &&
   yamlWorkspace.text.includes('模板预览') &&
-  draftPreserved
+  draftPreserved &&
+  sectionsDraggable
 console.log('定制页:', customizerOk)
 
 console.log('=== 旧 YAML 路由兼容 ===')
