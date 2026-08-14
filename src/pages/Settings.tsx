@@ -226,7 +226,7 @@ export default function SettingsPage() {
   const cfgNeedsSync = githubCfg?.available && githubCfg.remoteValue !== githubBuildOn
 
   return (
-    <div className="max-w-2xl space-y-5">
+    <div className="mx-auto w-full max-w-6xl space-y-5">
       <Card title="数据仓" desc="指向你的私有简历数据仓本地目录（如 E:\code\my-resume-data）">
         <div className="space-y-4">
           <Field label="仓库路径">
@@ -275,6 +275,8 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
         </div>
       </Card>
 
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        <div className="space-y-5">
       {/* Git 同步开关 */}
       <Card title="Git 同步" desc="控制 Git 同步看板与 GitHub 配置的展示与使用">
         <div className="flex items-start justify-between gap-4">
@@ -357,6 +359,8 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
         </p>
       </Card>
 
+        </div>
+        <div className="space-y-5">
       {/* GitHub 同步（Git 同步关闭时折叠） */}
       {gitSyncOn && (
         <Card title="GitHub 同步" desc="用于 push / pull 的凭据，仅保存在本机，不上传">
@@ -460,6 +464,8 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
           </ul>
         </div>
       </Card>
+        </div>
+      </div>
 
       <div className="flex justify-end">
         <Button variant="primary" onClick={save}>

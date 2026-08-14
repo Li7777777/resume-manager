@@ -323,8 +323,8 @@ export default function Customizer() {
   if (loading) return <Spinner label="加载简历定制…" />
 
   return (
-    <div className="space-y-4">
-      <div className="border-b border-zinc-800 pb-4">
+    <div className="flex flex-col gap-4 xl:h-full">
+      <div className="shrink-0 border-b border-zinc-800 pb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <GitBranch size={15} className="text-zinc-500" />
@@ -377,7 +377,7 @@ export default function Customizer() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-1" role="tablist" aria-label="定制工作区">
           <button
             type="button"
@@ -406,7 +406,7 @@ export default function Customizer() {
         </div>
       </div>
 
-      <div className="flex min-h-[640px] flex-col gap-4 xl:h-[calc(100vh-245px)] xl:min-h-[620px] xl:flex-row">
+      <div className="flex min-h-0 flex-col gap-4 xl:min-h-0 xl:flex-1 xl:flex-row">
         {workspaceMode === 'visual' && (
           <>
         <Card title="简历信息库" desc="拖拽条目或章节到布局" className="w-full shrink-0 xl:w-72" pad={false} fill>
@@ -610,7 +610,7 @@ export default function Customizer() {
             </div>
           }
         >
-          <div className="min-h-0 flex-1">
+          <div className="min-h-0 flex-1 overflow-auto">
             {rendering ? (
               <div className="flex h-full items-center justify-center">
                 <Spinner label={busyAction === 'release' ? '正在生成并归档正式版…' : '正在组合并生成预览…'} />
