@@ -38,22 +38,34 @@ function run(cmd, args, cwd) {
   })
 }
 
+// ModernCV 正文列补丁：保留 yamlresume 的段落式 cvitem（含 CJK 冒号适配），正文改 raggedright 避免长行溢出（仅 moderncv 文档注入）
+const CVITEM_PATCH_MARK = 'rm-moderncv-raggedright'
+const CVITEM_PATCH = `% ${CVITEM_PATCH_MARK}
+\\makeatletter
+\\renewcommand*{\\cvitem}[3][.25em]{%
+  \\ifstrempty{#2}{}{\\hintstyle{#2}：}\\raggedright#3%
+  \\par\\addvspace{#1}}
+\\makeatother
+`
+
 function normalizeGroupedLatex(text) {
   let next = text
-  // ModernCV：把模板自动追加的等级移除，并将整行放入正文列。
-  next = next.replace(/^\\cvline\{((?:掌握|熟悉) [^{}\r\n]*)\}\{[^{}\r\n]*\}$/gm, '\\cvline{}{$1}')
-  // Jake：同样移除等级及其冒号。
-  next = next.replace(/^\\textbf\{((?:掌握|熟悉) [^{}\r\n]*)\}[:：][^\r\n]*$/gm, '$1')
-  // ModernCV：兴趣爱好合并后也放入正文列，保持单行直列且不产生冒号。
-  next = next.replace(/^\\cvline\{([^{}\r\n]*、[^{}\r\n]*)\}\{\}$/gm, '\\cvline{}{$1}')
-  // Jake：同样移除兴趣爱好的粗体包裹。
+  // ModernCV：技能（“方向：技能、技能”）与兴趣爱好整行移入正文列，移除模板追加的等级标记。
+  next = next.replace(/^\\cvline\{([^{}\r\n]+)\}\{[^{}\r\n]*\}$/gm, '\\cvline{}{$1}')
+  // Jake：移除技能行粗体包裹与末尾等级冒号（冒号后不允许出现 }，避免误伤 cventry 摘要里的“关键字：xxx}”）。
+  next = next.replace(/^\\textbf\{([^{}\r\n]+)\}[:：][^{}\r\n]*$/gm, '$1')
+  // Jake：移除兴趣行纯粗体包裹（以、连接，无等级）。
   next = next.replace(/^\\textbf\{([^{}\r\n]*、[^{}\r\n]*)\}$/gm, '$1')
+  // ModernCV：正文列改 raggedright，避免长技能行因两端对齐产生 Overfull \\hbox。
+  if (/moderncv/.test(next) && !next.includes(CVITEM_PATCH_MARK)) {
+    next = next.replace(/^(\\begin\{document\})/m, CVITEM_PATCH + '$1')
+  }
   return next
 }
 
 function normalizeGroupedHtml(text) {
   return text.replace(
-    /(<div class="resume-skill-name">(?:掌握|熟悉) [^<]*)<span class="resume-skill-level">[^<]*<\/span>/g,
+    /(<div class="resume-skill-name">[^<]*)<span class="resume-skill-level">[^<]*<\/span>/g,
     '$1',
   )
 }

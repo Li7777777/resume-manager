@@ -7,16 +7,31 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "resumes"
 
 MODERNCV_SKILL = re.compile(
-    r"^\\cvline\{((?:掌握|熟悉) [^{}\r\n]*)\}\{[^{}\r\n]*\}$",
+    r"^\\cvline\{([^{}\r\n]+)\}\{[^{}\r\n]*\}$",
     re.MULTILINE,
 )
 JAKE_SKILL = re.compile(
-    r"^\\textbf\{((?:掌握|熟悉) [^{}\r\n]*)\}[:：][^\r\n]*$",
+    r"^\\textbf\{([^{}\r\n]+)\}[:：][^{}\r\n]*$",
+    re.MULTILINE,
+)
+JAKE_INTEREST = re.compile(
+    r"^\\textbf\{([^{}\r\n]*、[^{}\r\n]*)\}$",
     re.MULTILINE,
 )
 HTML_SKILL_LEVEL = re.compile(
-    r'(<div class="resume-skill-name">(?:掌握|熟悉) [^<]*)'
+    r'(<div class="resume-skill-name">[^<]*)'
     r'<span class="resume-skill-level">[^<]*</span>'
+)
+
+# ModernCV 正文列补丁：保留 yamlresume 的段落式 cvitem（含 CJK 冒号适配），正文改 raggedright 避免长行溢出（仅 moderncv 文档注入）
+CVITEM_PATCH_MARK = "rm-moderncv-raggedright"
+CVITEM_PATCH = (
+    "% " + CVITEM_PATCH_MARK + "\n"
+    "\\makeatletter\n"
+    "\\renewcommand*{\\cvitem}[3][.25em]{%\n"
+    "  \\ifstrempty{#2}{}{\\hintstyle{#2}：}\\raggedright#3%\n"
+    "  \\par\\addvspace{#1}}\n"
+    "\\makeatother\n"
 )
 
 
@@ -33,8 +48,11 @@ def rewrite(path, transform):
 def normalize_tex(text):
     text = MODERNCV_SKILL.sub(r"\\cvline{}{\1}", text)
     text = JAKE_SKILL.sub(r"\1", text)
-    text = re.sub(r"^\\cvline\{([^{}\r\n]*、[^{}\r\n]*)\}\{\}$", r"\\cvline{}{\1}", text, flags=re.MULTILINE)
-    return re.sub(r"^\\textbf\{([^{}\r\n]*、[^{}\r\n]*)\}$", r"\1", text, flags=re.MULTILINE)
+    text = JAKE_INTEREST.sub(r"\1", text)
+    # ModernCV：正文列改 raggedright，避免长技能行因两端对齐产生 Overfull \\hbox。
+    if "moderncv" in text and CVITEM_PATCH_MARK not in text:
+        text = re.sub(r"^(\\begin\{document\})", lambda m: CVITEM_PATCH + m.group(1), text, flags=re.MULTILINE)
+    return text
 
 
 def normalize_html(text):

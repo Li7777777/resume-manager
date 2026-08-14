@@ -115,20 +115,33 @@ def to_summary_string(summary):
 
 
 def compact_skills(items):
-    groups = {"掌握": [], "熟悉": []}
+    # 按细分方向（tags）分组：每个方向一行“方向：技能、技能”，跨方向技能同时出现在多行。
+    dir_order = []
+    groups = {}
     for item in items:
-        label = "掌握" if item.get("level") == "Master" else "熟悉"
         candidates = item.get("keywords") if isinstance(item.get("keywords"), list) and item.get("keywords") else [item.get("name")]
+        names = []
         for candidate in candidates:
             name = str(candidate or "").strip()
             if name.startswith("熟悉 ") or name.startswith("掌握 "):
                 name = name[3:].strip()
-            if name and name not in groups[label]:
-                groups[label].append(name)
+            if name and name not in names:
+                names.append(name)
+        if not names:
+            continue
+        tags = [t for t in (item.get("tags") or []) if isinstance(t, str) and t.strip()]
+        dirs = tags if tags else ["通用"]
+        for d in dirs:
+            if d not in groups:
+                groups[d] = []
+                dir_order.append(d)
+            for n in names:
+                if n not in groups[d]:
+                    groups[d].append(n)
     return [
-        {"name": f"{label} {'、'.join(names)}", "level": "Master" if label == "掌握" else "Expert", "keywords": []}
-        for label, names in groups.items()
-        if names
+        {"name": f"{d}：{'、'.join(groups[d])}", "level": "Expert", "keywords": []}
+        for d in dir_order
+        if groups[d]
     ]
 
 
@@ -175,10 +188,11 @@ def compose_list(block, cfg):
         if isinstance(item.get("summary"), list):
             item["summary"] = to_summary_string(item["summary"])
         out.append(item)
+    # 技能/兴趣分组需要方向（tags）元数据，因此直接用原始选中条目（含 tags）
     if block == "skills":
-        return compact_skills(out)
+        return compact_skills(selected)
     if block == "interests":
-        return compact_interests(out)
+        return compact_interests(selected)
     return out
 
 

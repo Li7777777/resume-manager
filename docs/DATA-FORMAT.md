@@ -170,7 +170,7 @@ variants:
 - 类型页负责类型/分支 CRUD 与切换，`blocks/sectionOrder/layout/overrides` 由简历定制页维护；
 - 剥除所有元数据键（`id/tags/notes/_*`、`achievements`）；
 - `work.company` → `name`；`achievements` → `summary`（markdown 列表字符串）；
-- 专业技能按熟练度合并：`Master` 输出一行“掌握 xxx、xxx”，其余等级输出一行“熟悉 xxx、xxx”；优先罗列 `keywords`，为空时使用条目 `name`；yamlresume 模板自动追加的等级文字在构建后移除；
+- 专业技能按细分方向（tags）分组：每个方向输出一行“方向：技能、技能”，跨方向技能同时出现在多行；优先罗列 `keywords`，为空时使用条目 `name`；yamlresume 模板自动追加的等级文字与正文列调整在构建后移除；
 - 兴趣爱好合并成一行，以 `、` 直接罗列，不输出冒号；
 - 项目 `description` 在组合输出中限制为 40 字（源数据不变），避免 ModernCV 粗体标题列产生 `Overfull \\hbox`；LaTeX 默认隐藏原始 URL，改为项目名称超链接；
 - `summary` 统一转字符串（数组 → `- 项` 列表）；

@@ -155,7 +155,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - `listVariants(repo)`：解析 variants.yml + 计算每方向命中条目数（`matched`，供 UI 预览）。
 - `generateAll(repo, only?)`：组合并写出 `resumes/<name>.yml`（含头部注释，null → 空值）。
 - 字段映射：`company → name`；`achievements → summary`（按标签过滤）；列表 summary 转字符串；剥除元数据。
-- PDF/HTML 紧凑输出：技能按 Master=“掌握”、其他=“熟悉”分组，兴趣合并为单行；项目 description 截为 40 字，LaTeX 原始 URL 改为项目名链接；`server/lib/builder.js` 与私有仓 `scripts/postprocess-output.py` 移除 yamlresume 模板强加的等级文本。
+- PDF/HTML 紧凑输出：技能按细分方向（tags）分组为“方向：技能、技能”每方向一行，兴趣合并为单行；项目 description 截为 40 字，LaTeX 原始 URL 改为项目名链接；`server/lib/builder.js` 与私有仓 `scripts/postprocess-output.py` 移除 yamlresume 模板强加的等级文本，并对 moderncv 正文列注入 raggedright 补丁防长行溢出。
 - 与 `templates/private-repo/scripts/compose.py` 行为一致——**改动任一实现必须同步另一份**，
   并以 `yamlresume validate` 验证输出（长度/必填规则）。
 
@@ -169,7 +169,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 6. PDF 预览：切换类型后只出现该 `resume/*` 分支的正式版与 Git 记录，不出现预览结果，页面不存在构建/同步按钮；
 7. Git 看板：改文件 → 状态出现 → 提交 → 推送（测试用一次性临时私有仓）；
 8. 设置连接空目录：生成骨架 → 目录结构核对 → `yamlresume validate` 通过；
-9. PDF 输出：生成包含长项目描述、技能和兴趣的 ModernCV 简历，确认 `.log` 无 `Overfull/Underfull`，技能按“掌握/熟悉”分行、兴趣单行且均无模板等级/冒号。
+9. PDF 输出：生成包含长项目描述、技能和兴趣的 ModernCV 简历，确认 `.log` 无 `Overfull/Underfull`，技能按方向分组（如 `Agent：xxx、xxx`）分行、兴趣单行且均无模板等级/冒号；项目 `cventry` 中的“关键字：xxx”不被后处理误伤。
 
 ## 8. 隐私红线（评审时检查）
 

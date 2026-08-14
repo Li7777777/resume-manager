@@ -71,21 +71,34 @@ function buildSummary(entry, wanted) {
 }
 
 function compactSkills(items) {
-  const groups = new Map([['掌握', []], ['熟悉', []]])
+  // 按细分方向（tags）分组：每个方向一行“方向：技能、技能”，跨方向技能同时出现在多行。
+  const dirOrder = []
+  const groups = new Map()
   for (const item of items) {
-    const label = item.level === 'Master' ? '掌握' : '熟悉'
     const candidates = Array.isArray(item.keywords) && item.keywords.length ? item.keywords : [item.name]
-    for (const candidate of candidates) {
-      const name = String(candidate || '').replace(/^(熟悉|掌握)\s*/, '').trim()
-      if (name && !groups.get(label).includes(name)) groups.get(label).push(name)
+    const names = candidates
+      .map((c) => String(c || '').replace(/^(熟悉|掌握)\s*/, '').trim())
+      .filter(Boolean)
+    if (!names.length) continue
+    const tags = Array.isArray(item.tags)
+      ? item.tags.filter((t) => typeof t === 'string' && t.trim())
+      : []
+    const dirs = tags.length ? tags : ['通用']
+    for (const dir of dirs) {
+      if (!groups.has(dir)) {
+        groups.set(dir, [])
+        dirOrder.push(dir)
+      }
+      const list = groups.get(dir)
+      for (const n of names) if (!list.includes(n)) list.push(n)
     }
   }
-  return [...groups.entries()]
-    .filter(([, names]) => names.length)
-    .map(([label, names]) => ({
-      name: `${label} ${names.join('、')}`,
-      // schema 要求 level 为合法枚举；构建阶段会隐藏模板自动追加的“大师/专家”。
-      level: label === '掌握' ? 'Master' : 'Expert',
+  return dirOrder
+    .filter((dir) => (groups.get(dir) || []).length)
+    .map((dir) => ({
+      name: `${dir}：${groups.get(dir).join('、')}`,
+      // schema 要求 level 为合法枚举；构建阶段会移除模板追加的“专家/大师”。
+      level: 'Expert',
       keywords: [],
     }))
 }
@@ -132,8 +145,9 @@ function composeList(repo, block, cfg) {
     if (Array.isArray(item.summary)) item.summary = toSummaryString(item.summary)
     out.push(item)
   }
-  if (block === 'skills') return compactSkills(out)
-  if (block === 'interests') return compactInterests(out)
+  // 技能/兴趣分组需要方向（tags）元数据，因此直接用原始选中条目（含 tags）
+  if (block === 'skills') return compactSkills(selected)
+  if (block === 'interests') return compactInterests(selected)
   return out
 }
 
