@@ -7,7 +7,6 @@ import {
   ArrowDown,
   Layers,
   FileCode2,
-  Loader2,
   CheckCircle2,
   CheckSquare2,
   Square,
@@ -914,7 +913,7 @@ export default function Customizer() {
                 disabled={!canCustomize || rendering || yamlDirty || (workspaceMode === 'visual' && (sections.length === 0 || !activeTemplate))}
                 onClick={() => renderCurrent(false)}
               >
-                {busyAction === 'preview' ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} 预览
+                <Eye size={13} /> 预览
               </Button>
               <Button
                 size="sm"
@@ -923,7 +922,7 @@ export default function Customizer() {
                 disabled={!canCustomize || rendering || yamlDirty || (workspaceMode === 'visual' && (sections.length === 0 || !activeTemplate))}
                 onClick={() => renderCurrent(true)}
               >
-                {busyAction === 'release' ? <Loader2 size={13} className="animate-spin" /> : <PackageCheck size={13} />} 保存发布正式版
+                <PackageCheck size={13} /> 保存发布正式版
               </Button>
             </div>
           }
