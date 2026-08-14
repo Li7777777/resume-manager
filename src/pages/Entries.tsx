@@ -104,7 +104,7 @@ const FIELDS: Record<Category, FieldDef[]> = {
     { key: 'startDate', label: '开始时间', type: 'text', hint: '如 2021-03' },
     { key: 'endDate', label: '结束时间', type: 'text', hint: '留空 = 至今' },
     { key: 'url', label: '公司主页', type: 'text' },
-    { key: 'keywords', label: '技能关键词', type: 'tags' },
+    { key: 'keywords', label: '细分标签', type: 'tags', hint: '展示用，不参与筛选（对应简历中的关键词）' },
     { key: 'achievements', label: '成就要点', type: 'achievements', hint: '每条可打标签，无标签 = 通用（所有方向保留）' },
     { key: 'tags', label: '方向标签', type: 'tags', hint: '元数据，用于筛选（不进入简历）' },
     { key: 'notes', label: '备注', type: 'textarea', hint: '仅自己可见' },
@@ -118,6 +118,7 @@ const FIELDS: Record<Category, FieldDef[]> = {
     { key: 'endDate', label: '结束时间', type: 'text' },
     { key: 'url', label: '学校主页', type: 'text' },
     { key: 'summary', label: '描述', type: 'summary' },
+    { key: 'keywords', label: '细分标签', type: 'tags' },
     { key: 'tags', label: '方向标签', type: 'tags' },
   ],
   projects: [
@@ -128,14 +129,14 @@ const FIELDS: Record<Category, FieldDef[]> = {
     { key: 'url', label: '链接', type: 'text' },
     { key: 'startDate', label: '开始时间', type: 'text' },
     { key: 'endDate', label: '结束时间', type: 'text' },
-    { key: 'keywords', label: '技术栈', type: 'tags' },
+    { key: 'keywords', label: '细分标签', type: 'tags', hint: '技术栈/技术点' },
     { key: 'summary', label: '项目要点', type: 'summary' },
     { key: 'tags', label: '方向标签', type: 'tags' },
   ],
   skills: [
     { key: 'name', label: '技能名称', type: 'text', required: true },
     { key: 'level', label: '熟练度', type: 'select', options: LEVELS },
-    { key: 'keywords', label: '细分关键词', type: 'tags' },
+    { key: 'keywords', label: '细分标签', type: 'tags' },
     { key: 'tags', label: '方向标签', type: 'tags' },
   ],
   certificates: [
@@ -143,11 +144,12 @@ const FIELDS: Record<Category, FieldDef[]> = {
     { key: 'issuer', label: '颁发机构', type: 'text' },
     { key: 'date', label: '获取时间', type: 'text' },
     { key: 'url', label: '验证链接', type: 'text' },
+    { key: 'keywords', label: '细分标签', type: 'tags' },
     { key: 'tags', label: '方向标签', type: 'tags' },
   ],
   interests: [
     { key: 'name', label: '兴趣名称', type: 'text', required: true },
-    { key: 'keywords', label: '关键词', type: 'tags' },
+    { key: 'keywords', label: '细分标签', type: 'tags' },
   ],
 }
 
@@ -165,6 +167,7 @@ export default function Entries() {
   const [all, setAll] = useState<Record<string, any>>({})
   const [tagCount, setTagCount] = useState<Record<string, number>>({})
   const [library, setLibrary] = useState<string[]>([])
+  const [subTags, setSubTags] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [filterTag, setFilterTag] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -175,11 +178,12 @@ export default function Entries() {
 
   const load = () =>
     api
-      .get<{ entries: Record<string, Entry[]>; tagCount: Record<string, number>; categories: { key: string; label: string; visible: boolean }[]; library?: string[] }>('/api/entries')
+      .get<{ entries: Record<string, Entry[]>; tagCount: Record<string, number>; categories: { key: string; label: string; visible: boolean }[]; library?: string[]; subLibrary?: string[] }>('/api/entries')
       .then((d) => {
         setAll(d.entries)
         setTagCount(d.tagCount)
         if (Array.isArray(d.library)) setLibrary(d.library)
+        if (Array.isArray(d.subLibrary)) setSubTags(d.subLibrary)
         if (d.categories?.length) setCategories(d.categories)
         setLoading(false)
       })
@@ -382,6 +386,15 @@ export default function Entries() {
                   ))}
                 </div>
               )}
+              {((e.keywords as string[]) || []).length > 0 && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  {(e.keywords as string[]).map((k) => (
+                    <span key={k} className="rounded-full border border-dashed border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-500">
+                      {k}
+                    </span>
+                  ))}
+                </div>
+              )}
               {category === 'work' && (e.achievements as any[])?.length > 0 && (
                 <div className="mt-2.5 flex items-center gap-1.5 border-t border-zinc-800/70 pt-2 text-[11px] text-zinc-600">
                   <ListChecks size={12} />
@@ -399,6 +412,7 @@ export default function Entries() {
           category={category}
           entry={editing}
           allTags={allTags}
+          subTags={subTags}
           onClose={() => setEditing(null)}
           onSave={save}
         />
@@ -435,7 +449,9 @@ interface TagItem {
 
 function TagManagerModal({ open, onClose, onChanged }: { open: boolean; onClose: () => void; onChanged: () => void }) {
   const toast = useToast()
-  const [tags, setTags] = useState<TagItem[]>([])
+  const [tab, setTab] = useState<'dir' | 'sub'>('dir')
+  const [dirTags, setDirTags] = useState<TagItem[]>([])
+  const [subTags, setSubTags] = useState<TagItem[]>([])
   const [newTag, setNewTag] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -446,20 +462,25 @@ function TagManagerModal({ open, onClose, onChanged }: { open: boolean; onClose:
 
   const load = () =>
     api
-      .get<{ tags: TagItem[] }>('/api/tags')
-      .then((d) => setTags(d.tags))
+      .get<{ tags: TagItem[]; subLibrary?: string[]; subTagCount?: Record<string, number> }>('/api/tags')
+      .then((d) => {
+        setDirTags(d.tags)
+        setSubTags((d.subLibrary || []).map((name) => ({ name, count: d.subTagCount?.[name] || 0, inLibrary: true })))
+      })
       .catch((e) => toast('error', e.message))
 
-  // 新增标签：写入标签库（条目编辑建议即包含）
+  const list = tab === 'dir' ? dirTags : subTags
+
+  // 新增标签：方向写入 library、细分写入 sublibrary（条目编辑建议即包含）
   const addTag = async () => {
     const t = newTag.trim()
     if (!t) return
     setBusy(true)
     try {
-      const cur = tags.map((x) => x.name)
+      const cur = list.map((x) => x.name)
       if (cur.includes(t)) return toast('warn', '标签已存在')
-      await api.put('/api/tags/library', { tags: [...cur, t] })
-      toast('success', `已新增标签「${t}」`)
+      await api.put(tab === 'dir' ? '/api/tags/library' : '/api/tags/sublibrary', { tags: [...cur, t] })
+      toast('success', `已新增${tab === 'dir' ? '方向' : '细分'}标签「${t}」`)
       setNewTag('')
       await load()
       onChanged()
@@ -470,13 +491,13 @@ function TagManagerModal({ open, onClose, onChanged }: { open: boolean; onClose:
     }
   }
 
-  // 重命名标签（所有条目同步）
+  // 重命名标签：方向同步条目 tags、细分同步条目 keywords
   const renameTag = async (from: string) => {
     const to = window.prompt(`将标签「${from}」重命名为：`, from)
     if (!to || to.trim() === from) return
     setBusy(true)
     try {
-      const r = await api.post<{ affected: number }>('/api/tags/rename', { from, to: to.trim() })
+      const r = await api.post<{ affected: number }>(tab === 'dir' ? '/api/tags/rename' : '/api/tags/sub-rename', { from, to: to.trim() })
       toast('success', `已重命名，影响 ${r.affected} 个条目`)
       await load()
       onChanged()
@@ -487,12 +508,12 @@ function TagManagerModal({ open, onClose, onChanged }: { open: boolean; onClose:
     }
   }
 
-  // 删除标签（所有条目移除）
+  // 删除标签：所有条目移除（方向 tags / 细分 keywords）
   const deleteTag = async (t: string) => {
     if (!confirm(`确定删除标签「${t}」吗？将从所有条目中移除。`)) return
     setBusy(true)
     try {
-      const r = await api.post<{ affected: number }>('/api/tags/delete', { tag: t })
+      const r = await api.post<{ affected: number }>(tab === 'dir' ? '/api/tags/delete' : '/api/tags/sub-delete', { tag: t })
       toast('success', `已删除，影响 ${r.affected} 个条目`)
       await load()
       onChanged()
@@ -506,19 +527,39 @@ function TagManagerModal({ open, onClose, onChanged }: { open: boolean; onClose:
   return (
     <Modal open={open} title="管理标签" onClose={onClose} wide>
       <p className="mb-3 text-xs leading-relaxed text-zinc-500">
-        标签库保存在私有仓 <code className="text-zinc-400">tags.yml</code>，随 Git 版本化；重命名或删除已被条目使用的标签会更新对应简历数据，因为标签直接参与组稿筛选。
+        标签库保存在私有仓 <code className="text-zinc-400">tags.yml</code>，随 Git 版本化。两类标签：
+        <b className="text-zinc-300">方向标签</b>参与组稿筛选；<b className="text-zinc-300">细分标签</b>对应条目关键词（展示用）。
       </p>
+      <div className="mb-3 flex gap-1.5">
+        <button
+          onClick={() => setTab('dir')}
+          className={`rounded-md px-3 py-1.5 text-xs transition ${tab === 'dir' ? 'bg-indigo-500/15 text-indigo-100' : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300'}`}
+        >
+          方向标签
+        </button>
+        <button
+          onClick={() => setTab('sub')}
+          className={`rounded-md px-3 py-1.5 text-xs transition ${tab === 'sub' ? 'bg-indigo-500/15 text-indigo-100' : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300'}`}
+        >
+          细分标签
+        </button>
+      </div>
       <div className="flex gap-2">
-        <Input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="新增标签名称（如：data）" className="flex-1 !py-1.5 text-xs" />
+        <Input
+          value={newTag}
+          onChange={(e) => setNewTag(e.target.value)}
+          placeholder={tab === 'dir' ? '新增方向标签（如：general）' : '新增细分标签（如：TypeScript）'}
+          className="flex-1 !py-1.5 text-xs"
+        />
         <Button size="sm" variant="secondary" loading={busy} disabled={!newTag.trim()} onClick={addTag}>
           <Plus size={13} /> 新增
         </Button>
       </div>
       <div className="mt-3 space-y-1.5">
-        {tags.length === 0 ? (
-          <p className="py-6 text-center text-xs text-zinc-600">暂无标签</p>
+        {list.length === 0 ? (
+          <p className="py-6 text-center text-xs text-zinc-600">暂无{tab === 'dir' ? '方向' : '细分'}标签</p>
         ) : (
-          tags.map((t) => (
+          list.map((t) => (
             <div key={t.name} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2">
               <TagChip tag={t.name} />
               <span className="text-[11px] text-zinc-600">{t.count} 个条目{t.inLibrary ? ' · 标签库' : ''}</span>
@@ -695,12 +736,14 @@ function EntryModal({
   category,
   entry,
   allTags,
+  subTags,
   onClose,
   onSave,
 }: {
   category: string
   entry: Entry
   allTags: string[]
+  subTags: string[]
   onClose: () => void
   onSave: (e: Entry) => void
 }) {
@@ -737,7 +780,13 @@ function EntryModal({
           </Select>
         )
       case 'tags':
-        return <TagInput value={(value as string[]) || []} onChange={(v) => set(f.key, v)} suggestions={allTags} />
+        return (
+          <TagInput
+            value={(value as string[]) || []}
+            onChange={(v) => set(f.key, v)}
+            suggestions={f.key === 'keywords' ? subTags : allTags}
+          />
+        )
       case 'summary':
         return (
           <Textarea

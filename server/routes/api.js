@@ -174,13 +174,14 @@ router.put('/categories', (req, res) => {
 })
 
 /* ---------- 标签管理（增删改，作用于全部条目） ---------- */
-// 标签列表：私有仓 tags.yml 标签库 + 条目标签计数
+// 标签列表：私有仓 tags.yml 标签库（方向 + 细分）+ 条目标签计数
 router.get('/tags', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   try {
     const lib = store.libTags(repo)
-    const { tagCount } = store.allEntries(repo)
+    const subLib = store.libSubTags(repo)
+    const { tagCount, subTagCount } = store.allEntries(repo)
     const tags = Object.keys(tagCount)
       .map((name) => ({ name, count: tagCount[name], inLibrary: lib.includes(name) }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
@@ -188,13 +189,13 @@ router.get('/tags', (req, res) => {
     for (const t of lib) {
       if (!tags.some((x) => x.name === t)) tags.push({ name: t, count: 0, inLibrary: true })
     }
-    res.json({ ok: true, tags, library: lib })
+    res.json({ ok: true, tags, library: lib, subLibrary: subLib, subTagCount: subTagCount || {} })
   } catch (err) {
     sendError(res, err)
   }
 })
 
-// 新增标签（写入标签库；条目编辑时 TagInput 建议即包含）
+// 新增标签（写入方向标签库；条目编辑时 TagInput 建议即包含）
 router.put('/tags/library', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
@@ -203,6 +204,20 @@ router.put('/tags/library', (req, res) => {
   try {
     const lib = store.saveLibTags(repo, tags)
     res.json({ ok: true, library: lib })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+// 新增细分标签（写入细分标签库；对应条目 keywords）
+router.put('/tags/sublibrary', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const { tags } = req.body || {}
+  if (!Array.isArray(tags)) return res.json({ ok: false, error: '参数错误' })
+  try {
+    const lib = store.saveLibSubTags(repo, tags)
+    res.json({ ok: true, subLibrary: lib })
   } catch (err) {
     sendError(res, err)
   }
@@ -242,12 +257,46 @@ router.post('/tags/delete', (req, res) => {
   }
 })
 
+// 重命名细分标签（同步所有条目 keywords，细分库同步）
+router.post('/tags/sub-rename', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const { from, to } = req.body || {}
+  if (!from || !to || typeof from !== 'string' || typeof to !== 'string') {
+    return res.json({ ok: false, error: '参数错误' })
+  }
+  const f = from.trim()
+  const t = to.trim()
+  if (!f || !t) return res.json({ ok: false, error: '细分标签不能为空' })
+  if (f === t) return res.json({ ok: true, affected: 0, message: '新旧细分标签相同' })
+  try {
+    const affected = store.renameSubTag(repo, f, t)
+    res.json({ ok: true, affected, from: f, to: t })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+// 删除细分标签（同步所有条目 keywords，细分库同步移除）
+router.post('/tags/sub-delete', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  const { tag } = req.body || {}
+  if (!tag || typeof tag !== 'string') return res.json({ ok: false, error: '参数错误' })
+  try {
+    const affected = store.deleteSubTag(repo, tag.trim())
+    res.json({ ok: true, affected, tag: tag.trim() })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
 /* ---------- 信息条目 ---------- */
 router.get('/entries', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   const { entries, tagCount } = store.allEntries(repo)
-  res.json({ ok: true, entries, tagCount, library: store.libTags(repo), categories: store.getCategories(repo) })
+  res.json({ ok: true, entries, tagCount, library: store.libTags(repo), subLibrary: store.libSubTags(repo), categories: store.getCategories(repo) })
 })
 
 router.get('/entries/:cat', (req, res) => {

@@ -44,7 +44,7 @@ const TAGS_FILE = (repo) => path.join(repo, 'tags.yml')
 const CATEGORIES_FILE = (repo) => path.join(repo, 'categories.yml')
 const TAGS_HEADER =
   '# 管理端标签库：随本仓库版本化，打包分发后直接可用。\n' +
-  '# 条目内的 tags 参与组稿；此处维护标签集合（增删/重命名会同步到条目）。\n'
+  '# tags=方向标签（参与组稿筛选）；subtags=细分标签（对应条目 keywords，展示用）。\n'
 const CATEGORIES_HEADER =
   '# 管理端分类显示配置：随本仓库版本化，打包分发后直接可用。\n' +
   '# 分类名/排序/显隐保存于此；data/<key>.yml 存放分类内容。\n'
@@ -132,18 +132,30 @@ export function saveCategories(repo, categories) {
 }
 
 /* ---------- 标签库（私有仓 tags.yml；随 Git 版本化） ---------- */
+// 双组结构：tags=方向标签（组稿筛选）、subtags=细分标签（条目 keywords，展示用）
 function readRepoTags(repo) {
   const file = TAGS_FILE(repo)
   if (!fs.existsSync(file)) return null
   const doc = yaml.load(fs.readFileSync(file, 'utf8')) || {}
-  return Array.isArray(doc.tags) ? doc.tags : []
+  return {
+    tags: Array.isArray(doc.tags) ? doc.tags : [],
+    subtags: Array.isArray(doc.subtags) ? doc.subtags : [],
+  }
 }
 
-// 标签库：私有仓 tags.yml 为唯一权威来源；
-// 首次读取时从本机侧车或旧根目录 tags.json 一次性迁移。
+function writeRepoTags(repo, doc) {
+  fs.mkdirSync(path.dirname(TAGS_FILE(repo)), { recursive: true })
+  fs.writeFileSync(TAGS_FILE(repo), TAGS_HEADER + yaml.dump({ tags: doc.tags || [], subtags: doc.subtags || [] }, { noRefs: true, lineWidth: -1 }), 'utf8')
+}
+
+function cleanTagList(tags) {
+  return [...new Set(tags.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim()))]
+}
+
+// 方向标签库：tags.yml 的 tags 为唯一权威来源；首次读取从侧车或旧 tags.json 一次性迁移。
 export function libTags(repo) {
   const fromFile = readRepoTags(repo)
-  if (fromFile !== null) return fromFile
+  if (fromFile !== null) return fromFile.tags
   let tags = getManagerState(repo).tags
   if (!Array.isArray(tags)) {
     try {
@@ -154,13 +166,36 @@ export function libTags(repo) {
     }
   }
   saveLibTags(repo, tags)
-  return readRepoTags(repo)
+  return readRepoTags(repo).tags
+}
+
+// 细分标签库：tags.yml 的 subtags；首次读取从现有条目 keywords 聚合生成。
+export function libSubTags(repo) {
+  const fromFile = readRepoTags(repo)
+  if (fromFile !== null) return fromFile.subtags
+  const seen = new Set()
+  for (const cat of getCategories(repo)) {
+    if (cat.key === 'basics') continue
+    for (const e of readCategory(repo, cat.key)) {
+      for (const k of e.keywords || []) if (typeof k === 'string' && k.trim()) seen.add(k.trim())
+    }
+  }
+  const subtags = [...seen]
+  saveLibSubTags(repo, subtags)
+  return subtags
 }
 
 export function saveLibTags(repo, tags) {
-  const clean = [...new Set(tags.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim()))]
-  fs.mkdirSync(path.dirname(TAGS_FILE(repo)), { recursive: true })
-  fs.writeFileSync(TAGS_FILE(repo), TAGS_HEADER + yaml.dump({ tags: clean }, { noRefs: true, lineWidth: -1 }), 'utf8')
+  const clean = cleanTagList(tags)
+  const doc = readRepoTags(repo) || { tags: [], subtags: [] }
+  writeRepoTags(repo, { ...doc, tags: clean })
+  return clean
+}
+
+export function saveLibSubTags(repo, subtags) {
+  const clean = cleanTagList(subtags)
+  const doc = readRepoTags(repo) || { tags: [], subtags: [] }
+  writeRepoTags(repo, { ...doc, subtags: clean })
   return clean
 }
 
@@ -209,6 +244,54 @@ export function deleteTag(repo, tag) {
     }
   }
   saveLibTags(repo, libTags(repo).filter((t) => t !== tag))
+  return affected
+}
+
+// 全条目重命名细分标签（同步 keywords），返回受影响条目数
+// 细分标签对应条目 keywords 字段（展示用，不参与组稿筛选）
+export function renameSubTag(repo, from, to) {
+  let affected = 0
+  for (const cat of getCategories(repo)) {
+    const entries = readCategory(repo, cat.key)
+    if (cat.key === 'basics') continue
+    let changed = false
+    for (const e of entries) {
+      if (Array.isArray(e.keywords) && e.keywords.includes(from)) {
+        e.keywords = [...new Set(e.keywords.map((k) => (k === from ? to : k)))]
+        changed = true
+      }
+    }
+    if (changed) {
+      writeCategory(repo, cat.key, entries)
+      affected += entries.length
+    }
+  }
+  const lib = libSubTags(repo)
+  if (lib.includes(from)) {
+    saveLibSubTags(repo, lib.map((k) => (k === from ? to : k)))
+  }
+  return affected
+}
+
+// 全条目删除细分标签（同步 keywords），返回受影响条目数
+export function deleteSubTag(repo, tag) {
+  let affected = 0
+  for (const cat of getCategories(repo)) {
+    const entries = readCategory(repo, cat.key)
+    if (cat.key === 'basics') continue
+    let changed = false
+    for (const e of entries) {
+      if (Array.isArray(e.keywords) && e.keywords.includes(tag)) {
+        e.keywords = e.keywords.filter((k) => k !== tag)
+        changed = true
+      }
+    }
+    if (changed) {
+      writeCategory(repo, cat.key, entries)
+      affected += entries.length
+    }
+  }
+  saveLibSubTags(repo, libSubTags(repo).filter((k) => k !== tag))
   return affected
 }
 // 组稿时剥除的键；notes 仅用于兼容迁移前数据。
@@ -328,6 +411,7 @@ export function deleteEntry(repoPath, category, id) {
 export function allEntries(repoPath) {
   const out = {}
   const tagCount = {}
+  const subTagCount = {}
   for (const cat of getCategories(repoPath)) {
     if (cat.visible === false) continue
     const entries = readCategory(repoPath, cat.key)
@@ -337,7 +421,10 @@ export function allEntries(repoPath) {
       for (const t of e.tags || []) {
         tagCount[t] = (tagCount[t] || 0) + 1
       }
+      for (const k of e.keywords || []) {
+        subTagCount[k] = (subTagCount[k] || 0) + 1
+      }
     }
   }
-  return { entries: out, tagCount }
+  return { entries: out, tagCount, subTagCount }
 }
