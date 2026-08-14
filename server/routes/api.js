@@ -48,6 +48,51 @@ const gitSyncGuard = (res) => {
   return false
 }
 
+/* ---------- 文件夹选择（设置页数据仓路径浏览） ---------- */
+// 仅返回目录名（不含文件内容），供前端文件夹选择面板导航
+router.get('/fs/dirs', (req, res) => {
+  const reqPath = String(req.query.path || '').trim()
+  try {
+    if (process.platform === 'win32') {
+      if (!reqPath) {
+        // 根视图：枚举可用盘符
+        const drives = []
+        for (let c = 65; c <= 90; c++) {
+          const letter = String.fromCharCode(c)
+          try {
+            if (fs.existsSync(`${letter}:\\`)) drives.push(`${letter}:`)
+          } catch {
+            /* 跳过无权限盘符 */
+          }
+        }
+        return res.json({ ok: true, current: '', parent: null, dirs: drives })
+      }
+      const stat = fs.statSync(reqPath)
+      if (!stat.isDirectory()) return res.json({ ok: false, error: '不是目录' })
+      const dirs = fs
+        .readdirSync(reqPath, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
+        .sort((a, b) => a.localeCompare(b, 'zh'))
+      const parent = path.dirname(reqPath)
+      return res.json({ ok: true, current: reqPath, parent: parent === reqPath ? null : parent, dirs })
+    }
+    // 非 Windows
+    const current = reqPath || '/'
+    const stat = fs.statSync(current)
+    if (!stat.isDirectory()) return res.json({ ok: false, error: '不是目录' })
+    const dirs = fs
+      .readdirSync(current, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort((a, b) => a.localeCompare(b, 'zh'))
+    const parent = path.dirname(current)
+    return res.json({ ok: true, current, parent: parent === current ? null : parent, dirs })
+  } catch (err) {
+    res.json({ ok: false, error: err.message })
+  }
+})
+
 // Git 同步关闭时，拒绝所有 git / github 交互端点（含自动检测、Actions 变量、CI 产物）
 router.use('/git', (req, res, next) => {
   if (gitSyncOn()) return next()

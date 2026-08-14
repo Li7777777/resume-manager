@@ -16,12 +16,14 @@ import {
   Sparkles,
   TerminalSquare,
   GitPullRequestArrow,
+  FolderOpen,
+  ArrowUp,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Settings } from '../types'
 import { loadSettings, patchSettings } from '../settings'
 import { useToast } from '../toast'
-import { Card, Button, Field, Input, Switch, Badge, Spinner } from '../components/ui'
+import { Card, Button, Field, Input, Switch, Badge, Spinner, Modal } from '../components/ui'
 
 export default function SettingsPage() {
   const toast = useToast()
@@ -39,6 +41,7 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  const [dirPickerOpen, setDirPickerOpen] = useState(false)
   const [connectResult, setConnectResult] = useState<{
     generated?: boolean
     inited?: boolean
@@ -237,6 +240,9 @@ export default function SettingsPage() {
                   className="pl-9 font-mono"
                 />
               </div>
+              <Button variant="secondary" onClick={() => setDirPickerOpen(true)}>
+                <FolderOpen size={13} /> 浏览…
+              </Button>
               <Button variant="secondary" loading={testing} onClick={test}>
                 <RefreshCw size={13} /> 测试连接
               </Button>
@@ -460,11 +466,114 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
           <Save size={15} /> 保存设置
         </Button>
       </div>
+      <DirPickerModal
+        open={dirPickerOpen}
+        onClose={() => setDirPickerOpen(false)}
+        onSelect={(dir) => {
+          setForm((f) => ({ ...f, repoPath: dir }))
+          setDirPickerOpen(false)
+        }}
+      />
       {!ready && (
         <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-zinc-950/40">
           <Spinner label="正在加载设置…" />
         </div>
       )}
     </div>
+  )
+}
+
+/* ---------- 文件夹选择面板（数据仓路径浏览） ---------- */
+function DirPickerModal({
+  open,
+  onClose,
+  onSelect,
+}: {
+  open: boolean
+  onClose: () => void
+  onSelect: (dir: string) => void
+}) {
+  const toast = useToast()
+  const [current, setCurrent] = useState('')
+  const [parent, setParent] = useState<string | null>(null)
+  const [dirs, setDirs] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) load('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const load = async (p: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const r = await api.get<{ ok?: boolean; current: string; parent: string | null; dirs: string[]; error?: string }>(
+        `/api/fs/dirs?path=${encodeURIComponent(p)}`,
+      )
+      if (r.ok === false) {
+        setError(r.error || '无法读取该目录')
+        return
+      }
+      setCurrent(r.current)
+      setParent(r.parent)
+      setDirs(r.dirs || [])
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const enter = (name: string) => {
+    const base = current.replace(/[\\/]+$/, '')
+    // 根视图（盘符）进入用 `E:/` 形式（Windows 中裸 `E:` 会解析为盘符当前目录）
+    load(base ? `${base}/${name}` : `${name}/`)
+  }
+
+  return (
+    <Modal open={open} title="选择数据仓文件夹" onClose={onClose}>
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => parent && load(parent)}
+            disabled={!parent}
+            title="上级目录"
+            className="rounded-md border border-zinc-700 px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"
+          >
+            <ArrowUp size={13} />
+          </button>
+          <span className="min-w-0 flex-1 truncate rounded-md bg-zinc-950/60 px-3 py-1.5 font-mono text-xs text-zinc-300">
+            {current || '选择磁盘…'}
+          </span>
+        </div>
+        <div className="max-h-[50vh] space-y-0.5 overflow-y-auto rounded-lg border border-zinc-800 p-1.5">
+          {loading ? (
+            <p className="py-8 text-center text-xs text-zinc-600">加载中…</p>
+          ) : dirs.length === 0 ? (
+            <p className="py-8 text-center text-xs text-zinc-600">（当前没有子文件夹）</p>
+          ) : (
+            dirs.map((d) => (
+              <button
+                key={d}
+                onClick={() => enter(d)}
+                className="flex w-full items-center gap-2 truncate rounded-md px-2 py-1.5 text-left text-xs text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
+              >
+                <FolderGit2 size={13} className="shrink-0 text-amber-500/70" />
+                <span className="truncate">{d}</span>
+              </button>
+            ))
+          )}
+        </div>
+        {error && <p className="rounded-md bg-red-500/10 px-3 py-1.5 text-xs text-red-400">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" disabled={!current} onClick={() => onSelect(current)}>
+            <FolderOpen size={13} /> 选择此文件夹
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
