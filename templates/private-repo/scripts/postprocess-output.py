@@ -11,13 +11,15 @@ MODERNCV_SKILL = re.compile(
     re.MULTILINE,
 )
 JAKE_SKILL = re.compile(
-    r"^\\textbf\{([^{}\r\n]+)\}[:：][^{}\r\n]*$",
+    r"^\\textbf\{([^{}\r\n]*：[^{}\r\n]*)\}[:：][^{}\r\n]*$",
     re.MULTILINE,
 )
 JAKE_INTEREST = re.compile(
     r"^\\textbf\{([^{}\r\n]*、[^{}\r\n]*)\}$",
     re.MULTILINE,
 )
+KEYWORDS_LABEL = re.compile(r"\\textbf\{关键字\}")
+HTML_KEYWORDS_LABEL = re.compile(r"<span>关键字</span>")
 HTML_SKILL_LEVEL = re.compile(
     r'(<div class="resume-skill-name">[^<]*)'
     r'<span class="resume-skill-level">[^<]*</span>'
@@ -47,6 +49,9 @@ def rewrite(path, transform):
 
 def normalize_tex(text):
     text = MODERNCV_SKILL.sub(r"\\cvline{}{\1}", text)
+    # 项目关键字：改名为“技术栈”并另起一行（必须先于 JAKE_SKILL 执行，避免被其误删）。
+    # 用 \\leavevmode\\ 强制换行：cventry 是非 long 宏（参数禁 \\par），且摘要可能是 itemize（\\newline 会报错）。
+    text = KEYWORDS_LABEL.sub(r"\\leavevmode\\\\\\textbf{技术栈}", text)
     text = JAKE_SKILL.sub(r"\1", text)
     text = JAKE_INTEREST.sub(r"\1", text)
     # ModernCV：正文列改 raggedright，避免长技能行因两端对齐产生 Overfull \\hbox。
@@ -56,7 +61,9 @@ def normalize_tex(text):
 
 
 def normalize_html(text):
-    return HTML_SKILL_LEVEL.sub(r"\1", text)
+    text = HTML_SKILL_LEVEL.sub(r"\1", text)
+    # 项目关键字改名为“技术栈”（HTML 中已是独立行）。
+    return HTML_KEYWORDS_LABEL.sub("<span>技术栈</span>", text)
 
 
 def main():

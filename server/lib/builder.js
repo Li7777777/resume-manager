@@ -52,8 +52,11 @@ function normalizeGroupedLatex(text) {
   let next = text
   // ModernCV：技能（“方向：技能、技能”）与兴趣爱好整行移入正文列，移除模板追加的等级标记。
   next = next.replace(/^\\cvline\{([^{}\r\n]+)\}\{[^{}\r\n]*\}$/gm, '\\cvline{}{$1}')
-  // Jake：移除技能行粗体包裹与末尾等级冒号（冒号后不允许出现 }，避免误伤 cventry 摘要里的“关键字：xxx}”）。
-  next = next.replace(/^\\textbf\{([^{}\r\n]+)\}[:：][^{}\r\n]*$/gm, '$1')
+  // 项目关键字：改名为“技术栈”并另起一行（必须先于 Jake 技能正则执行，避免被其误删）。
+  // 用 \\leavevmode\\ 强制换行：cventry 是非 long 宏（参数禁 \\par），且摘要可能是 itemize（\\newline 会报错）。
+  next = next.replace(/\\textbf\{关键字\}/g, '\\leavevmode\\\\\\textbf{技术栈}')
+  // Jake：移除技能行粗体包裹与末尾等级冒号（技能名含方向冒号，冒号后不允许出现 }）。
+  next = next.replace(/^\\textbf\{([^{}\r\n]*：[^{}\r\n]*)\}[:：][^{}\r\n]*$/gm, '$1')
   // Jake：移除兴趣行纯粗体包裹（以、连接，无等级）。
   next = next.replace(/^\\textbf\{([^{}\r\n]*、[^{}\r\n]*)\}$/gm, '$1')
   // ModernCV：正文列改 raggedright，避免长技能行因两端对齐产生 Overfull \\hbox。
@@ -64,10 +67,12 @@ function normalizeGroupedLatex(text) {
 }
 
 function normalizeGroupedHtml(text) {
-  return text.replace(
+  let next = text.replace(
     /(<div class="resume-skill-name">[^<]*)<span class="resume-skill-level">[^<]*<\/span>/g,
     '$1',
   )
+  // 项目关键字改名为“技术栈”（HTML 中已是独立行）。
+  return next.replace(/<span>关键字<\/span>/g, '<span>技术栈</span>')
 }
 
 async function normalizeGeneratedOutputs(repo, variant, env) {
