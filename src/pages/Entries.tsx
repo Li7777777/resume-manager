@@ -460,10 +460,12 @@ export default function Entries() {
                   />
                 )}
                 <div className="flex items-start justify-between gap-3">
-                  {canSort && <GripVertical size={14} className="mt-0.5 shrink-0 text-zinc-600" />}
-                  <div className="min-w-0">
-                    <h4 className="truncate text-sm font-semibold text-zinc-100">{titleOf(e)}</h4>
-                    {subOf(e) && <p className="mt-0.5 truncate text-xs text-zinc-500">{subOf(e)}</p>}
+                  <div className="flex min-w-0 flex-1 items-start gap-1.5">
+                    {canSort && <GripVertical size={14} className="mt-0.5 shrink-0 text-zinc-600" />}
+                    <div className="min-w-0 flex-1">
+                      <h4 className="truncate text-sm font-semibold text-zinc-100">{titleOf(e)}</h4>
+                      {subOf(e) && <p className="mt-0.5 truncate text-xs text-zinc-500">{subOf(e)}</p>}
+                    </div>
                   </div>
                   <div className="flex shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
                     <button className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-indigo-300" onClick={() => { setEditing({ ...e }); setIsNew(false) }}>
