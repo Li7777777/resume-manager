@@ -439,7 +439,7 @@ export default function Customizer() {
                     </div>
                     {(entry.tags || []).length > 0 && (
                       <div className="mt-1 flex flex-wrap gap-1 pl-5">
-                        {(entry.tags as string[]).slice(0, 4).map((tag) => <TagChip key={tag} tag={tag} />)}
+                        {(entry.tags as string[]).map((tag) => <TagChip key={tag} tag={tag} />)}
                       </div>
                     )}
                   </div>
