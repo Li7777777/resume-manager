@@ -180,7 +180,19 @@ export function TagChip({ tag, onRemove }: { tag: string; onRemove?: () => void 
     >
       {tag}
       {onRemove && (
-        <button className="opacity-60 hover:opacity-100" onClick={onRemove}>
+        <button
+          type="button"
+          className="opacity-60 hover:opacity-100"
+          aria-label="删除标签"
+          onClick={(e) => {
+            // 浏览器可能在点击 chip 时错误地把坐标重定向到按钮（scroll/焦点变化后），
+            // 校验点击是否真正落在按钮内，避免误删
+            const r = e.currentTarget.getBoundingClientRect()
+            const inside =
+              e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
+            if (inside) onRemove()
+          }}
+        >
           <X size={11} />
         </button>
       )}
