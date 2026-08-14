@@ -78,6 +78,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | GET | `/api/entries` | 全部分类条目 + 标签计数 |
 | GET | `/api/entries/:cat` | 单分类 |
 | POST | `/api/entries/:cat` | 新增（basics 为整对象替换） |
+| PUT | `/api/entries/:cat/reorder` | 按 id 顺序重排分类条目（写回 YAML 数组顺序） |
 | PUT | `/api/entries/:cat/:id` | 更新（按 id） |
 | DELETE | `/api/entries/:cat/:id` | 删除 |
 

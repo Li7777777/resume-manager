@@ -20,6 +20,7 @@ import {
   ArrowDown,
   EyeOff,
   PlusCircle,
+  GripVertical,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Category, Entry } from '../types'
@@ -175,6 +176,9 @@ export default function Entries() {
   const [isNew, setIsNew] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
   const [tagManageOpen, setTagManageOpen] = useState(false)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const [dropSide, setDropSide] = useState<'before' | 'after'>('before')
 
   const load = () =>
     api
@@ -210,6 +214,62 @@ export default function Entries() {
     }
     return list
   }, [entries, filterTag, search])
+
+  // 拖动排序：仅在未筛选/未搜索且条目数 > 1 时可用，避免在部分列表上重排产生歧义
+  const canSort = category !== 'basics' && !filterTag && !search.trim() && filtered.length > 1
+
+  const resetDrag = () => {
+    setDragIndex(null)
+    setDropIndex(null)
+  }
+
+  const onDragStart = (index: number) => (event: React.DragEvent) => {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(index))
+    setDragIndex(index)
+  }
+
+  const onDragOver = (index: number) => (event: React.DragEvent) => {
+    if (dragIndex === null) return
+    if (dragIndex === index) {
+      setDropIndex(null)
+      return
+    }
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    setDropIndex(index)
+    setDropSide(event.clientY < rect.top + rect.height / 2 ? 'before' : 'after')
+  }
+
+  const onDrop = (index: number) => (event: React.DragEvent) => {
+    event.preventDefault()
+    if (dragIndex === null || dragIndex === index) {
+      resetDrag()
+      return
+    }
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const side = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+    const next = [...filtered]
+    const [moved] = next.splice(dragIndex, 1)
+    let target = index + (side === 'after' ? 1 : 0)
+    if (dragIndex < index) target -= 1
+    next.splice(target, 0, moved)
+    resetDrag()
+    void persistOrder(next)
+  }
+
+  // 先本地重排即时反馈，再写回 YAML；失败时重新拉取恢复
+  const persistOrder = async (next: Entry[]) => {
+    const ids = next.map((e) => e.id).filter((id): id is string => !!id)
+    setAll((prev) => ({ ...prev, [category]: next }))
+    try {
+      await api.put(`/api/entries/${category}/reorder`, { ids })
+    } catch (e: any) {
+      toast('error', `顺序保存失败：${e.message}`)
+      load()
+    }
+  }
 
   const save = async (entry: Entry) => {
     try {
@@ -360,23 +420,60 @@ export default function Entries() {
           desc="点右上角「新增」创建第一条，记得打上方向标签。"
         />
       ) : (
-        <div className="grid gap-3 xl:grid-cols-2">
-          {filtered.map((e) => (
-            <div key={e.id} className="group rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 transition hover:border-zinc-700">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h4 className="truncate text-sm font-semibold text-zinc-100">{titleOf(e)}</h4>
-                  {subOf(e) && <p className="mt-0.5 truncate text-xs text-zinc-500">{subOf(e)}</p>}
+        <>
+          {(canSort || ((filterTag || search.trim()) && filtered.length > 1)) && (
+            <div className="flex items-center justify-between text-[11px]">
+              {canSort ? (
+                <span className="flex items-center gap-1.5 text-zinc-500">
+                  <GripVertical size={11} /> 拖动卡片可调整顺序，顺序会同步到简历输出
+                </span>
+              ) : (
+                <span className="text-zinc-600">当前处于筛选/搜索状态，清除后可拖动排序</span>
+              )}
+            </div>
+          )}
+          <div
+            className="grid gap-3 xl:grid-cols-2"
+            onDragLeave={(event) => {
+              const next = event.relatedTarget as Node | null
+              if (!next || !event.currentTarget.contains(next)) setDropIndex(null)
+            }}
+          >
+            {filtered.map((e, index) => (
+              <div
+                key={e.id}
+                data-entry-card
+                draggable={canSort}
+                onDragStart={onDragStart(index)}
+                onDragOver={onDragOver(index)}
+                onDrop={onDrop(index)}
+                onDragEnd={resetDrag}
+                className={`group relative rounded-xl border bg-zinc-900/50 p-4 transition ${
+                  dragIndex === index ? 'border-zinc-700 opacity-40' : 'border-zinc-800 hover:border-zinc-700'
+                } ${canSort ? 'cursor-grab active:cursor-grabbing' : ''}`}
+              >
+                {canSort && dragIndex !== null && dragIndex !== index && dropIndex === index && (
+                  <span
+                    className={`pointer-events-none absolute left-2 right-2 h-0.5 rounded-full bg-indigo-400 ${
+                      dropSide === 'before' ? '-top-1.5' : '-bottom-1.5'
+                    }`}
+                  />
+                )}
+                <div className="flex items-start justify-between gap-3">
+                  {canSort && <GripVertical size={14} className="mt-0.5 shrink-0 text-zinc-600" />}
+                  <div className="min-w-0">
+                    <h4 className="truncate text-sm font-semibold text-zinc-100">{titleOf(e)}</h4>
+                    {subOf(e) && <p className="mt-0.5 truncate text-xs text-zinc-500">{subOf(e)}</p>}
+                  </div>
+                  <div className="flex shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
+                    <button className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-indigo-300" onClick={() => { setEditing({ ...e }); setIsNew(false) }}>
+                      <Pencil size={14} />
+                    </button>
+                    <button className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-red-400" onClick={() => remove(e.id!, titleOf(e))}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
-                  <button className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-indigo-300" onClick={() => { setEditing({ ...e }); setIsNew(false) }}>
-                    <Pencil size={14} />
-                  </button>
-                  <button className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-red-400" onClick={() => remove(e.id!, titleOf(e))}>
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
               {(e.tags || []).length > 0 && (
                 <div className="mt-2.5 flex flex-wrap gap-1">
                   {(e.tags as string[]).map((t) => (
@@ -403,7 +500,8 @@ export default function Entries() {
               )}
             </div>
           ))}
-        </div>
+          </div>
+        </>
       )}
 
       {/* 新增/编辑弹窗 */}

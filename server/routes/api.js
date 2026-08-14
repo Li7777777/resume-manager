@@ -365,6 +365,21 @@ router.post('/entries/:cat', (req, res) => {
   }
 })
 
+// 按 id 顺序重排分类条目（注意：必须注册在 /entries/:cat/:id 之前，避免 reorder 被当作 id）
+router.put('/entries/:cat/reorder', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  try {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.filter((id) => typeof id === 'string' && id.length > 0)
+      : []
+    const next = store.reorderEntries(repo, req.params.cat, ids)
+    res.json({ ok: true, entries: next })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
 router.put('/entries/:cat/:id', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })

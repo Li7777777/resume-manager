@@ -416,6 +416,26 @@ function syncEntryTagsToLibrary(repoPath, entry) {
   }
 }
 
+// 按 id 顺序重排分类条目（未列出的 id 保持原相对顺序追加在末尾）
+export function reorderEntries(repoPath, category, ids) {
+  if (category === 'basics') throw new Error('基础信息不支持排序')
+  const list = readCategory(repoPath, category)
+  const byId = new Map(list.filter((e) => e && e.id).map((e) => [e.id, e]))
+  const next = []
+  for (const id of ids) {
+    const e = byId.get(id)
+    if (e) {
+      next.push(e)
+      byId.delete(id)
+    }
+  }
+  for (const e of list) {
+    if (e && byId.has(e.id)) next.push(e)
+  }
+  writeCategory(repoPath, category, next)
+  return next
+}
+
 export function deleteEntry(repoPath, category, id) {
   const list = readCategory(repoPath, category)
   const idx = list.findIndex((e) => e.id === id)

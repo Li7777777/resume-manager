@@ -65,6 +65,25 @@ const pdfOk =
   !pdf.actions.some((label) => label.includes('本地构建') || label.includes('从 GitHub 同步'))
 console.log('PDF 页:', pdfOk)
 
+console.log('=== 信息管理拖拽排序 ===')
+const entriesPage = await visit('entries', 'rm-smoke-entries.png')
+await page.evaluate(() => {
+  const tab = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith('项目经历'))
+  if (tab instanceof HTMLButtonElement) tab.click()
+})
+await sleep(600)
+const entriesDrag = await page.evaluate(() => {
+  const cards = [...document.querySelectorAll('[data-entry-card]')]
+  const draggable = cards.filter((card) => card.getAttribute('draggable') === 'true').length
+  return {
+    cards: cards.length,
+    draggable,
+    hint: document.body.innerText.includes('拖动卡片可调整顺序'),
+  }
+})
+const entriesDragOk = entriesDrag.cards >= 2 && entriesDrag.draggable === entriesDrag.cards && entriesDrag.hint
+console.log('信息管理:', entriesDragOk)
+
 console.log('=== 简历定制与 YAML ===')
 const customizer = await visit('customizer', 'rm-smoke-customizer.png')
 const templateNames = ['ModernCV Banking', 'ModernCV Casual', 'ModernCV Classic', "Jake's Resume", 'Calm', 'VS Code']
@@ -155,6 +174,6 @@ console.log('窄屏:', mobileOk)
 if (errors.length) console.log('浏览器错误:', errors.slice(0, 5))
 await browser.close()
 
-const ok = shellOk && typesOk && pdfOk && customizerOk && selectionFlow.available && selectionFlow.selected && selectionFlow.restored && legacyOk && mobileOk && errors.length === 0
+const ok = shellOk && typesOk && pdfOk && entriesDragOk && customizerOk && selectionFlow.available && selectionFlow.selected && selectionFlow.restored && legacyOk && mobileOk && errors.length === 0
 console.log(ok ? 'ALL_RENDER_OK' : 'RENDER_ISSUE')
 process.exit(ok ? 0 : 1)
