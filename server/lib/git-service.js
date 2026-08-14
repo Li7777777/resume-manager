@@ -171,8 +171,17 @@ export async function fetchRemote(dir, settings, remote = 'origin') {
 
 export async function pullRemote(dir, settings, remote = 'origin') {
   const branch = (await git.currentBranch({ fs, dir })) || 'main'
-  await fetchRemote(dir, settings, remote)
-  const res = await git.fastForward({ fs, dir, ref: `${remote}/${branch}` })
+  // fastForward 内部会 fetch 远程并快进本地分支，因此这里不再单独 fetch
+  const res = await git.fastForward({
+    fs,
+    http: httpClient(),
+    dir,
+    ref: branch,
+    remote,
+    remoteRef: branch,
+    onAuth: authCallback(settings),
+    onAuthFailure: () => ({ cancel: true }),
+  })
   return { ff: res, branch }
 }
 
