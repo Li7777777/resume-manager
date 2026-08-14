@@ -1,5 +1,5 @@
 // 简历定制：按当前简历类型组织内容、选择模板，并在本页构建预览
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   GripVertical,
   Trash2,
@@ -57,6 +57,21 @@ interface TemplateItem {
   desc: string
 }
 
+interface CustomizerDraft {
+  template: string
+  sections: Section[]
+  headline: string
+  summary: string
+  updatedAt?: number
+}
+
+interface CustomizerMemory {
+  selectedType?: string
+  workspaceMode?: 'visual' | 'yaml'
+  category?: string
+  drafts?: Record<string, CustomizerDraft>
+}
+
 function entryTitle(cat: string, entry: Entry) {
   if (cat === 'work') return (entry.company as string) || (entry.name as string) || '未命名'
   if (cat === 'education') return (entry.institution as string) || (entry.name as string) || '未命名'
@@ -104,6 +119,10 @@ export default function Customizer() {
   const [yamlDirty, setYamlDirty] = useState(false)
   const [yamlRevision, setYamlRevision] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [draftReady, setDraftReady] = useState(false)
+  const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const draftsRef = useRef<Record<string, CustomizerDraft>>({})
+  const persistPayloadRef = useRef<CustomizerMemory | null>(null)
   const rendering = busyAction !== null
 
   useEffect(() => {
@@ -113,21 +132,32 @@ export default function Customizer() {
       api.get<{ types: ResumeType[] }>('/api/resume-types').catch(() => ({ types: [] })),
       api.get<{ templates: TemplateItem[] }>('/api/templates').catch(() => ({ templates: [] })),
       api.get<{ categories: { key: string; label: string; visible: boolean }[] }>('/api/categories').catch(() => ({ categories: [] })),
+      api.get<{ state: CustomizerMemory }>('/api/custom/state').catch(() => ({ state: {} as CustomizerMemory })),
     ])
-      .then(([entryData, variantData, typeData, templateData, categoryData]) => {
+      .then(([entryData, variantData, typeData, templateData, categoryData, customizerData]) => {
         setEntries(entryData.entries)
         setVariants(variantData.variants)
         setVariantDefaults(variantData.defaults || {})
         setTypes(typeData.types)
         setTemplates(templateData.templates)
-        if (categoryData.categories?.length) {
-          setCats(categoryData.categories.filter((item) => item.visible !== false).map((item) => ({ key: item.key, label: item.label })))
-        }
-        const initial = typeData.types.find((item) => item.current) || typeData.types[0]
+        const visibleCats = categoryData.categories?.length
+          ? categoryData.categories.filter((item) => item.visible !== false).map((item) => ({ key: item.key, label: item.label }))
+          : DEFAULT_CATS
+        setCats(visibleCats)
+
+        const memory = customizerData.state || {}
+        draftsRef.current = memory.drafts || {}
+        if (memory.workspaceMode === 'yaml' || memory.workspaceMode === 'visual') setWorkspaceMode(memory.workspaceMode)
+        if (memory.category && visibleCats.some((item) => item.key === memory.category)) setCat(memory.category)
+
+        const initial = typeData.types.find((item) => item.name === memory.selectedType)
+          || typeData.types.find((item) => item.current)
+          || typeData.types[0]
         if (initial) {
           setSelectedType(initial.name)
-          applyVariant(initial.name, variantData.variants, variantData.defaults)
+          applyRememberedVariant(initial.name, draftsRef.current, variantData.variants, variantData.defaults)
         }
+        setDraftReady(true)
       })
       .catch((err) => toast('error', err.message))
       .finally(() => setLoading(false))
@@ -151,6 +181,91 @@ export default function Customizer() {
     setPreviewUrl(null)
     setLastAction(null)
   }
+
+  const cloneSections = (value: Section[]) => value.map((section) => ({
+    ...section,
+    ...(section.ids ? { ids: [...section.ids] } : {}),
+    ...(section.tags ? { tags: [...section.tags] } : {}),
+  }))
+
+  const applyRememberedVariant = (
+    name: string,
+    draftSource = draftsRef.current,
+    source = variants,
+    defaults = variantDefaults,
+  ) => {
+    const draft = draftSource[name]
+    if (!draft) {
+      applyVariant(name, source, defaults)
+      return
+    }
+    setSections(cloneSections(draft.sections || []))
+    setHeadline(draft.headline || '')
+    setSummary(draft.summary || '')
+    setTemplate(draft.template || source.find((item) => item.name === name)?.layout?.template || defaults.layout?.template || 'moderncv-banking')
+    setPreviewUrl(null)
+    setLastAction(null)
+  }
+
+  const captureCurrentDraft = () => {
+    if (!selectedType) return
+    draftsRef.current = {
+      ...draftsRef.current,
+      [selectedType]: {
+        template,
+        sections: cloneSections(sections),
+        headline,
+        summary,
+        updatedAt: Date.now(),
+      },
+    }
+  }
+
+  // 可视化草稿按数据仓、简历类型自动保存到本机侧车；离开页面或刷新时再强制刷新一次。
+  useEffect(() => {
+    if (!draftReady || !selectedType) return
+    const draft: CustomizerDraft = {
+      template,
+      sections: cloneSections(sections),
+      headline,
+      summary,
+      updatedAt: Date.now(),
+    }
+    const drafts = { ...draftsRef.current, [selectedType]: draft }
+    draftsRef.current = drafts
+    const payload: CustomizerMemory = { selectedType, workspaceMode, category: cat, drafts }
+    persistPayloadRef.current = payload
+    setDraftSaveState('saving')
+    const timer = window.setTimeout(() => {
+      api.put<{ state: CustomizerMemory }>('/api/custom/state', payload)
+        .then(() => {
+          if (persistPayloadRef.current === payload) setDraftSaveState('saved')
+        })
+        .catch(() => {
+          if (persistPayloadRef.current === payload) setDraftSaveState('error')
+        })
+    }, 350)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftReady, selectedType, workspaceMode, cat, template, sections, headline, summary])
+
+  useEffect(() => {
+    const flush = () => {
+      const payload = persistPayloadRef.current
+      if (!payload) return
+      void fetch('/api/custom/state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => {})
+    }
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
 
   const selected = types.find((item) => item.name === selectedType)
   const activeTemplate = templates.find((item) => item.id === template)
@@ -290,8 +405,9 @@ export default function Customizer() {
       toast('warn', '请先保存或放弃 YAML 修改')
       return
     }
+    captureCurrentDraft()
     setSelectedType(name)
-    applyVariant(name)
+    applyRememberedVariant(name)
     setYamlRevision((value) => value + 1)
   }
 
@@ -399,7 +515,12 @@ export default function Customizer() {
           </button>
         </div>
         <div className="flex items-center gap-2 text-xs text-zinc-500">
-          {yamlDirty ? <Badge tone="amber">YAML 未保存</Badge> : <Badge tone="zinc">磁盘已同步</Badge>}
+          {workspaceMode === 'visual' ? (
+            draftSaveState === 'error' ? <Badge tone="red">草稿保存失败</Badge>
+              : draftSaveState === 'saving' ? <Badge tone="zinc">草稿保存中</Badge>
+                : draftSaveState === 'saved' ? <Badge tone="emerald">草稿已自动保存</Badge>
+                  : <Badge tone="zinc">草稿自动保存</Badge>
+          ) : yamlDirty ? <Badge tone="amber">YAML 未保存</Badge> : <Badge tone="zinc">磁盘已同步</Badge>}
           {previewUrl && !yamlDirty && (
             <Badge tone="emerald">{lastAction === 'release' ? '正式版已发布' : '预览已更新'}</Badge>
           )}

@@ -13,6 +13,15 @@ const DEFAULT_TYPE_LABELS = {
   custom: '定制简历',
 }
 
+function emptyCustomizerState() {
+  return {
+    selectedType: '',
+    workspaceMode: 'visual',
+    category: 'work',
+    drafts: {},
+  }
+}
+
 function repoKey(repoPath) {
   const normalized = path.resolve(repoPath).replace(/\\/g, '/').toLowerCase()
   return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 20)
@@ -30,6 +39,7 @@ function emptyState(repoPath) {
     tags: [],
     entryNotes: {},
     resumeTypes: {},
+    customizer: emptyCustomizerState(),
   }
 }
 
@@ -96,6 +106,14 @@ function normalize(state, repoPath) {
     tags: Array.isArray(state?.tags) ? state.tags : [],
     entryNotes: state?.entryNotes && typeof state.entryNotes === 'object' ? state.entryNotes : {},
     resumeTypes: state?.resumeTypes && typeof state.resumeTypes === 'object' ? state.resumeTypes : {},
+    customizer: {
+      ...emptyCustomizerState(),
+      ...(state?.customizer && typeof state.customizer === 'object' ? state.customizer : {}),
+      drafts:
+        state?.customizer?.drafts && typeof state.customizer.drafts === 'object'
+          ? state.customizer.drafts
+          : {},
+    },
   }
 }
 
@@ -156,4 +174,15 @@ export function setEntryNote(repoPath, category, id, note) {
 
 export function deleteEntryNote(repoPath, category, id) {
   setEntryNote(repoPath, category, id, '')
+}
+
+export function getCustomizerState(repoPath) {
+  return getManagerState(repoPath).customizer
+}
+
+export function setCustomizerState(repoPath, customizer) {
+  return updateManagerState(repoPath, (state) => {
+    state.customizer = customizer
+    return state
+  }).customizer
 }

@@ -1118,6 +1118,87 @@ router.get('/html/:name', (req, res) => {
   fs.createReadStream(p).pipe(res)
 })
 
+/* ---------- 简历定制草稿（本机侧车，不写私有仓） ---------- */
+function sanitizeCustomizerState(repo, input) {
+  const raw = input && typeof input === 'object' ? input : {}
+  const doc = compose.loadVariantsDoc(repo)
+  const variantNames = new Set(Object.keys(doc.variants || {}))
+  const categories = store.getCategories(repo).map((item) => item.key)
+  const allowedCategories = new Set(categories)
+  const drafts = {}
+
+  for (const [name, value] of Object.entries(raw.drafts || {})) {
+    if (!variantNames.has(name) || !value || typeof value !== 'object') continue
+    const template = TEMPLATES.some((item) => item.id === value.template)
+      ? value.template
+      : doc.variants?.[name]?.layout?.template || doc.defaults?.layout?.template || TEMPLATES[0]?.id
+    if (!template) continue
+
+    const sections = []
+    const sectionKeys = new Set()
+    for (const section of Array.isArray(value.sections) ? value.sections : []) {
+      if (!section || typeof section.key !== 'string' || !allowedCategories.has(section.key) || sectionKeys.has(section.key)) continue
+      sectionKeys.add(section.key)
+      if (section.mode === 'all') sections.push({ key: section.key, mode: 'all' })
+      else if (section.mode === 'ids') {
+        const ids = [...new Set((Array.isArray(section.ids) ? section.ids : []).filter((id) => typeof id === 'string' && id).slice(0, 500))]
+        sections.push({ key: section.key, mode: 'ids', ids })
+      } else if (section.mode === 'tags') {
+        const tags = [...new Set((Array.isArray(section.tags) ? section.tags : []).filter((tag) => typeof tag === 'string' && tag).slice(0, 100))]
+        sections.push({ key: section.key, mode: 'tags', tags })
+      }
+    }
+
+    drafts[name] = {
+      template,
+      sections,
+      headline: typeof value.headline === 'string' ? value.headline.slice(0, 1000) : '',
+      summary: typeof value.summary === 'string' ? value.summary.slice(0, 20000) : '',
+      updatedAt: Number.isFinite(value.updatedAt) ? value.updatedAt : Date.now(),
+    }
+  }
+
+  return {
+    selectedType: variantNames.has(raw.selectedType) ? raw.selectedType : '',
+    workspaceMode: raw.workspaceMode === 'yaml' ? 'yaml' : 'visual',
+    category: allowedCategories.has(raw.category)
+      ? raw.category
+      : categories.find((key) => key !== 'basics') || categories[0] || 'work',
+    drafts,
+  }
+}
+
+router.get('/custom/state', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  try {
+    const state = sanitizeCustomizerState(repo, managerState.getCustomizerState(repo))
+    managerState.setCustomizerState(repo, state)
+    res.json({ ok: true, state })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+router.put('/custom/state', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  try {
+    const current = managerState.getCustomizerState(repo)
+    const incoming = req.body && typeof req.body === 'object' ? req.body : {}
+    const drafts = { ...(current.drafts || {}) }
+    for (const [name, draft] of Object.entries(incoming.drafts || {})) {
+      const currentTime = Number(drafts[name]?.updatedAt) || 0
+      const incomingTime = Number(draft?.updatedAt) || 0
+      if (incomingTime >= currentTime) drafts[name] = draft
+    }
+    const state = sanitizeCustomizerState(repo, { ...current, ...incoming, drafts })
+    res.json({ ok: true, state: managerState.setCustomizerState(repo, state) })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
 /* ---------- 简历定制（预览不留历史；显式发布才进入时间轴） ---------- */
 function resolveCustomizedVariant(repo, doc, variant, body) {
   const current = doc.variants?.[variant]
