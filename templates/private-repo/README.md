@@ -21,7 +21,8 @@ data/                     信息全集
 └── interests.yml          兴趣爱好（数组）
 scripts/
 ├── variants.yml           简历方向配方
-└── compose.py             组合器（CI 使用）
+├── compose.py             组合器（CI 使用）
+└── postprocess-output.py  规范化技能/兴趣的 TeX/HTML 输出（CI 使用）
 resumes/                  自动生成的简历文件（gitignore）
 ```
 
@@ -32,7 +33,7 @@ resumes/                  自动生成的简历文件（gitignore）
 3. 用「预览」临时检查效果，确认后点「保存发布正式版」。
 4. 修改 `data/` 或 `scripts/variants.yml` 后，在 Git 同步看板提交并推送。
 
-默认示例使用 HTML `calm` 模板，不依赖本机 LaTeX。需要 PDF 时，可在「简历定制」中改用 LaTeX 模板，并安装 `yamlresume` 与 XeTeX/Tectonic。
+默认示例使用 HTML `calm` 模板，不依赖本机 LaTeX。需要 PDF 时，可在「简历定制」中改用 LaTeX 模板，并安装 `yamlresume` 与 XeTeX/Tectonic。技能会按“掌握/熟悉”合并为每类一行，兴趣爱好合并为单行；CI 会自动规范化 yamlresume 生成的 TeX/HTML 并重新编译 PDF。
 
 ## 隐私
 

@@ -21,7 +21,8 @@
 ├── categories.yml             # 管理端分类显示/排序/显隐（随 Git 版本化）
 ├── scripts/
 │   ├── variants.yml           # 简历方向配方
-│   └── compose.py             # 组合器（CI 用）
+│   ├── compose.py             # 组合器（CI 用）
+│   └── postprocess-output.py  # yamlresume TeX/HTML 输出规范化（CI 用）
 ├── resumes/                   # 生成的各方向简历（gitignore）
 ├── .github/workflows/build.yml
 └── README.md
@@ -106,7 +107,7 @@ summary:              # 字符串数组或字符串（markdown 列表）
 ```yaml
 # skills
 - name: 前端开发
-  level: Expert        # 熟练度仅 2 级：Expert（熟练）/ Master（掌握）
+  level: Expert        # 熟练度仅 2 级：Expert（输出“熟悉”）/ Master（输出“掌握”）
   keywords: [React, TypeScript]
   tags: [frontend]
 
@@ -169,6 +170,9 @@ variants:
 - 类型页负责类型/分支 CRUD 与切换，`blocks/sectionOrder/layout/overrides` 由简历定制页维护；
 - 剥除所有元数据键（`id/tags/notes/_*`、`achievements`）；
 - `work.company` → `name`；`achievements` → `summary`（markdown 列表字符串）；
+- 专业技能按熟练度合并：`Master` 输出一行“掌握 xxx、xxx”，其余等级输出一行“熟悉 xxx、xxx”；优先罗列 `keywords`，为空时使用条目 `name`；yamlresume 模板自动追加的等级文字在构建后移除；
+- 兴趣爱好合并成一行，以 `、` 直接罗列，不输出冒号；
+- 项目 `description` 在组合输出中限制为 40 字（源数据不变），避免 ModernCV 粗体标题列产生 `Overfull \\hbox`；LaTeX 默认隐藏原始 URL，改为项目名称超链接；
 - `summary` 统一转字符串（数组 → `- 项` 列表）；
 - 空章节自动省略；`endDate` 空值输出为空（表示"至今"）；
 - 生成文件写入 `resumes/<variant>.yml`，带"自动生成，请勿手改"头注释。

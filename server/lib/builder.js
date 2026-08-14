@@ -38,6 +38,60 @@ function run(cmd, args, cwd) {
   })
 }
 
+function normalizeGroupedLatex(text) {
+  let next = text
+  // ModernCV：把模板自动追加的等级移除，并将整行放入正文列。
+  next = next.replace(/^\\cvline\{((?:掌握|熟悉) [^{}\r\n]*)\}\{[^{}\r\n]*\}$/gm, '\\cvline{}{$1}')
+  // Jake：同样移除等级及其冒号。
+  next = next.replace(/^\\textbf\{((?:掌握|熟悉) [^{}\r\n]*)\}[:：][^\r\n]*$/gm, '$1')
+  // ModernCV：兴趣爱好合并后也放入正文列，保持单行直列且不产生冒号。
+  next = next.replace(/^\\cvline\{([^{}\r\n]*、[^{}\r\n]*)\}\{\}$/gm, '\\cvline{}{$1}')
+  // Jake：同样移除兴趣爱好的粗体包裹。
+  next = next.replace(/^\\textbf\{([^{}\r\n]*、[^{}\r\n]*)\}$/gm, '$1')
+  return next
+}
+
+function normalizeGroupedHtml(text) {
+  return text.replace(
+    /(<div class="resume-skill-name">(?:掌握|熟悉) [^<]*)<span class="resume-skill-level">[^<]*<\/span>/g,
+    '$1',
+  )
+}
+
+async function normalizeGeneratedOutputs(repo, variant, env) {
+  const outDir = path.join(repo, 'resumes')
+  const texPath = path.join(outDir, `${variant}.tex`)
+  const htmlPath = path.join(outDir, `${variant}.html`)
+  let texChanged = false
+  let output = ''
+
+  if (fs.existsSync(texPath)) {
+    const original = fs.readFileSync(texPath, 'utf8')
+    const normalized = normalizeGroupedLatex(original)
+    texChanged = normalized !== original
+    if (texChanged) fs.writeFileSync(texPath, normalized, 'utf8')
+  }
+
+  if (fs.existsSync(htmlPath)) {
+    const original = fs.readFileSync(htmlPath, 'utf8')
+    const normalized = normalizeGroupedHtml(original)
+    if (normalized !== original) fs.writeFileSync(htmlPath, normalized, 'utf8')
+  }
+
+  if (!texChanged) return { ok: true, output }
+  const compiler = env.xelatex || env.tectonic
+  if (!compiler) return { ok: false, output: 'LaTeX 输出已格式化，但未找到 xelatex 或 tectonic 以重新生成 PDF' }
+  const args = env.xelatex
+    ? ['-interaction=nonstopmode', '-halt-on-error', `${variant}.tex`]
+    : [`${variant}.tex`]
+  const result = await run(compiler, args, outDir)
+  if (result.code !== 0 || !fs.existsSync(path.join(outDir, `${variant}.pdf`))) {
+    return { ok: false, output: `格式化后的 PDF 重新编译失败：${(result.stdout + result.stderr).slice(-1200)}` }
+  }
+  output = result.stdout + result.stderr
+  return { ok: true, output }
+}
+
 // 构建某个方向的 PDF（自动先组合）
 export async function buildVariant(repo, variant, { verbose = true, compose = true } = {}) {
   if (!/^[\w-]+$/.test(variant)) {
@@ -58,8 +112,14 @@ export async function buildVariant(repo, variant, { verbose = true, compose = tr
   if (verbose) args.unshift('-v')
   const r = await run(env.yamlresume, args, repo)
   const pdf = path.join(repo, 'resumes', `${variant}.pdf`)
+  let output = r.stdout + r.stderr
+  if (r.code === 0) {
+    const normalized = await normalizeGeneratedOutputs(repo, variant, env)
+    output += normalized.output || ''
+    if (!normalized.ok) return { ok: false, output: output.trim(), pdf: null }
+  }
   const ok = r.code === 0 && fs.existsSync(pdf)
-  return { ok, output: (r.stdout + r.stderr).trim(), pdf: ok ? `${variant}.pdf` : null }
+  return { ok, output: output.trim(), pdf: ok ? `${variant}.pdf` : null }
 }
 
 export function pdfPath(repo, variant) {
@@ -75,6 +135,12 @@ export async function buildHtmlVariant(repo, variant) {
   const args = ['build', `resumes/${variant}.yml`, '-t', '120']
   const r = await run(env.yamlresume, args, repo)
   const html = path.join(repo, 'resumes', `${variant}.html`)
+  let output = r.stdout + r.stderr
+  if (r.code === 0) {
+    const normalized = await normalizeGeneratedOutputs(repo, variant, env)
+    output += normalized.output || ''
+    if (!normalized.ok) return { ok: false, output: output.trim(), html: null }
+  }
   const ok = r.code === 0 && fs.existsSync(html)
-  return { ok, output: (r.stdout + r.stderr).trim(), html: ok ? `${variant}.html` : null }
+  return { ok, output: output.trim(), html: ok ? `${variant}.html` : null }
 }

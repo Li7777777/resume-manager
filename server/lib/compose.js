@@ -70,6 +70,35 @@ function buildSummary(entry, wanted) {
   return items.length ? items.map((t) => `- ${t}`).join('\n') : null
 }
 
+function compactSkills(items) {
+  const groups = new Map([['掌握', []], ['熟悉', []]])
+  for (const item of items) {
+    const label = item.level === 'Master' ? '掌握' : '熟悉'
+    const candidates = Array.isArray(item.keywords) && item.keywords.length ? item.keywords : [item.name]
+    for (const candidate of candidates) {
+      const name = String(candidate || '').replace(/^(熟悉|掌握)\s*/, '').trim()
+      if (name && !groups.get(label).includes(name)) groups.get(label).push(name)
+    }
+  }
+  return [...groups.entries()]
+    .filter(([, names]) => names.length)
+    .map(([label, names]) => ({
+      name: `${label} ${names.join('、')}`,
+      // schema 要求 level 为合法枚举；构建阶段会隐藏模板自动追加的“大师/专家”。
+      level: label === '掌握' ? 'Master' : 'Expert',
+      keywords: [],
+    }))
+}
+
+function compactInterests(items) {
+  const names = []
+  for (const item of items) {
+    const name = String(item.name || '').trim()
+    if (name && !names.includes(name)) names.push(name)
+  }
+  return names.length ? [{ name: names.join('、'), keywords: [] }] : []
+}
+
 function composeBasics(repo, overrides) {
   const b = { ...readCategory(repo, 'basics') }
   const ov = (overrides && overrides.basics) || {}
@@ -97,9 +126,14 @@ function composeList(repo, block, cfg) {
     }
     const summary = buildSummary(e, wanted)
     if (summary != null) item.summary = toSummaryString(summary)
+    if (block === 'projects' && typeof item.description === 'string' && item.description.length > 40) {
+      item.description = `${item.description.slice(0, 39)}…`
+    }
     if (Array.isArray(item.summary)) item.summary = toSummaryString(item.summary)
     out.push(item)
   }
+  if (block === 'skills') return compactSkills(out)
+  if (block === 'interests') return compactInterests(out)
   return out
 }
 
@@ -110,6 +144,7 @@ function buildLayout(v, defaults) {
   if (Array.isArray(order) && order.length) {
     d.sections = { ...(d.sections || {}), order: [...order] }
   }
+  if (d.engine === 'latex') d.advanced = { showUrls: false, ...(d.advanced || {}) }
   return d
 }
 

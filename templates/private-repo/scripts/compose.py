@@ -109,8 +109,36 @@ def to_summary_string(summary):
     if isinstance(summary, str):
         return summary
     if isinstance(summary, list):
-        return "\n".join("- " + str(s) for s in summary if s)
+        lines = ["- " + str(s) for s in summary if s]
+        return "\n".join(lines) if lines else None
     return str(summary)
+
+
+def compact_skills(items):
+    groups = {"掌握": [], "熟悉": []}
+    for item in items:
+        label = "掌握" if item.get("level") == "Master" else "熟悉"
+        candidates = item.get("keywords") if isinstance(item.get("keywords"), list) and item.get("keywords") else [item.get("name")]
+        for candidate in candidates:
+            name = str(candidate or "").strip()
+            if name.startswith("熟悉 ") or name.startswith("掌握 "):
+                name = name[3:].strip()
+            if name and name not in groups[label]:
+                groups[label].append(name)
+    return [
+        {"name": f"{label} {'、'.join(names)}", "level": "Master" if label == "掌握" else "Expert", "keywords": []}
+        for label, names in groups.items()
+        if names
+    ]
+
+
+def compact_interests(items):
+    names = []
+    for item in items:
+        name = str(item.get("name") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return [{"name": "、".join(names), "keywords": []}] if names else []
 
 
 def compose_basics(overrides):
@@ -140,10 +168,17 @@ def compose_list(block, cfg):
         elif ACHIEVEMENTS_KEY in e:
             item.pop("summary", None)
         item.pop(ACHIEVEMENTS_KEY, None)  # 成就点用完即删，不进入简历
+        # ModernCV 将 description 放入粗体标题列；长段落会造成 alignment 溢出。仅压缩组合输出，源数据及 summary 不变。
+        if block == "projects" and isinstance(item.get("description"), str) and len(item["description"]) > 40:
+            item["description"] = item["description"][:39] + "…"
         # 其他列表型 summary（projects / education 等）同样转字符串
         if isinstance(item.get("summary"), list):
             item["summary"] = to_summary_string(item["summary"])
         out.append(item)
+    if block == "skills":
+        return compact_skills(out)
+    if block == "interests":
+        return compact_interests(out)
     return out
 
 
@@ -153,6 +188,8 @@ def build_layout(v, defaults):
     order = v.get("sectionOrder") or defaults.get("sectionOrder")
     if order:
         d.setdefault("sections", {})["order"] = list(order)
+    if d.get("engine") == "latex":
+        d["advanced"] = {"showUrls": False, **(d.get("advanced") or {})}
     return d
 
 

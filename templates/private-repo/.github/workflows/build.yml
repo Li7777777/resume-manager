@@ -73,6 +73,22 @@ jobs:
           verbose: true
           version: v0.14.1
 
+      - name: Normalize grouped skills output
+        if: steps.switch.outputs.enabled == 'true'
+        run: python3 scripts/postprocess-output.py
+
+      - name: Recompile normalized LaTeX
+        if: steps.switch.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          if compgen -G 'resumes/*.tex' > /dev/null; then
+            docker run --rm -u root --entrypoint bash \
+              -v "${GITHUB_WORKSPACE}:/home/yamlresume" \
+              -w /home/yamlresume \
+              ghcr.io/yamlresume/yamlresume:v0.14.1 \
+              -lc 'set -euo pipefail; cd resumes; for tex in *.tex; do xelatex -interaction=nonstopmode -halt-on-error "$tex"; done'
+          fi
+
       - name: Upload resume artifacts
         if: steps.switch.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
