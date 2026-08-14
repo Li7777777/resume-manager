@@ -3,7 +3,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
+import yaml from 'js-yaml'
 import { generateAll } from './compose.js'
+import { renderJakeOriginal } from './jake-original.js'
 
 export function checkEnvironment() {
   const which = (cmd) => {
@@ -132,15 +134,29 @@ export async function buildVariant(repo, variant, { verbose = true, compose = tr
     return { ok: false, output: `非法方向名：${variant}` }
   }
   const env = checkEnvironment()
-  if (!env.yamlresume) {
-    return { ok: false, output: '未找到 yamlresume CLI，请先安装：npm install -g yamlresume' }
-  }
   if (compose) {
     try {
       generateAll(repo, [variant])
     } catch (err) {
       return { ok: false, output: `组合失败：${err.message}` }
     }
+  }
+
+  // 自定义模板（jake-original）：直接生成 .tex 并编译，不走 yamlresume
+  const ymlPath = path.join(repo, 'resumes', `${variant}.yml`)
+  let template = 'moderncv-banking'
+  try {
+    const doc = yaml.load(fs.readFileSync(ymlPath, 'utf8'))
+    template = doc?.layouts?.[0]?.template || template
+  } catch {
+    /* 保持默认，走 yamlresume 分支时再报错 */
+  }
+  if (template === 'jake-original') {
+    return buildJakeOriginal(repo, variant, env)
+  }
+
+  if (!env.yamlresume) {
+    return { ok: false, output: '未找到 yamlresume CLI，请先安装：npm install -g yamlresume' }
   }
   const args = ['build', `resumes/${variant}.yml`, '-t', '120']
   if (verbose) args.unshift('-v')
@@ -154,6 +170,29 @@ export async function buildVariant(repo, variant, { verbose = true, compose = tr
   }
   const ok = r.code === 0 && fs.existsSync(pdf)
   return { ok, output: output.trim(), pdf: ok ? `${variant}.pdf` : null }
+}
+
+// 自定义模板 Jake 原版：从组合 YAML 生成 tex 并编译 PDF
+async function buildJakeOriginal(repo, variant, env) {
+  const outDir = path.join(repo, 'resumes')
+  const ymlPath = path.join(outDir, `${variant}.yml`)
+  const texPath = path.join(outDir, `${variant}.tex`)
+  const pdfPath = path.join(outDir, `${variant}.pdf`)
+  try {
+    const doc = yaml.load(fs.readFileSync(ymlPath, 'utf8'))
+    const tex = renderJakeOriginal(doc)
+    fs.writeFileSync(texPath, tex, 'utf8')
+  } catch (err) {
+    return { ok: false, output: `Jake 原版模板渲染失败：${err.message}` }
+  }
+  const compiler = env.xelatex || env.tectonic
+  if (!compiler) return { ok: false, output: '未找到 xelatex 或 tectonic，无法编译 Jake 原版模板' }
+  const args = env.xelatex
+    ? ['-interaction=nonstopmode', '-halt-on-error', `${variant}.tex`]
+    : [`${variant}.tex`]
+  const result = await run(compiler, args, outDir)
+  const ok = result.code === 0 && fs.existsSync(pdfPath)
+  return { ok, output: (result.stdout + result.stderr).trim(), pdf: ok ? `${variant}.pdf` : null }
 }
 
 export function pdfPath(repo, variant) {

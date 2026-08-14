@@ -86,7 +86,7 @@ console.log('信息管理:', entriesDragOk)
 
 console.log('=== 简历定制与 YAML ===')
 const customizer = await visit('customizer', 'rm-smoke-customizer.png')
-const templateNames = ['ModernCV Banking', 'ModernCV Casual', 'ModernCV Classic', "Jake's Resume", 'Calm', 'VS Code']
+const templateNames = ['ModernCV Banking', 'ModernCV Casual', 'ModernCV Classic', "Jake's Resume", 'Jake 原版', 'Calm', 'VS Code']
 const sectionsDraggable = await page.evaluate(() => {
   const cards = [...document.querySelectorAll('[data-section-key]')]
   return cards.length >= 1 && cards.every((card) => card.getAttribute('draggable') === 'true')

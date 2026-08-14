@@ -4,6 +4,7 @@ export const TEMPLATES = [
   { id: 'moderncv-casual', engine: 'latex', name: 'ModernCV Casual', desc: '休闲风格，顶部个人信息栏' },
   { id: 'moderncv-classic', engine: 'latex', name: 'ModernCV Classic', desc: '经典风格，传统规范排版' },
   { id: 'jake', engine: 'latex', name: "Jake's Resume", desc: 'Jake 风格，现代单栏简约设计' },
+  { id: 'jake-original', engine: 'latex', name: 'Jake 原版', desc: '忠实复刻 jakegut/resume 单栏 ATS 排版（下划线分节 + 日期右对齐）' },
   { id: 'calm', engine: 'html', name: 'Calm', desc: 'HTML 极简风，适合所有职业（简历定制页实时渲染）' },
   { id: 'vscode', engine: 'html', name: 'VS Code', desc: 'HTML 深色主题，开发者风（简历定制页实时渲染）' },
 ]

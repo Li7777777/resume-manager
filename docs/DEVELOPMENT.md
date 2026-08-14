@@ -124,8 +124,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 ### 模板与定制
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/templates` | 全部官网 LaTeX/HTML 模板元数据；由简历定制页使用 |
-| GET | `/api/html/:name` | 已生成的 HTML 简历预览（no-cache） |
+| GET | `/api/templates` | 全部官网 LaTeX/HTML 模板元数据；由简历定制页使用 || GET | `/api/html/:name` | 已生成的 HTML 简历预览（no-cache） |
 | GET | `/api/custom/state` | 获取当前数据仓的最后简历类型、工作区模式、信息库分类与各类型可视化草稿（本机侧车） |
 | PUT | `/api/custom/state` | 自动保存模板、章节顺序/选择、头衔和简介；按草稿 `updatedAt` 合并，不写私有仓 |
 | POST | `/api/custom/preview` | `{variant, sections?, template?, overrides?}`：可视化模式按当前草稿、YAML 模式按落盘文件生成临时 HTML/PDF；不保存配方、不写时间轴 |
@@ -156,6 +155,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - `generateAll(repo, only?)`：组合并写出 `resumes/<name>.yml`（含头部注释，null → 空值）。
 - 字段映射：`company → name`；`achievements → summary`（按标签过滤）；列表 summary 转字符串；剥除元数据。
 - PDF/HTML 紧凑输出：技能按细分方向（tags）分组为“方向：技能、技能”每方向一行，兴趣合并为单行；项目 description 截为 40 字，LaTeX 原始 URL 改为项目名链接；`server/lib/builder.js` 与私有仓 `scripts/postprocess-output.py` 移除 yamlresume 模板强加的等级文本，并对 moderncv 正文列注入 raggedright 补丁防长行溢出。
+- 自定义模板 `jake-original`（Jake 原版）：`server/lib/jake-original.js` 从组合后的 YAML 直接生成 jakegut/resume.tex 风格 LaTeX（居中头部 + `\titlerule` 分节 + tabular* 日期右对齐 + 项目单行标题），`buildVariant` 检测到该模板时跳过 yamlresume 直接用 xelatex 编译。
 - 与 `templates/private-repo/scripts/compose.py` 行为一致——**改动任一实现必须同步另一份**，
   并以 `yamlresume validate` 验证输出（长度/必填规则）。
 
