@@ -74,14 +74,14 @@ await page.evaluate(() => {
 await sleep(600)
 const entriesDrag = await page.evaluate(() => {
   const cards = [...document.querySelectorAll('[data-entry-card]')]
-  const draggable = cards.filter((card) => card.getAttribute('draggable') === 'true').length
+  const indexed = cards.filter((card) => card.getAttribute('data-index') != null).length
   return {
     cards: cards.length,
-    draggable,
+    indexed,
     hint: document.body.innerText.includes('拖动卡片可调整顺序'),
   }
 })
-const entriesDragOk = entriesDrag.cards >= 2 && entriesDrag.draggable === entriesDrag.cards && entriesDrag.hint
+const entriesDragOk = entriesDrag.cards >= 2 && entriesDrag.indexed === entriesDrag.cards && entriesDrag.hint
 console.log('信息管理:', entriesDragOk)
 
 console.log('=== 简历定制与 YAML ===')

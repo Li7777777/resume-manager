@@ -1,5 +1,5 @@
 // 信息管理页：分类管理全部个人信息，支持标签筛选、搜索、增删改
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus,
   Pencil,
@@ -179,6 +179,8 @@ export default function Entries() {
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [dropSide, setDropSide] = useState<'before' | 'after'>('before')
+  // 原生拖拽中 dragover/drop 可能早于 React 提交 state，用 ref 同步携带拖拽源索引
+  const dragIndexRef = useRef<number | null>(null)
 
   const load = () =>
     api
@@ -219,44 +221,62 @@ export default function Entries() {
   const canSort = category !== 'basics' && !filterTag && !search.trim() && filtered.length > 1
 
   const resetDrag = () => {
+    dragIndexRef.current = null
     setDragIndex(null)
     setDropIndex(null)
   }
 
-  const onDragStart = (index: number) => (event: React.DragEvent) => {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', String(index))
-    setDragIndex(index)
+  // 用指针事件实现拖拽排序，避免 HTML5 DnD 在真实浏览器中的兼容/时序问题
+  const onCardPointerDown = (index: number) => (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!canSort) return
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    // 点击按钮（编辑/删除/标签筛选）时不启动拖拽
+    if ((event.target as HTMLElement).closest('button')) return
+    event.preventDefault()
+    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+    dragIndexRef.current = index
   }
 
-  const onDragOver = (index: number) => (event: React.DragEvent) => {
-    if (dragIndex === null) return
-    if (dragIndex === index) {
+  const cardAtPoint = (x: number, y: number): { index: number; rect: DOMRect } | null => {
+    const el = document.elementFromPoint(x, y)
+    const card = el ? el.closest('[data-entry-card]') : null
+    if (!card) return null
+    const idx = Number((card as HTMLElement).dataset.index)
+    if (!Number.isFinite(idx)) return null
+    return { index: idx, rect: (card as HTMLElement).getBoundingClientRect() }
+  }
+
+  const onCardPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const from = dragIndexRef.current
+    if (from === null) return
+    setDragIndex(from)
+    const target = cardAtPoint(event.clientX, event.clientY)
+    if (!target || target.index === from) {
       setDropIndex(null)
       return
     }
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    setDropIndex(index)
-    setDropSide(event.clientY < rect.top + rect.height / 2 ? 'before' : 'after')
+    setDropIndex(target.index)
+    setDropSide(event.clientY < target.rect.top + target.rect.height / 2 ? 'before' : 'after')
   }
 
-  const onDrop = (index: number) => (event: React.DragEvent) => {
-    event.preventDefault()
-    if (dragIndex === null || dragIndex === index) {
+  const onCardPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const from = dragIndexRef.current
+    dragIndexRef.current = null
+    if (from === null) {
       resetDrag()
       return
     }
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    const side = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
-    const next = [...filtered]
-    const [moved] = next.splice(dragIndex, 1)
-    let target = index + (side === 'after' ? 1 : 0)
-    if (dragIndex < index) target -= 1
-    next.splice(target, 0, moved)
+    const target = cardAtPoint(event.clientX, event.clientY)
+    if (target && target.index !== from) {
+      const side = event.clientY < target.rect.top + target.rect.height / 2 ? 'before' : 'after'
+      const next = [...filtered]
+      const [moved] = next.splice(from, 1)
+      let insertAt = target.index + (side === 'after' ? 1 : 0)
+      if (from < target.index) insertAt -= 1
+      next.splice(insertAt, 0, moved)
+      void persistOrder(next)
+    }
     resetDrag()
-    void persistOrder(next)
   }
 
   // 先本地重排即时反馈，再写回 YAML；失败时重新拉取恢复
@@ -434,21 +454,16 @@ export default function Entries() {
           )}
           <div
             className="grid gap-3 xl:grid-cols-2"
-            onDragLeave={(event) => {
-              const next = event.relatedTarget as Node | null
-              if (!next || !event.currentTarget.contains(next)) setDropIndex(null)
-            }}
           >
             {filtered.map((e, index) => (
               <div
                 key={e.id}
                 data-entry-card
-                draggable={canSort}
-                onDragStart={onDragStart(index)}
-                onDragOver={onDragOver(index)}
-                onDrop={onDrop(index)}
-                onDragEnd={resetDrag}
-                className={`group relative rounded-xl border bg-zinc-900/50 p-4 transition ${
+                data-index={index}
+                onPointerDown={onCardPointerDown(index)}
+                onPointerMove={onCardPointerMove}
+                onPointerUp={onCardPointerUp}
+                className={`group relative select-none rounded-xl border bg-zinc-900/50 p-4 transition ${
                   dragIndex === index ? 'border-zinc-700 opacity-40' : 'border-zinc-800 hover:border-zinc-700'
                 } ${canSort ? 'cursor-grab active:cursor-grabbing' : ''}`}
               >
