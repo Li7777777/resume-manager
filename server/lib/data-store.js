@@ -394,7 +394,26 @@ export function upsertEntry(repoPath, category, entry) {
     list.push(next)
     writeCategory(repoPath, category, list)
   }
+  // 条目中新出现的标签自动加入标签库（方向→tags、细分→subtags）
+  syncEntryTagsToLibrary(repoPath, entry)
   return { ...next, ...(notes ? { notes } : {}) }
+}
+
+// 条目保存后，把不在库中的方向标签/细分标签自动加入标签库
+function syncEntryTagsToLibrary(repoPath, entry) {
+  if (!entry || typeof entry !== 'object') return
+  const dirTags = Array.isArray(entry.tags) ? entry.tags.filter((t) => typeof t === 'string' && t.trim()) : []
+  if (dirTags.length) {
+    const lib = libTags(repoPath)
+    const missing = dirTags.filter((t) => !lib.includes(t))
+    if (missing.length) saveLibTags(repoPath, [...lib, ...missing])
+  }
+  const subTags = Array.isArray(entry.keywords) ? entry.keywords.filter((k) => typeof k === 'string' && k.trim()) : []
+  if (subTags.length) {
+    const lib = libSubTags(repoPath)
+    const missing = subTags.filter((k) => !lib.includes(k))
+    if (missing.length) saveLibSubTags(repoPath, [...lib, ...missing])
+  }
 }
 
 export function deleteEntry(repoPath, category, id) {
