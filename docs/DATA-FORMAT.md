@@ -89,7 +89,8 @@ summary:              # 字符串数组或字符串（markdown 列表）
   tags: []
 
 # projects
-- name: 微前端改造平台
+- name: 微前端改造平台      # 项目名称（可从内容提取；无则留空，展示时用 subtitle 兜底）
+  subtitle: 公司内部赛事     # 副标题（赛事/机构/来源；管理端字段，不进简历，组稿时剥除）
   description: 一句话简介
   url: ...
   startDate: "2022-01"

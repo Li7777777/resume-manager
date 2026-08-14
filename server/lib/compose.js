@@ -87,7 +87,8 @@ function composeList(repo, block, cfg) {
   for (const e of selected) {
     const item = {}
     for (const [k, v] of Object.entries(e)) {
-      if (!META_KEYS.has(k) && !k.startsWith('_') && k !== ACHIEVEMENTS_KEY) item[k] = v
+      // subtitle 为管理端副标题（赛事/机构），schema 无此字段，不进简历
+      if (k !== 'subtitle' && !META_KEYS.has(k) && !k.startsWith('_') && k !== ACHIEVEMENTS_KEY) item[k] = v
     }
     // 字段别名：work 章节 schema 字段名是 name（数据里用 company 更自然）
     if ('company' in item && !('name' in item)) {

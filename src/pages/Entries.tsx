@@ -122,6 +122,7 @@ const FIELDS: Record<Category, FieldDef[]> = {
   ],
   projects: [
     { key: 'name', label: '项目名称', type: 'text', required: true },
+    { key: 'subtitle', label: '副标题', type: 'text', hint: '如赛事 / 机构 / 来源' },
     { key: 'description', label: '一句话简介', type: 'text' },
     { key: 'url', label: '链接', type: 'text' },
     { key: 'startDate', label: '开始时间', type: 'text' },
@@ -233,7 +234,9 @@ export default function Entries() {
       ? (e.company as string) || (e.name as string)
       : category === 'education'
         ? (e.institution as string) || (e.name as string)
-        : (e.name as string) || '未命名'
+        : category === 'projects'
+          ? (e.name as string) || (e.subtitle as string) || '未命名'
+          : (e.name as string) || '未命名'
   const subOf = (e: Entry) => {
     if (category === 'work') return `${e.position || ''} · ${e.startDate || ''} ~ ${e.endDate || '至今'}`
     if (category === 'education') return `${DEGREE_LABELS[(e.degree as string) || ''] || (e.degree as string) || ''} ${e.area || ''} · ${e.startDate || ''}`
