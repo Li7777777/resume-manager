@@ -68,6 +68,23 @@ console.log('PDF 页:', pdfOk)
 console.log('=== 简历定制与 YAML ===')
 const customizer = await visit('customizer', 'rm-smoke-customizer.png')
 const templateNames = ['ModernCV Banking', 'ModernCV Casual', 'ModernCV Classic', "Jake's Resume", 'Calm', 'VS Code']
+await page.evaluate(() => {
+  const category = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('项目经历'))
+  if (category instanceof HTMLButtonElement) category.click()
+})
+await sleep(300)
+const selectionBefore = await page.$eval('[data-library-bulk-action]', (element) => element.textContent?.trim() || '')
+const firstLibraryEntry = await page.$('[data-library-entry]')
+let selectionFlow = { available: !!firstLibraryEntry, selected: false, restored: false }
+if (firstLibraryEntry) {
+  await page.$eval('[data-library-entry]', (element) => element.click())
+  await page.waitForFunction(() => document.querySelector('[data-library-bulk-action]')?.textContent?.includes('拖入选中'), { timeout: 5000 })
+  selectionFlow.selected = await page.$eval('[data-library-bulk-action]', (element) => element.textContent?.includes('拖入选中') || false)
+  await page.$eval('[data-library-entry]', (element) => element.click())
+  await page.waitForFunction(() => document.querySelector('[data-library-bulk-action]')?.textContent?.includes('拖入所有'), { timeout: 5000 })
+  selectionFlow.restored = await page.$eval('[data-library-bulk-action]', (element) => element.textContent?.includes('拖入所有') || false)
+}
+console.log('信息库选择:', selectionBefore.includes('拖入所有') && selectionFlow.available && selectionFlow.selected && selectionFlow.restored)
 const releasesBeforePreview = await page.evaluate(async () => {
   const result = await (await fetch('/api/history?variant=main&limit=50')).json()
   return (result.items || []).filter((item) => item.kind === 'release').length
@@ -138,6 +155,6 @@ console.log('窄屏:', mobileOk)
 if (errors.length) console.log('浏览器错误:', errors.slice(0, 5))
 await browser.close()
 
-const ok = shellOk && typesOk && pdfOk && customizerOk && legacyOk && mobileOk && errors.length === 0
+const ok = shellOk && typesOk && pdfOk && customizerOk && selectionFlow.available && selectionFlow.selected && selectionFlow.restored && legacyOk && mobileOk && errors.length === 0
 console.log(ok ? 'ALL_RENDER_OK' : 'RENDER_ISSUE')
 process.exit(ok ? 0 : 1)

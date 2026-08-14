@@ -9,6 +9,9 @@ import {
   FileCode2,
   Loader2,
   CheckCircle2,
+  CheckSquare2,
+  Square,
+  X,
   LayoutTemplate,
   ExternalLink,
   GitBranch,
@@ -93,6 +96,13 @@ function sectionsFromVariant(variant?: Variant): Section[] {
     .filter(Boolean) as Section[]
 }
 
+interface DragData {
+  type: 'entry' | 'entries' | 'section'
+  key: string
+  id?: string
+  ids?: string[]
+}
+
 const DND_MIME = 'application/x-rm-item'
 
 export default function Customizer() {
@@ -115,6 +125,7 @@ export default function Customizer() {
   const [busyAction, setBusyAction] = useState<'preview' | 'release' | null>(null)
   const [lastAction, setLastAction] = useState<'preview' | 'release' | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([])
   const [workspaceMode, setWorkspaceMode] = useState<'visual' | 'yaml'>('visual')
   const [yamlDirty, setYamlDirty] = useState(false)
   const [yamlRevision, setYamlRevision] = useState(0)
@@ -278,14 +289,14 @@ export default function Customizer() {
     setLastAction(null)
   }
 
-  const onDragStart = (data: { type: 'entry' | 'section'; key: string; id?: string }) => (event: React.DragEvent) => {
+  const onDragStart = (data: DragData) => (event: React.DragEvent) => {
     event.dataTransfer.setData(DND_MIME, JSON.stringify(data))
     event.dataTransfer.effectAllowed = 'copy'
   }
 
-  const parseDrop = (event: React.DragEvent) => {
+  const parseDrop = (event: React.DragEvent): DragData | null => {
     try {
-      return JSON.parse(event.dataTransfer.getData(DND_MIME))
+      return JSON.parse(event.dataTransfer.getData(DND_MIME)) as DragData
     } catch {
       return null
     }
@@ -297,9 +308,16 @@ export default function Customizer() {
     setDragOver(null)
     const data = parseDrop(event)
     if (!data) return
-    if (data.type === 'entry' && data.key === section.key) {
-      const ids = [...new Set([...(section.ids || []), data.id])]
-      commit(sections.map((item) => (item === section ? { ...item, mode: 'ids', ids } : item)))
+    const incomingIds = data.type === 'entry'
+      ? [data.id]
+      : data.type === 'entries'
+        ? data.ids || []
+        : []
+    const validIds = incomingIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    if (data.key === section.key && validIds.length > 0) {
+      if (section.mode === 'all') return
+      const ids = [...new Set([...(section.ids || []), ...validIds])]
+      commit(sections.map((item) => (item === section ? { ...item, mode: 'ids', ids, tags: undefined } : item)))
     } else if (data.type === 'section' && data.key === section.key) {
       commit(sections.map((item) => (item === section ? { ...item, mode: 'all', ids: undefined, tags: undefined } : item)))
     }
@@ -313,10 +331,17 @@ export default function Customizer() {
     if (sections.some((item) => item.key === data.key)) {
       return toast('warn', `${cats.find((item) => item.key === data.key)?.label || data.key} 已在布局中`)
     }
-    commit([
-      ...sections,
-      data.type === 'entry' ? { key: data.key, mode: 'ids', ids: [data.id] } : { key: data.key, mode: 'all' },
-    ])
+    const incomingIds = data.type === 'entry'
+      ? [data.id]
+      : data.type === 'entries'
+        ? data.ids || []
+        : []
+    const validIds = incomingIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    if (validIds.length > 0) {
+      commit([...sections, { key: data.key, mode: 'ids', ids: [...new Set(validIds)] }])
+    } else if (data.type === 'section') {
+      commit([...sections, { key: data.key, mode: 'all' }])
+    }
   }
 
   const move = (index: number, direction: -1 | 1) => {
@@ -406,10 +431,21 @@ export default function Customizer() {
       return
     }
     captureCurrentDraft()
+    setSelectedEntryIds([])
     setSelectedType(name)
     applyRememberedVariant(name)
     setYamlRevision((value) => value + 1)
   }
+
+  const toggleEntrySelection = (id?: string) => {
+    if (!canEditVisual || !id) return
+    setSelectedEntryIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id])
+  }
+
+  const selectedEntryCount = selectedEntryIds.length
+  const bulkDragData: DragData = selectedEntryCount > 0
+    ? { type: 'entries', key: cat, ids: selectedEntryIds }
+    : { type: 'section', key: cat }
 
   const listOf = (key: string): Entry[] => (Array.isArray(entries[key]) ? entries[key] : [])
   const sectionLabel = (key: string) => cats.find((item) => item.key === key)?.label || key
@@ -538,6 +574,7 @@ export default function Customizer() {
                 onClick={() => {
                   setCat(item.key)
                   setTagFilter('')
+                  setSelectedEntryIds([])
                 }}
                 className={`rounded-md px-2 py-1 text-[11px] transition ${
                   cat === item.key ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
@@ -575,10 +612,29 @@ export default function Customizer() {
           <div className="min-h-0 flex-1 overflow-auto p-2">
             <div
               draggable={canEditVisual}
-              onDragStart={onDragStart({ type: 'section', key: cat })}
-              className="mb-2 flex cursor-grab items-center gap-2 rounded-md border border-dashed border-indigo-500/40 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-300"
+              onDragStart={onDragStart(bulkDragData)}
+              data-library-bulk-action
+              title={selectedEntryCount > 0 ? '将选中的条目拖入布局' : '将当前分类的全部条目拖入布局'}
+              className={`mb-2 flex items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2 text-xs transition ${
+                canEditVisual ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-50'
+              } ${selectedEntryCount > 0 ? 'border-indigo-500/60 bg-indigo-500/10 text-indigo-200' : 'border-indigo-500/40 bg-indigo-500/5 text-indigo-300'}`}
             >
-              <Layers size={13} /> 拖入整个「{sectionLabel(cat)}」章节
+              <span className="flex min-w-0 items-center gap-2">
+                {selectedEntryCount > 0 ? <CheckSquare2 size={13} /> : <Layers size={13} />}
+                <span className="truncate">{selectedEntryCount > 0 ? `拖入选中（${selectedEntryCount}）` : '拖入所有'}</span>
+              </span>
+              {selectedEntryCount > 0 && (
+                <button
+                  type="button"
+                  aria-label="清除选中条目"
+                  title="清除选中条目"
+                  draggable={false}
+                  onClick={() => setSelectedEntryIds([])}
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-indigo-300 transition hover:bg-indigo-500/20 hover:text-indigo-100"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
             {cat === 'basics' ? (
               <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3 text-xs text-zinc-400">基础信息作为章节整体拖入布局。</div>
@@ -587,22 +643,42 @@ export default function Customizer() {
             ) : (
               filteredListOf(cat).map((entry) => {
                 const inLayout = sections.some((section) => section.key === cat && (section.mode === 'all' || section.ids?.includes(entry.id!)))
+                const isSelected = !!entry.id && selectedEntryIds.includes(entry.id)
                 return (
                   <div
                     key={entry.id}
+                    role="button"
+                    tabIndex={canEditVisual ? 0 : -1}
+                    aria-pressed={isSelected}
+                    aria-disabled={!canEditVisual}
+                    data-library-entry={entry.id || ''}
                     draggable={canEditVisual}
+                    onClick={() => toggleEntrySelection(entry.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        toggleEntrySelection(entry.id)
+                      }
+                    }}
                     onDragStart={onDragStart({ type: 'entry', key: cat, id: entry.id })}
-                    className={`mb-1.5 cursor-grab rounded-md border px-3 py-2 ${
-                      inLayout ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-zinc-800 bg-zinc-950/50 hover:border-indigo-500/40'
+                    className={`mb-1.5 rounded-md border px-3 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 ${
+                      canEditVisual ? 'cursor-pointer active:cursor-grabbing' : 'cursor-not-allowed opacity-50'
+                    } ${
+                      isSelected
+                        ? 'border-indigo-500/60 bg-indigo-500/10'
+                        : inLayout
+                          ? 'border-emerald-500/40 bg-emerald-500/5'
+                          : 'border-zinc-800 bg-zinc-950/50 hover:border-indigo-500/40'
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
+                      {isSelected ? <CheckSquare2 size={12} className="shrink-0 text-indigo-300" /> : <Square size={12} className="shrink-0 text-zinc-600" />}
                       <GripVertical size={12} className="text-zinc-600" />
                       <span className="truncate text-xs font-medium text-zinc-200">{entryTitle(cat, entry)}</span>
                       {inLayout && <CheckCircle2 size={12} className="ml-auto text-emerald-400" />}
                     </div>
                     {(entry.tags || []).length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-1 pl-5">
+                      <div className="mt-1 flex flex-wrap gap-1 pl-8">
                         {(entry.tags as string[]).map((tag) => <TagChip key={tag} tag={tag} />)}
                       </div>
                     )}
@@ -639,6 +715,7 @@ export default function Customizer() {
           </div>
           <div
             className={`min-h-0 flex-1 overflow-auto p-3 ${dragOver === 'canvas' ? 'ring-2 ring-inset ring-indigo-500/40' : ''}`}
+            data-customizer-canvas
             onDragOver={(event) => { if (canEditVisual) { event.preventDefault(); setDragOver('canvas') } }}
             onDragLeave={() => setDragOver(null)}
             onDrop={onCanvasDrop}
