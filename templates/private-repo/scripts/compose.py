@@ -52,8 +52,8 @@ def strip_meta(item):
     """去掉元数据键，返回纯简历字段"""
     if not isinstance(item, dict):
         return item
-    # subtitle 为管理端副标题（赛事/机构），schema 无此字段，不进简历
-    return {k: v for k, v in item.items() if k not in META_KEYS and k != "subtitle" and not k.startswith("_")}
+    # subtitle/stage 为管理端字段（副标题/阶段），schema 无此字段，不进简历
+    return {k: v for k, v in item.items() if k not in META_KEYS and k != "subtitle" and k != "stage" and not k.startswith("_")}
 
 
 def tag_overlap(item_tags, wanted_tags):

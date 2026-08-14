@@ -124,6 +124,7 @@ const FIELDS: Record<Category, FieldDef[]> = {
     { key: 'name', label: '项目名称', type: 'text', required: true },
     { key: 'subtitle', label: '副标题', type: 'text', hint: '如赛事 / 机构 / 来源' },
     { key: 'description', label: '一句话简介', type: 'text' },
+    { key: 'stage', label: '阶段', type: 'select', options: ['本科', '硕士'] },
     { key: 'url', label: '链接', type: 'text' },
     { key: 'startDate', label: '开始时间', type: 'text' },
     { key: 'endDate', label: '结束时间', type: 'text' },
@@ -240,7 +241,13 @@ export default function Entries() {
   const subOf = (e: Entry) => {
     if (category === 'work') return `${e.position || ''} · ${e.startDate || ''} ~ ${e.endDate || '至今'}`
     if (category === 'education') return `${DEGREE_LABELS[(e.degree as string) || ''] || (e.degree as string) || ''} ${e.area || ''} · ${e.startDate || ''}`
-    if (category === 'projects') return e.description as string
+    if (category === 'projects') {
+      const parts: string[] = []
+      if (e.startDate) parts.push(String(e.startDate))
+      if (e.stage) parts.push(String(e.stage))
+      if (e.description) parts.push(String(e.description))
+      return parts.join(' · ')
+    }
     if (category === 'skills') return (LEVEL_LABELS[(e.level as string) || ''] || (e.level as string) || '') as string
     if (category === 'certificates') return e.issuer as string
     return ''
