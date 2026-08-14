@@ -25,8 +25,8 @@ HTML_SKILL_LEVEL = re.compile(
     r'<span class="resume-skill-level">[^<]*</span>'
 )
 
-# ModernCV 正文列补丁：保留 yamlresume 的段落式 cvitem（含 CJK 冒号适配），正文改 raggedright 避免长行溢出（仅 moderncv 文档注入）
-CVITEM_PATCH_MARK = "rm-moderncv-raggedright"
+# ModernCV 补丁：1) cvitem 正文改 raggedright 防长行溢出；2) cventry 名称与时间同一行、时间右对齐。仅 moderncv 文档注入。
+CVITEM_PATCH_MARK = "rm-moderncv-patches"
 CVITEM_PATCH = (
     "% " + CVITEM_PATCH_MARK + "\n"
     "\\makeatletter\n"
@@ -34,6 +34,23 @@ CVITEM_PATCH = (
     "  \\ifstrempty{#2}{}{\\hintstyle{#2}：}\\raggedright#3%\n"
     "  \\par\\addvspace{#1}}\n"
     "\\makeatother\n"
+    "% 名称与时间同一行，时间在最右侧右对齐\n"
+    "\\renewcommand*{\\cventry}[7][.25em]{%\n"
+    "  \\begin{tabular*}{\\maincolumnwidth}{l@{\\extracolsep{\\fill}}r}%\n"
+    "    \\ifboolexpr{%\n"
+    "      test {\\ifstrempty{#4}}\n"
+    "      and\n"
+    "      test {\\ifstrempty{#5}}}%\n"
+    "      {}%\n"
+    "      {{\\bfseries #4} & {\\bfseries #2}\\\\}%\n"
+    "    {\\itshape #3\\ifstrempty{#6}{}{, #6}} & {}\\\\%\n"
+    "  \\end{tabular*}%\n"
+    "  \\ifx&#7&%\n"
+    "  \\else{\\\\%\n"
+    "    \\begin{minipage}{\\maincolumnwidth}%\n"
+    "      \\small#7%\n"
+    "    \\end{minipage}}\\fi%\n"
+    "  \\par\\addvspace{#1}}\n"
 )
 
 

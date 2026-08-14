@@ -38,14 +38,31 @@ function run(cmd, args, cwd) {
   })
 }
 
-// ModernCV 正文列补丁：保留 yamlresume 的段落式 cvitem（含 CJK 冒号适配），正文改 raggedright 避免长行溢出（仅 moderncv 文档注入）
-const CVITEM_PATCH_MARK = 'rm-moderncv-raggedright'
+// ModernCV 补丁：1) cvitem 正文改 raggedright 防长行溢出；2) cventry 名称与时间同一行、时间右对齐。仅 moderncv 文档注入。
+const CVITEM_PATCH_MARK = 'rm-moderncv-patches'
 const CVITEM_PATCH = `% ${CVITEM_PATCH_MARK}
 \\makeatletter
 \\renewcommand*{\\cvitem}[3][.25em]{%
   \\ifstrempty{#2}{}{\\hintstyle{#2}：}\\raggedright#3%
   \\par\\addvspace{#1}}
 \\makeatother
+% 名称与时间同一行，时间在最右侧右对齐
+\\renewcommand*{\\cventry}[7][.25em]{%
+  \\begin{tabular*}{\\maincolumnwidth}{l@{\\extracolsep{\\fill}}r}%
+    \\ifboolexpr{%
+      test {\\ifstrempty{#4}}
+      and
+      test {\\ifstrempty{#5}}}%
+      {}%
+      {{\\bfseries #4} & {\\bfseries #2}\\\\}%
+    {\\itshape #3\\ifstrempty{#6}{}{, #6}} & {}\\\\%
+  \\end{tabular*}%
+  \\ifx&#7&%
+  \\else{\\\\%
+    \\begin{minipage}{\\maincolumnwidth}%
+      \\small#7%
+    \\end{minipage}}\\fi%
+  \\par\\addvspace{#1}}
 `
 
 function normalizeGroupedLatex(text) {
