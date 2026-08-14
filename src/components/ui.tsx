@@ -206,7 +206,7 @@ export function TagInput({
     setDraft('')
   }
   const filtered = useMemo(
-    () => suggestions.filter((s) => !value.includes(s) && s.includes(draft.trim())).slice(0, 6),
+    () => suggestions.filter((s) => !value.includes(s) && s.includes(draft.trim())),
     [suggestions, value, draft],
   )
   return (
