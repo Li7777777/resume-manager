@@ -14,6 +14,7 @@ import {
   GitBranch,
   Eye,
   PackageCheck,
+  Tag,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Entry, Variant } from '../types'
@@ -84,6 +85,7 @@ export default function Customizer() {
   const [entries, setEntries] = useState<Record<string, Entry[]>>({})
   const [cats, setCats] = useState<{ key: string; label: string }[]>(DEFAULT_CATS)
   const [cat, setCat] = useState('work')
+  const [tagFilter, setTagFilter] = useState('')
   const [variants, setVariants] = useState<Variant[]>([])
   const [variantDefaults, setVariantDefaults] = useState<{ layout?: { engine?: string; template?: string } }>({})
   const [types, setTypes] = useState<ResumeType[]>([])
@@ -296,6 +298,19 @@ export default function Customizer() {
   const listOf = (key: string): Entry[] => (Array.isArray(entries[key]) ? entries[key] : [])
   const sectionLabel = (key: string) => cats.find((item) => item.key === key)?.label || key
   const categoryCount = (key: string) => (Array.isArray(entries[key]) ? entries[key].length : entries[key] ? 1 : 0)
+  // 信息库 tag 筛选：当前分类条目的标签选项 + 过滤后的条目
+  const infoTagOptions = useMemo(() => {
+    const seen = new Set<string>()
+    for (const e of listOf(cat)) {
+      for (const t of e.tags || []) if (typeof t === 'string' && t.trim()) seen.add(t)
+    }
+    return [...seen].sort()
+  }, [cat, entries])
+  const filteredListOf = (key: string): Entry[] => {
+    const list = listOf(key)
+    if (!tagFilter) return list
+    return list.filter((e) => (e.tags as string[] | undefined)?.includes(tagFilter))
+  }
 
   const layoutEntries = useMemo(() => {
     const result = new Map<string, Entry>()
@@ -399,7 +414,10 @@ export default function Customizer() {
             {cats.map((item) => (
               <button
                 key={item.key}
-                onClick={() => setCat(item.key)}
+                onClick={() => {
+                  setCat(item.key)
+                  setTagFilter('')
+                }}
                 className={`rounded-md px-2 py-1 text-[11px] transition ${
                   cat === item.key ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
@@ -407,6 +425,31 @@ export default function Customizer() {
                 {item.label}<span className={`ml-1 ${cat === item.key ? 'text-zinc-400' : 'text-zinc-600'}`}>{categoryCount(item.key)}</span>
               </button>
             ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-1 border-b border-zinc-800 px-2 py-1.5">
+            <Tag size={11} className="shrink-0 text-zinc-600" />
+            <button
+              onClick={() => setTagFilter('')}
+              className={`rounded-full px-2 py-0.5 text-[10px] transition ${
+                !tagFilter ? 'bg-indigo-500/15 text-indigo-200' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              全部
+            </button>
+            {infoTagOptions.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTagFilter(tagFilter === t ? '' : t)}
+                className={`rounded-full px-2 py-0.5 text-[10px] transition ${
+                  tagFilter === t ? 'bg-indigo-500/15 text-indigo-200' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+            {tagFilter && (
+              <span className="ml-auto text-[10px] text-zinc-600">已筛选：{tagFilter}</span>
+            )}
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-2">
             <div
@@ -418,10 +461,10 @@ export default function Customizer() {
             </div>
             {cat === 'basics' ? (
               <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3 text-xs text-zinc-400">基础信息作为章节整体拖入布局。</div>
-            ) : listOf(cat).length === 0 ? (
-              <EmptyState title="暂无条目" />
+            ) : filteredListOf(cat).length === 0 ? (
+              <EmptyState title={tagFilter ? `没有命中「${tagFilter}」标签的条目` : '暂无条目'} />
             ) : (
-              listOf(cat).map((entry) => {
+              filteredListOf(cat).map((entry) => {
                 const inLayout = sections.some((section) => section.key === cat && (section.mode === 'all' || section.ids?.includes(entry.id!)))
                 return (
                   <div
