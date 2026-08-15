@@ -626,8 +626,9 @@ export default function Customizer() {
       </div>
 
       <div className="flex min-h-0 flex-col gap-4 xl:min-h-0 xl:flex-1 xl:flex-row">
-        {workspaceMode === 'visual' && (
-          <>
+        <div className={`flex min-h-0 min-w-0 flex-1 ${workspaceMode === 'visual' ? 'flex-col gap-4 xl:flex-row' : 'flex-col'}`}>
+          {workspaceMode === 'visual' && (
+            <>
         <Card title="简历信息库" desc="拖拽条目或章节到布局" className="w-full shrink-0 xl:w-72" pad={false} fill>
           <div className="flex flex-wrap gap-1 border-b border-zinc-800 p-2">
             {cats.map((item) => (
@@ -850,19 +851,21 @@ export default function Customizer() {
         </Card>
           </>
         )}
-        <div className={workspaceMode === 'yaml' ? 'min-h-0 min-w-0 flex-1' : 'hidden'}>
-          <YamlWorkspace
-            disabled={rendering}
-            revision={yamlRevision}
-            onDirtyChange={setYamlDirty}
-            onSaved={handleYamlSaved}
-          />
+          <div className={workspaceMode === 'yaml' ? 'min-h-0 min-w-0 flex-1' : 'hidden'}>
+            <YamlWorkspace
+              disabled={rendering}
+              revision={yamlRevision}
+              onDirtyChange={setYamlDirty}
+              onSaved={handleYamlSaved}
+            />
+          </div>
         </div>
 
-        <Card
+        <aside className="min-h-[560px] w-full shrink-0 xl:h-full xl:min-h-0 xl:w-[46%]">
+          <Card
           title="模板预览"
           desc={activeTemplate ? `${activeTemplate.name} · ${activeTemplate.engine === 'html' ? 'HTML' : 'LaTeX PDF'}` : '选择模板'}
-          className="min-h-[560px] w-full shrink-0 xl:min-h-0 xl:w-[46%]"
+          className="h-full min-h-[560px] w-full xl:min-h-0"
           pad={false}
           fill
           actions={
@@ -902,7 +905,8 @@ export default function Customizer() {
               </div>
             )}
           </div>
-        </Card>
+          </Card>
+        </aside>
       </div>
     </div>
   )
