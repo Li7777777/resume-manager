@@ -101,9 +101,9 @@ const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
 \\setlength{\\tabcolsep}{0in}
 
 \\definecolor{rmbadgeleft}{HTML}{24292F}
-\\definecolor{rmbadgeright}{HTML}{0969DA}
+\\definecolor{rmbadgeright}{HTML}{FFFFFF}
 % GitHub 徽章：Logo + owner/repo 地址 + star 数量
-\\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\raisebox{-1.5pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.2}{7}\\selectfont\\faGithub\\ \\texttt{#1}}}\\colorbox{rmbadgeright}{\\textcolor{white}{\\fontsize{6.5}{7}\\selectfont\\faStar\\ #2}}}\\endgroup}
+\\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1.6pt}\\hspace{0.35em}\\raisebox{1pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.8}{8}\\selectfont\\faGithub\\ \\texttt{#1}}}\\if\\relax\\detokenize{#2}\\relax\\else\\colorbox{rmbadgeright}{\\textcolor{black}{\\fontsize{7}{8.2}\\selectfont\\faStar\\ #2}}\\fi}\\hspace{0.25em}\\endgroup}
 
 % Sections formatting
 \\titleformat{\\section}{
@@ -209,9 +209,9 @@ ${body}
 // 项目名中的「[github|owner/repo|4.2k]」标记 → GitHub Logo + 地址 + stars 数
 function projectTitleLatex(name) {
   const raw = String(name || '')
-  const match = raw.match(/\s*\[github\|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)\]/)
+  const match = raw.match(/\s*\[github\|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)?\]/)
   const base = match ? `${raw.slice(0, match.index)}${raw.slice((match.index || 0) + match[0].length)}`.trim() : raw
-  const title = `\\textbf{${escapeLatex(base)}}${match ? `\\githubbadge{${match[1]}}{${match[2]}}` : ''}`
+  const title = `\\textbf{${escapeLatex(base)}}${match ? `\\githubbadge{${match[1]}}{${match[2] || ''}}` : ''}`
   return match ? `\\href{https://github.com/${match[1]}}{${title}}` : title
 }
 

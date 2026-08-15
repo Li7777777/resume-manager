@@ -256,10 +256,12 @@ def inject_github_stars(items):
             count = int(hit.get("count"))
         except (TypeError, ValueError):
             continue
-        if count <= 0:
-            continue  # 无效值或 0 star 不加徽章
-        badge = format_star_count(count)
-        if not badge or "[github|" in str(it.get("name") or ""):
+        if count < 0:
+            continue  # 无效值不显示；0 star 仅显示仓库地址
+        badge = format_star_count(count) if count > 0 else ""
+        if count > 0 and not badge:
+            continue
+        if "[github|" in str(it.get("name") or ""):
             continue
         it["name"] = "%s [github|%s|%s]" % (it["name"], owner_repo, badge)
 

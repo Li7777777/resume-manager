@@ -25,7 +25,7 @@ HTML_SKILL_LEVEL = re.compile(
     r'<span class="resume-skill-level">[^<]*</span>'
 )
 GITHUB_BADGE = re.compile(
-    r"\s*\[github\|([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)\]"
+    r"\s*\[github\|([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)?\]"
 )
 GITHUB_BADGE_MARK = "rm-github-badge"
 GITHUB_BADGE_TEX = (
@@ -35,27 +35,30 @@ GITHUB_BADGE_TEX = (
     "\\makeatletter\n"
     "\\@ifpackageloaded{xcolor}{\n"
     "  \\definecolor{rmbadgeleft}{HTML}{24292F}\n"
-    "  \\definecolor{rmbadgeright}{HTML}{0969DA}\n"
+    "  \\definecolor{rmbadgeright}{HTML}{FFFFFF}\n"
     "}{\n"
     "  \\definecolor{rmbadgeleft}{rgb}{0.141,0.161,0.184}\n"
-    "  \\definecolor{rmbadgeright}{rgb}{0.035,0.412,0.855}\n"
+    "  \\definecolor{rmbadgeright}{rgb}{1,1,1}\n"
     "}\n"
     "\\makeatother\n"
-    "\\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}"
-    "\\raisebox{-1.5pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.2}{7}"
-    "\\selectfont\\faGithub\\ \\texttt{#1}}}\\colorbox{rmbadgeright}{\\textcolor{white}{"
-    "\\fontsize{6.5}{7}\\selectfont\\faStar\\ #2}}}\\endgroup}\n"
+    '\\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1.6pt}\\hspace{0.35em}\\raisebox{1pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.8}{8}\\selectfont\\faGithub\\ \\texttt{#1}}}\\if\\relax\\detokenize{#2}\\relax\\else\\colorbox{rmbadgeright}{\\textcolor{black}{\\fontsize{7}{8.2}\\selectfont\\faStar\\ #2}}\\fi}\\hspace{0.25em}\\endgroup}\n'
 )
 
 
 def github_badge_html(repo, stars):
-    github_logo = '<svg aria-hidden="true" viewBox="0 0 16 16" width="11" height="11" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.2.46.46.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>'
-    star_logo = '<svg aria-hidden="true" viewBox="0 0 16 16" width="10" height="10" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><path d="m8 0 2.47 5.01 5.53.81-4 3.9.94 5.51L8 12.63l-4.94 2.6L4 9.72 0 5.82l5.53-.81L8 0z"/></svg>'
+    github_logo = '<svg aria-hidden="true" viewBox="0 0 16 16" width="11" height="11" fill="currentColor" style="vertical-align:middle;margin-right:4px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.2.46.46.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>'
+    star_logo = '<svg aria-hidden="true" viewBox="0 0 16 16" width="10" height="10" fill="currentColor" style="vertical-align:middle;margin-right:4px;"><path d="m8 0 2.47 5.01 5.53.81-4 3.9.94 5.51L8 12.63l-4.94 2.6L4 9.72 0 5.82l5.53-.81L8 0z"/></svg>'
+    right = (
+        '<span style="display:inline-block;background:#fff;color:#000;padding:4px 6px;'
+        'border:1px solid #d0d7de;border-left:0;border-radius:0 3px 3px 0;">'
+        + star_logo + stars + '</span>' if stars else ''
+    )
     return (
-        '<span style="display:inline-block;margin-left:6px;vertical-align:middle;font-family:Verdana,Geneva,DejaVu Sans,sans-serif;font-size:10px;line-height:10px;white-space:nowrap;">'
-        '<span style="display:inline-block;background:#24292f;color:#fff;padding:3px 5px;border-radius:2px 0 0 2px;">'
-        + github_logo + repo + '</span><span style="display:inline-block;background:#0969da;color:#fff;padding:3px 5px;border-radius:0 2px 2px 0;">'
-        + star_logo + stars + '</span></span>'
+        '<span style="display:inline-block;margin-left:8px;vertical-align:0.1em;'
+        'font-family:Verdana,Geneva,DejaVu Sans,sans-serif;font-size:10px;line-height:1;'
+        'white-space:nowrap;"><span style="display:inline-block;background:#24292f;'
+        'color:#fff;padding:4px 6px;border-radius:3px 0 0 3px;">'
+        + github_logo + repo + '</span>' + right + '</span>'
     )
 
 # ModernCV 补丁：1) cvitem 正文改 raggedright 防长行溢出；2) cventry 名称与时间同一行、时间右对齐。仅 moderncv 文档注入。
@@ -125,7 +128,7 @@ def normalize_html(text):
     # 项目关键字改名为“技术栈”（HTML 中已是独立行）。
     text = HTML_KEYWORDS_LABEL.sub("<span>技术栈</span>", text)
     # GitHub 仓库徽章：Logo + owner/repo + stars 数
-    return GITHUB_BADGE.sub(lambda m: github_badge_html(m.group(1), m.group(2)), text)
+    return GITHUB_BADGE.sub(lambda m: github_badge_html(m.group(1), m.group(2) or ""), text)
 
 
 def main():

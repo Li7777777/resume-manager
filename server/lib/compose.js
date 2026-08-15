@@ -161,9 +161,10 @@ function injectGithubStars(items) {
     const ownerRepo = parseGithubRepoUrl(it.url)
     const hit = ownerRepo && cache[ownerRepo]
     const count = Number(hit?.count)
-    if (!Number.isFinite(count) || count <= 0) continue // 无缓存、无效值或 0 star 不加徽章
-    const badge = formatStarCount(count)
-    if (!badge || String(it.name || '').includes('[github|')) continue
+    if (!Number.isFinite(count) || count < 0) continue // 无缓存或无效值不显示；0 star 仅显示仓库地址
+    const badge = count > 0 ? formatStarCount(count) : ''
+    if (count > 0 && !badge) continue
+    if (String(it.name || '').includes('[github|')) continue
     it.name = `${it.name} [github|${ownerRepo}|${badge}]`
   }
 }

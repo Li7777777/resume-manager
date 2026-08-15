@@ -72,7 +72,7 @@ npm start            # 启动服务: http://127.0.0.1:8787
 | --- | --- | --- |
 | **本地编译 PDF** | 开启 ✅ | 「简历定制」页预览或发布 LaTeX 版本时生成 PDF。**需要安装 [yamlresume](https://www.npmjs.com/package/yamlresume)**（`npm install -g yamlresume`）及 XeTeX/Tectonic 排版引擎 |
 | **GitHub 编译 PDF** | 关闭 ❌ | 是否触发私有仓 GitHub Action；状态保存在本机并同步为 `RESUME_MANAGER_PDF_BUILD` Actions 仓库变量，不修改私有仓文件 |
-| **GitHub star 徽章** | 开启 ✅ | 项目链接指向 GitHub 仓库时，在项目名后追加 GitHub Logo、`owner/repo` 地址和 star 数；**仅正式发布时拉取最新 star 数**，预览只读本机缓存不访问网络；0 star 不显示徽章 |
+| **GitHub star 徽章** | 开启 ✅ | 项目链接指向 GitHub 仓库时，在项目名后追加 GitHub Logo、`owner/repo` 地址和 star 数；**仅正式发布时拉取最新 star 数**，预览只读本机缓存不访问网络；0 star 仍显示地址但不显示数量 |
 
 > 📌 **本地编译需要安装 yamlresume**：https://www.npmjs.com/package/yamlresume
 > （`npm install -g yamlresume`）。未安装时无法在简历定制页生成 LaTeX PDF，其余功能不受影响。
