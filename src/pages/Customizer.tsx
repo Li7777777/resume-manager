@@ -537,8 +537,9 @@ export default function Customizer() {
   if (loading) return <Spinner label="加载简历定制…" />
 
   return (
-    <div className="flex flex-col gap-4 xl:h-full">
-      <div className="shrink-0 border-b border-zinc-800 pb-4">
+    <div className="flex min-h-0 flex-col gap-4 xl:h-full xl:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+        <div className="shrink-0 border-b border-zinc-800 pb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <GitBranch size={15} className="text-zinc-500" />
@@ -625,7 +626,7 @@ export default function Customizer() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-col gap-4 xl:min-h-0 xl:flex-1 xl:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row">
         <div className={`flex min-h-0 min-w-0 flex-1 ${workspaceMode === 'visual' ? 'flex-col gap-4 xl:flex-row' : 'flex-col'}`}>
           {workspaceMode === 'visual' && (
             <>
@@ -861,53 +862,55 @@ export default function Customizer() {
           </div>
         </div>
 
-        <aside className="min-h-[560px] w-full shrink-0 xl:h-full xl:min-h-0 xl:w-[46%]">
-          <Card
-          title="模板预览"
-          desc={activeTemplate ? `${activeTemplate.name} · ${activeTemplate.engine === 'html' ? 'HTML' : 'LaTeX PDF'}` : '选择模板'}
-          className="h-full min-h-[560px] w-full xl:min-h-0"
-          pad={false}
-          fill
-          actions={
-            <div className="flex flex-wrap items-center justify-end gap-1.5">
-              {previewUrl && <a href={previewUrl} target="_blank" rel="noreferrer" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-indigo-300" title="新窗口打开"><ExternalLink size={13} /></a>}
-              <Button
-                size="sm"
-                variant="secondary"
-                loading={busyAction === 'preview'}
-                disabled={!canCustomize || rendering || yamlDirty || (workspaceMode === 'visual' && (sections.length === 0 || !activeTemplate))}
-                onClick={() => renderCurrent(false)}
-              >
-                <Eye size={13} /> 预览
-              </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                loading={busyAction === 'release'}
-                disabled={!canCustomize || rendering || yamlDirty || (workspaceMode === 'visual' && (sections.length === 0 || !activeTemplate))}
-                onClick={() => renderCurrent(true)}
-              >
-                <PackageCheck size={13} /> 保存发布正式版
-              </Button>
-            </div>
-          }
-        >
-          <div className="min-h-0 flex-1 overflow-auto">
-            {rendering ? (
-              <div className="flex h-full items-center justify-center">
-                <Spinner label={busyAction === 'release' ? '正在生成并归档正式版…' : '正在组合并生成预览…'} />
-              </div>
-            ) : previewUrl ? (
-              previewEngine === 'latex' ? <PdfViewer url={previewUrl} /> : <iframe key={previewUrl} src={previewUrl} className="h-full w-full bg-white" title="HTML 简历预览" />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <EmptyState icon={<FileCode2 size={30} />} title="选择模板并预览" desc="预览只用于检查效果，不进入版本时间轴；确认后再发布正式版。" />
-              </div>
-            )}
-          </div>
-          </Card>
-        </aside>
       </div>
     </div>
-  )
+
+    <aside className="flex min-h-0 min-w-0 flex-1 flex-col xl:w-[46%] xl:flex-none">
+      <Card
+        title="模板预览"
+        desc={activeTemplate ? `${activeTemplate.name} · ${activeTemplate.engine === 'html' ? 'HTML' : 'LaTeX PDF'}` : '选择模板'}
+        className="h-full min-h-[560px] w-full xl:min-h-0"
+        pad={false}
+        fill
+        actions={
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {previewUrl && <a href={previewUrl} target="_blank" rel="noreferrer" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-indigo-300" title="新窗口打开"><ExternalLink size={13} /></a>}
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={busyAction === 'preview'}
+              disabled={!canCustomize || rendering || yamlDirty || (workspaceMode === 'visual' && (sections.length === 0 || !activeTemplate))}
+              onClick={() => renderCurrent(false)}
+            >
+              <Eye size={13} /> 预览
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              loading={busyAction === 'release'}
+              disabled={!canCustomize || rendering || yamlDirty || (workspaceMode === 'visual' && (sections.length === 0 || !activeTemplate))}
+              onClick={() => renderCurrent(true)}
+            >
+              <PackageCheck size={13} /> 保存发布正式版
+            </Button>
+          </div>
+        }
+      >
+        <div className="min-h-0 flex-1 overflow-auto">
+          {rendering ? (
+            <div className="flex h-full items-center justify-center">
+              <Spinner label={busyAction === 'release' ? '正在生成并归档正式版…' : '正在组合并生成预览…'} />
+            </div>
+          ) : previewUrl ? (
+            previewEngine === 'latex' ? <PdfViewer url={previewUrl} /> : <iframe key={previewUrl} src={previewUrl} className="h-full w-full bg-white" title="HTML 简历预览" />
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <EmptyState icon={<FileCode2 size={30} />} title="选择模板并预览" desc="预览只用于检查效果，不进入版本时间轴；确认后再发布正式版。" />
+            </div>
+          )}
+        </div>
+      </Card>
+    </aside>
+  </div>
+)
 }
