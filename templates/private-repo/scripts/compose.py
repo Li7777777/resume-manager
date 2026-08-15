@@ -12,7 +12,9 @@
 - 组稿键（id / tags / 以 _ 开头）不进入最终简历；notes 仅作旧数据兼容并剥除
 - achievements 每条成就可打 tags；无标签成就视为通用，任何方向都保留
 """
+import json
 import os
+import re
 import sys
 
 import yaml
@@ -193,7 +195,69 @@ def compose_list(block, cfg):
         return compact_skills(selected)
     if block == "interests":
         return compact_interests(selected)
+    # GitHub star 徽章：与 server/lib/github-stars.js 行为一致，读本机缓存注入项目名
+    if block == "projects":
+        inject_github_stars(out)
     return out
+
+
+GITHUB_STARS_CACHE = os.path.join(
+    os.path.expanduser("~"), ".resume-manager", "github-stars.json"
+)
+
+
+def parse_github_repo_url(url):
+    if not url or not isinstance(url, str):
+        return None
+    s = url.strip()
+    if s.lower().endswith(".git"):
+        s = s[:-4]
+    s = s.rstrip("/")
+    m = re.search(r"github\.com/([^/?#]+/[^/?#]+)", s, re.IGNORECASE)
+    if not m:
+        return None
+    parts = m.group(1).split("/")
+    if len(parts) != 2:
+        return None
+    if not all(re.fullmatch(r"[\w.-]+", p) for p in parts):
+        return None
+    return parts[0] + "/" + parts[1]
+
+
+def format_star_count(n):
+    try:
+        num = int(n)
+    except (TypeError, ValueError):
+        return ""
+    if num >= 1000000:
+        s = "%.1f" % (num / 1000000.0)
+        return s.rstrip("0").rstrip(".") + "m"
+    if num >= 1000:
+        s = "%.1f" % (num / 1000.0)
+        return s.rstrip("0").rstrip(".") + "k"
+    return str(num)
+
+
+def load_stars_cache():
+    try:
+        with open(GITHUB_STARS_CACHE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def inject_github_stars(items):
+    cache = load_stars_cache()
+    for it in items:
+        owner_repo = parse_github_repo_url(it.get("url"))
+        hit = cache.get(owner_repo) if owner_repo else None
+        if not hit or not hit.get("count"):
+            continue  # 无缓存或 0 star 不加徽章
+        badge = format_star_count(hit["count"])
+        if not badge or "★" in str(it.get("name") or ""):
+            continue
+        it["name"] = "%s ★ %s" % (it["name"], badge)
 
 
 def build_layout(v, defaults):

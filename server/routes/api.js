@@ -6,6 +6,7 @@ import yaml from 'js-yaml'
 import { getSettings, saveSettings, getRepoPath } from '../config.js'
 import * as store from '../lib/data-store.js'
 import * as compose from '../lib/compose.js'
+import { refreshGithubStars } from '../lib/github-stars.js'
 import * as builder from '../lib/builder.js'
 import * as gitSvc from '../lib/git-service.js'
 import * as managerState from '../lib/manager-state.js'
@@ -109,7 +110,7 @@ router.get('/settings', (req, res) => {
 })
 
 router.put('/settings', (req, res) => {
-  const { repoPath, token, gitUsername, gitEmail, localPdfBuild, githubPdfBuild, gitSyncEnabled } = req.body || {}
+  const { repoPath, token, gitUsername, gitEmail, localPdfBuild, githubPdfBuild, gitSyncEnabled, starsEnabled } = req.body || {}
   const patch = {}
   if (typeof repoPath === 'string') patch.repoPath = repoPath
   if (typeof token === 'string' && token !== '••••••') patch.token = token
@@ -118,6 +119,7 @@ router.put('/settings', (req, res) => {
   if (typeof localPdfBuild === 'boolean') patch.localPdfBuild = localPdfBuild
   if (typeof githubPdfBuild === 'boolean') patch.githubPdfBuild = githubPdfBuild
   if (typeof gitSyncEnabled === 'boolean') patch.gitSyncEnabled = gitSyncEnabled
+  if (typeof starsEnabled === 'boolean') patch.starsEnabled = starsEnabled
   const saved = saveSettings(patch)
   res.json({ ok: true, settings: { ...saved, token: saved.token ? '••••••' : '' } })
 })
@@ -1277,6 +1279,14 @@ function archiveRelease(repo, variant, engine) {
 }
 
 async function renderCustomizedVariant(repo, variant, config, defaults, engine, branch, publish) {
+  // 正式发布时才拉取 GitHub star 数并更新缓存；预览只读缓存，不发起网络请求
+  if (publish && getSettings().starsEnabled !== false) {
+    try {
+      await refreshGithubStars(store.readCategory(repo, 'projects'))
+    } catch {
+      // 拉取失败不阻断发布，组合时退回旧缓存或无徽章
+    }
+  }
   compose.generateVariant(repo, variant, config, defaults)
   const result = engine === 'html'
     ? await builder.buildHtmlVariant(repo, variant)

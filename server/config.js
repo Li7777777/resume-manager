@@ -13,6 +13,7 @@ export const SETTINGS_DEFAULTS = {
   localPdfBuild: true,
   githubPdfBuild: false,
   gitSyncEnabled: true,
+  starsEnabled: true,
 }
 
 export function getSettings() {

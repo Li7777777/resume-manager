@@ -5,6 +5,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import yaml from 'js-yaml'
 import { readCategory, dataFile, META_KEYS } from './data-store.js'
+import { getSettings } from '../config.js'
+import { loadStarsCache, parseGithubRepoUrl, formatStarCount } from './github-stars.js'
 
 const ACHIEVEMENTS_KEY = 'achievements'
 const VARIANTS_FILE = (repo) => path.join(repo, 'scripts', 'variants.yml')
@@ -148,7 +150,22 @@ function composeList(repo, block, cfg) {
   // 技能/兴趣分组需要方向（tags）元数据，因此直接用原始选中条目（含 tags）
   if (block === 'skills') return compactSkills(selected)
   if (block === 'interests') return compactInterests(selected)
+  // GitHub star 徽章：正式发布前已刷新缓存，组合时统一读缓存（预览不发起网络请求）
+  if (block === 'projects' && getSettings().starsEnabled !== false) injectGithubStars(out)
   return out
+}
+
+// 从本地缓存读取 star 数，将「 ★ 1.1k」追加到项目名称后（仅 GitHub 仓库链接且缓存命中）
+function injectGithubStars(items) {
+  const cache = loadStarsCache()
+  for (const it of items) {
+    const ownerRepo = parseGithubRepoUrl(it.url)
+    const hit = ownerRepo && cache[ownerRepo]
+    if (!hit || !hit.count) continue // 无缓存或 0 star 不加徽章
+    const badge = formatStarCount(hit.count)
+    if (!badge || String(it.name || '').includes('★')) continue
+    it.name = `${it.name} ★ ${badge}`
+  }
 }
 
 function buildLayout(v, defaults) {

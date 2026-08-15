@@ -25,6 +25,8 @@ export interface Settings {
   githubPdfBuild?: boolean
   // Git 同步开关：默认开启；关闭时折叠 git 配置、隐藏看板、时间线只显示正式版
   gitSyncEnabled?: boolean
+  // GitHub star 徽章：默认开启；仅正式发布时拉取 star 数，预览只用缓存
+  starsEnabled?: boolean
 }
 
 export interface Variant {

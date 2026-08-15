@@ -14,6 +14,7 @@ import {
   ScanSearch,
   ExternalLink,
   Sparkles,
+  Star,
   TerminalSquare,
   GitPullRequestArrow,
   FolderOpen,
@@ -162,6 +163,18 @@ export default function SettingsPage() {
     }
   }
 
+  // ★ GitHub star 徽章开关：切换即保存；关闭后组合器不再注入 star 数
+  const toggleStars = async (v: boolean) => {
+    setForm((f) => ({ ...f, starsEnabled: v }))
+    try {
+      await patchSettings({ starsEnabled: v })
+      toast('success', `GitHub star 徽章已${v ? '开启' : '关闭'}（下次构建生效）`)
+    } catch (e: any) {
+      setForm((f) => ({ ...f, starsEnabled: !v }))
+      toast('error', `保存失败：${e.message}`)
+    }
+  }
+
   const test = async () => {
     setTesting(true)
     try {
@@ -223,6 +236,7 @@ export default function SettingsPage() {
 
   const localBuildOn = form.localPdfBuild !== false // 默认开启
   const githubBuildOn = form.githubPdfBuild === true // 默认关闭
+  const starsOn = form.starsEnabled !== false // 默认开启
   const cfgNeedsSync = githubCfg?.available && githubCfg.remoteValue !== githubBuildOn
 
   return (
@@ -357,6 +371,25 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
         <p className="mt-3 rounded-lg bg-zinc-950/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-600">
           开关<b className="text-zinc-400">切换即保存到本机并即时生效</b>；GitHub 编译开关通过 Actions 仓库变量同步，不会改动简历数据仓。
         </p>
+      </Card>
+
+      {/* GitHub star 徽章 */}
+      <Card title="GitHub star 徽章" desc="项目名称后自动附加 star 数标签">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className={`mt-0.5 rounded-lg p-1.5 ${starsOn ? 'bg-amber-500/15 text-amber-400' : 'bg-zinc-800 text-zinc-500'}`}>
+              <Star size={15} />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-zinc-200">自动获取 GitHub star 数 <Badge tone="emerald">默认开启</Badge></p>
+              <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+                项目经历中链接指向 GitHub 仓库时，在项目名称后追加「★ 1.1k」标签。
+                <strong className="text-zinc-300">仅「保存发布正式版」时拉取最新 star 数</strong>，预览只读本机缓存不访问网络；拉取结果缓存在本机，不会写入数据仓。
+              </p>
+            </div>
+          </div>
+          <Switch checked={starsOn} disabled={!ready} onChange={(v) => toggleStars(v)} />
+        </div>
       </Card>
 
         </div>
