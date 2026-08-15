@@ -82,8 +82,29 @@ function normalizeGroupedLatex(text) {
   if (/moderncv/.test(next) && !next.includes(CVITEM_PATCH_MARK)) {
     next = next.replace(/^(\\begin\{document\})/m, CVITEM_PATCH + '$1')
   }
+  // GitHub star 徽章：yamlresume 输出中的「[stars|N]」标记 → shields 风格双色徽章
+  if (/\[stars\|[0-9]+(?:\.[0-9]+)?[km]?\]/.test(next)) {
+    next = next.replace(/\s*\[stars\|([0-9]+(?:\.[0-9]+)?[km]?)\]/g, ' \\starsbadge{$1}')
+    if (!next.includes(STARS_BADGE_MARK)) {
+      next = next.replace(/^(\\begin\{document\})/m, STARS_BADGE_TEX + '$1')
+    }
+  }
   return next
 }
+
+const STARS_BADGE_MARK = '% rm-stars-badge'
+const STARS_BADGE_TEX = `${STARS_BADGE_MARK}
+\\makeatletter
+\\@ifpackageloaded{xcolor}{
+  \\definecolor{rmbadgeleft}{HTML}{555555}
+  \\definecolor{rmbadgeright}{HTML}{007EC6}
+}{
+  \\definecolor{rmbadgeleft}{gray}{0.33}
+  \\definecolor{rmbadgeright}{rgb}{0.0,0.494,0.776}
+}
+\\makeatother
+\\newcommand{\\starsbadge}[1]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\raisebox{-1.5pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\ttfamily\\fontsize{6.5}{7}\\selectfont stars}}\\colorbox{rmbadgeright}{\\textcolor{white}{\\ttfamily\\fontsize{6.5}{7}\\selectfont #1}}}\\endgroup}
+`
 
 function normalizeGroupedHtml(text) {
   let next = text.replace(
@@ -91,7 +112,13 @@ function normalizeGroupedHtml(text) {
     '$1',
   )
   // 项目关键字改名为“技术栈”（HTML 中已是独立行）。
-  return next.replace(/<span>关键字<\/span>/g, '<span>技术栈</span>')
+  next = next.replace(/<span>关键字<\/span>/g, '<span>技术栈</span>')
+  // GitHub star 徽章：shields.io 风格双色标签（左灰 stars + 右蓝数量）
+  return next.replace(/\s*\[stars\|([0-9]+(?:\.[0-9]+)?[km]?)\]/g, (_, n) => starBadgeHtml(n))
+}
+
+function starBadgeHtml(n) {
+  return `<span style="display:inline-block;margin-left:6px;vertical-align:middle;font-family:Verdana,Geneva,DejaVu Sans,sans-serif;font-size:10px;line-height:10px;white-space:nowrap;"><span style="display:inline-block;background:#555;color:#fff;padding:3px 4px;border-radius:2px 0 0 2px;">stars</span><span style="display:inline-block;background:#007EC6;color:#fff;padding:3px 4px;border-radius:0 2px 2px 0;">${n}</span></span>`
 }
 
 async function normalizeGeneratedOutputs(repo, variant, env) {

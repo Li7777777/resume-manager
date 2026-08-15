@@ -252,12 +252,18 @@ def inject_github_stars(items):
     for it in items:
         owner_repo = parse_github_repo_url(it.get("url"))
         hit = cache.get(owner_repo) if owner_repo else None
-        if not hit or not hit.get("count"):
-            continue  # 无缓存或 0 star 不加徽章
-        badge = format_star_count(hit["count"])
-        if not badge or "★" in str(it.get("name") or ""):
+        if not hit:
             continue
-        it["name"] = "%s ★ %s" % (it["name"], badge)
+        try:
+            count = int(hit.get("count"))
+        except (TypeError, ValueError):
+            continue
+        if count <= 0:
+            continue  # 无效值或 0 star 不加徽章
+        badge = format_star_count(count)
+        if not badge or "[stars|" in str(it.get("name") or ""):
+            continue
+        it["name"] = "%s [stars|%s]" % (it["name"], badge)
 
 
 def build_layout(v, defaults):

@@ -155,16 +155,18 @@ function composeList(repo, block, cfg) {
   return out
 }
 
-// 从本地缓存读取 star 数，将「 ★ 1.1k」追加到项目名称后（仅 GitHub 仓库链接且缓存命中）
+// 从本地缓存读取 star 数，将 shields.io 徽章标记「 [stars|1.1k]」追加到项目名后
+// （仅 GitHub 仓库链接且缓存命中；渲染器将标记转为双色徽章，纯文本环境可读降级）
 function injectGithubStars(items) {
   const cache = loadStarsCache()
   for (const it of items) {
     const ownerRepo = parseGithubRepoUrl(it.url)
     const hit = ownerRepo && cache[ownerRepo]
-    if (!hit || !hit.count) continue // 无缓存或 0 star 不加徽章
-    const badge = formatStarCount(hit.count)
-    if (!badge || String(it.name || '').includes('★')) continue
-    it.name = `${it.name} ★ ${badge}`
+    const count = Number(hit?.count)
+    if (!Number.isFinite(count) || count <= 0) continue // 无缓存、无效值或 0 star 不加徽章
+    const badge = formatStarCount(count)
+    if (!badge || String(it.name || '').includes('[stars|')) continue
+    it.name = `${it.name} [stars|${badge}]`
   }
 }
 

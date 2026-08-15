@@ -72,7 +72,7 @@ function boldLabel(name) {
 const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
 
 \\usepackage{titlesec}
-\\usepackage[usenames,dvipsnames]{color}
+\\usepackage[usenames,dvipsnames]{xcolor}
 \\usepackage{enumitem}
 \\usepackage[hidelinks]{hyperref}
 \\usepackage{fancyhdr}
@@ -98,6 +98,11 @@ const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
 \\raggedbottom
 \\raggedright
 \\setlength{\\tabcolsep}{0in}
+
+\\definecolor{rmbadgeleft}{HTML}{555555}
+\\definecolor{rmbadgeright}{HTML}{007EC6}
+% shields.io 风格 star 徽章：左灰块 stars + 右蓝块数量（两块连写，之间不换行否则有缝隙）
+\\newcommand{\\starsbadge}[1]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\raisebox{-1.5pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\ttfamily\\fontsize{6.5}{7}\\selectfont stars}}\\colorbox{rmbadgeright}{\\textcolor{white}{\\ttfamily\\fontsize{6.5}{7}\\selectfont #1}}}\\endgroup}
 
 % Sections formatting
 \\titleformat{\\section}{
@@ -200,13 +205,18 @@ ${body}
 \\resumeSubHeadingListEnd`
 }
 
+// 项目名中的「[stars|4.2k]」标记 → shields 风格徽章命令（其余文本保持转义不变）
+function toBadgeLatex(text) {
+  return String(text).replace(/\s*\[stars\|([0-9]+(?:\.[0-9]+)?[km]?)\]/g, ' \\starsbadge{$1}')
+}
+
 function renderProjects(entries) {
   const list = Array.isArray(entries) ? entries : []
   if (!list.length) return ''
   const body = list
     .map((e) => {
       const techs = (Array.isArray(e.keywords) ? e.keywords : []).map((k) => escapeLatex(k)).join('、')
-      const heading = `{\\textbf{${escapeLatex(e.name || '')}}${techs ? ` $|$ \\emph{${techs}}` : ''}}{${escapeLatex(dateRange(e))}}`
+      const heading = `{\\textbf{${toBadgeLatex(escapeLatex(e.name || ''))}}${techs ? ` $|$ \\emph{${techs}}` : ''}}{${escapeLatex(dateRange(e))}}`
       const description = escapeLatex(e.description || '')
       const items = parseItems(e.summary)
       const itemLines = []
