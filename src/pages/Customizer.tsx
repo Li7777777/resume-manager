@@ -562,7 +562,7 @@ export default function Customizer() {
           )}
         </div>
 
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3 2xl:grid-cols-4">
           {templates.map((item) => {
             const active = template === item.id
             return (
@@ -579,9 +579,10 @@ export default function Customizer() {
                     : 'border-zinc-800 bg-zinc-950/40 hover:border-zinc-600'
                 } disabled:cursor-not-allowed disabled:opacity-50`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-200">
-                    <LayoutTemplate size={13} className={active ? 'text-indigo-400' : 'text-zinc-600'} /> {item.name}
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-zinc-200">
+                    <LayoutTemplate size={13} className={`shrink-0 ${active ? 'text-indigo-400' : 'text-zinc-600'}`} />
+                    <span className="truncate">{item.name}</span>
                   </span>
                   <Badge tone={item.engine === 'html' ? 'sky' : 'zinc'}>{item.engine === 'html' ? 'HTML' : 'LaTeX'}</Badge>
                 </div>
@@ -627,10 +628,10 @@ export default function Customizer() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row">
-        <div className={`flex min-h-0 min-w-0 flex-1 ${workspaceMode === 'visual' ? 'flex-col gap-4 xl:flex-row' : 'flex-col'}`}>
+        <div className={`flex min-h-0 min-w-0 flex-1 ${workspaceMode === 'visual' ? 'flex-col gap-4 2xl:flex-row' : 'flex-col'}`}>
           {workspaceMode === 'visual' && (
             <>
-        <Card title="简历信息库" desc="拖拽条目或章节到布局" className="w-full shrink-0 xl:w-72" pad={false} fill>
+        <Card title="简历信息库" desc="拖拽条目或章节到布局" className="w-full xl:min-h-0 xl:flex-1 xl:basis-0 2xl:w-72 2xl:flex-none" pad={false} fill>
           <div className="flex flex-wrap gap-1 border-b border-zinc-800 p-2">
             {cats.map((item) => (
               <button
@@ -756,7 +757,7 @@ export default function Customizer() {
         <Card
           title="内容与布局"
           desc="按当前顺序生成简历"
-          className="min-w-0 flex-1"
+          className="min-w-0 xl:min-h-0 xl:flex-1 xl:basis-0"
           pad={false}
           fill
           actions={<Button size="sm" variant="ghost" disabled={!canEditVisual} onClick={() => commit([])}><Trash2 size={12} /> 清空</Button>}
