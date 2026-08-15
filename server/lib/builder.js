@@ -82,28 +82,32 @@ function normalizeGroupedLatex(text) {
   if (/moderncv/.test(next) && !next.includes(CVITEM_PATCH_MARK)) {
     next = next.replace(/^(\\begin\{document\})/m, CVITEM_PATCH + '$1')
   }
-  // GitHub star 徽章：yamlresume 输出中的「[stars|N]」标记 → shields 风格双色徽章
-  if (/\[stars\|[0-9]+(?:\.[0-9]+)?[km]?\]/.test(next)) {
-    next = next.replace(/\s*\[stars\|([0-9]+(?:\.[0-9]+)?[km]?)\]/g, ' \\starsbadge{$1}')
-    if (!next.includes(STARS_BADGE_MARK)) {
-      next = next.replace(/^(\\begin\{document\})/m, STARS_BADGE_TEX + '$1')
+  // GitHub 仓库徽章：[github|owner/repo|N] → Logo + 地址 + stars 数
+  if (/\[github\|[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\|[0-9]+(?:\.[0-9]+)?[km]?\]/.test(next)) {
+    next = next.replace(
+      /\s*\[github\|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)\]/g,
+      ' \\githubbadge{$1}{$2}',
+    )
+    if (!next.includes(GITHUB_BADGE_MARK)) {
+      next = next.replace(/^(\\begin\{document\})/m, GITHUB_BADGE_TEX + '$1')
     }
   }
   return next
 }
 
-const STARS_BADGE_MARK = '% rm-stars-badge'
-const STARS_BADGE_TEX = `${STARS_BADGE_MARK}
+const GITHUB_BADGE_MARK = '% rm-github-badge'
+const GITHUB_BADGE_TEX = `${GITHUB_BADGE_MARK}
+\\IfFileExists{fontawesome5.sty}{\\usepackage{fontawesome5}}{\\providecommand{\\faGithub}{GitHub}\\providecommand{\\faStar}{*}}
 \\makeatletter
 \\@ifpackageloaded{xcolor}{
-  \\definecolor{rmbadgeleft}{HTML}{555555}
-  \\definecolor{rmbadgeright}{HTML}{007EC6}
+  \\definecolor{rmbadgeleft}{HTML}{24292F}
+  \\definecolor{rmbadgeright}{HTML}{0969DA}
 }{
-  \\definecolor{rmbadgeleft}{gray}{0.33}
-  \\definecolor{rmbadgeright}{rgb}{0.0,0.494,0.776}
+  \\definecolor{rmbadgeleft}{rgb}{0.141,0.161,0.184}
+  \\definecolor{rmbadgeright}{rgb}{0.035,0.412,0.855}
 }
 \\makeatother
-\\newcommand{\\starsbadge}[1]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\raisebox{-1.5pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\ttfamily\\fontsize{6.5}{7}\\selectfont stars}}\\colorbox{rmbadgeright}{\\textcolor{white}{\\ttfamily\\fontsize{6.5}{7}\\selectfont #1}}}\\endgroup}
+\\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\raisebox{-1.5pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.2}{7}\\selectfont\\faGithub\\ \\texttt{#1}}}\\colorbox{rmbadgeright}{\\textcolor{white}{\\fontsize{6.5}{7}\\selectfont\\faStar\\ #2}}}\\endgroup}
 `
 
 function normalizeGroupedHtml(text) {
@@ -113,12 +117,17 @@ function normalizeGroupedHtml(text) {
   )
   // 项目关键字改名为“技术栈”（HTML 中已是独立行）。
   next = next.replace(/<span>关键字<\/span>/g, '<span>技术栈</span>')
-  // GitHub star 徽章：shields.io 风格双色标签（左灰 stars + 右蓝数量）
-  return next.replace(/\s*\[stars\|([0-9]+(?:\.[0-9]+)?[km]?)\]/g, (_, n) => starBadgeHtml(n))
+  // GitHub 仓库徽章：Logo + owner/repo + stars 数
+  return next.replace(
+    /\s*\[github\|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)\]/g,
+    (_, repo, n) => githubBadgeHtml(repo, n),
+  )
 }
 
-function starBadgeHtml(n) {
-  return `<span style="display:inline-block;margin-left:6px;vertical-align:middle;font-family:Verdana,Geneva,DejaVu Sans,sans-serif;font-size:10px;line-height:10px;white-space:nowrap;"><span style="display:inline-block;background:#555;color:#fff;padding:3px 4px;border-radius:2px 0 0 2px;">stars</span><span style="display:inline-block;background:#007EC6;color:#fff;padding:3px 4px;border-radius:0 2px 2px 0;">${n}</span></span>`
+function githubBadgeHtml(repo, stars) {
+  const githubLogo = '<svg aria-hidden="true" viewBox="0 0 16 16" width="11" height="11" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.2.46.46.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>'
+  const starLogo = '<svg aria-hidden="true" viewBox="0 0 16 16" width="10" height="10" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><path d="m8 0 2.47 5.01 5.53.81-4 3.9.94 5.51L8 12.63l-4.94 2.6L4 9.72 0 5.82l5.53-.81L8 0z"/></svg>'
+  return `<span style="display:inline-block;margin-left:6px;vertical-align:middle;font-family:Verdana,Geneva,DejaVu Sans,sans-serif;font-size:10px;line-height:10px;white-space:nowrap;"><span style="display:inline-block;background:#24292f;color:#fff;padding:3px 5px;border-radius:2px 0 0 2px;">${githubLogo}${repo}</span><span style="display:inline-block;background:#0969da;color:#fff;padding:3px 5px;border-radius:0 2px 2px 0;">${starLogo}${stars}</span></span>`
 }
 
 async function normalizeGeneratedOutputs(repo, variant, env) {

@@ -141,9 +141,7 @@ function composeList(repo, block, cfg) {
     }
     const summary = buildSummary(e, wanted)
     if (summary != null) item.summary = toSummaryString(summary)
-    if (block === 'projects' && typeof item.description === 'string' && item.description.length > 40) {
-      item.description = `${item.description.slice(0, 39)}…`
-    }
+    // 保留项目 description 原文，简历内容不能因组合阶段被截断
     if (Array.isArray(item.summary)) item.summary = toSummaryString(item.summary)
     out.push(item)
   }
@@ -155,8 +153,8 @@ function composeList(repo, block, cfg) {
   return out
 }
 
-// 从本地缓存读取 star 数，将 shields.io 徽章标记「 [stars|1.1k]」追加到项目名后
-// （仅 GitHub 仓库链接且缓存命中；渲染器将标记转为双色徽章，纯文本环境可读降级）
+// 从本地缓存读取 star 数，将「[github|owner/repo|4.2k]」追加到项目名后
+// （仅 GitHub 仓库链接且缓存命中；渲染器转为 GitHub Logo + 地址 + stars 徽章）
 function injectGithubStars(items) {
   const cache = loadStarsCache()
   for (const it of items) {
@@ -165,8 +163,8 @@ function injectGithubStars(items) {
     const count = Number(hit?.count)
     if (!Number.isFinite(count) || count <= 0) continue // 无缓存、无效值或 0 star 不加徽章
     const badge = formatStarCount(count)
-    if (!badge || String(it.name || '').includes('[stars|')) continue
-    it.name = `${it.name} [stars|${badge}]`
+    if (!badge || String(it.name || '').includes('[github|')) continue
+    it.name = `${it.name} [github|${ownerRepo}|${badge}]`
   }
 }
 

@@ -374,7 +374,7 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
       </Card>
 
       {/* GitHub star 徽章 */}
-      <Card title="GitHub star 徽章" desc="项目名称后自动附加 shields.io 风格 stars 双色徽章">
+      <Card title="GitHub star 徽章" desc="项目名称后自动附加 GitHub Logo、仓库地址和 star 数">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <span className={`mt-0.5 rounded-lg p-1.5 ${starsOn ? 'bg-amber-500/15 text-amber-400' : 'bg-zinc-800 text-zinc-500'}`}>
@@ -383,7 +383,7 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
             <div>
               <p className="text-sm font-medium text-zinc-200">自动获取 GitHub star 数 <Badge tone="emerald">默认开启</Badge></p>
               <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
-                项目经历中链接指向 GitHub 仓库时，在项目名称后追加 shields.io 风格「stars | 1.1k」双色徽章；0 star 不显示。
+                项目经历中链接指向 GitHub 仓库时，在项目名称后追加 GitHub Logo、owner/repo 地址和 star 数；0 star 不显示。
                 <strong className="text-zinc-300">仅「保存发布正式版」时拉取最新 star 数</strong>，预览只读本机缓存不访问网络；拉取结果缓存在本机，不会写入数据仓。
               </p>
             </div>

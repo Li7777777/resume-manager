@@ -183,9 +183,7 @@ def compose_list(block, cfg):
         elif ACHIEVEMENTS_KEY in e:
             item.pop("summary", None)
         item.pop(ACHIEVEMENTS_KEY, None)  # 成就点用完即删，不进入简历
-        # ModernCV 将 description 放入粗体标题列；长段落会造成 alignment 溢出。仅压缩组合输出，源数据及 summary 不变。
-        if block == "projects" and isinstance(item.get("description"), str) and len(item["description"]) > 40:
-            item["description"] = item["description"][:39] + "…"
+        # 项目 description 保留原文，简历内容不能因组合阶段被截断
         # 其他列表型 summary（projects / education 等）同样转字符串
         if isinstance(item.get("summary"), list):
             item["summary"] = to_summary_string(item["summary"])
@@ -261,9 +259,9 @@ def inject_github_stars(items):
         if count <= 0:
             continue  # 无效值或 0 star 不加徽章
         badge = format_star_count(count)
-        if not badge or "[stars|" in str(it.get("name") or ""):
+        if not badge or "[github|" in str(it.get("name") or ""):
             continue
-        it["name"] = "%s [stars|%s]" % (it["name"], badge)
+        it["name"] = "%s [github|%s|%s]" % (it["name"], owner_repo, badge)
 
 
 def build_layout(v, defaults):
