@@ -1169,8 +1169,6 @@ function sanitizeCustomizerState(repo, input) {
     drafts[name] = {
       template,
       sections,
-      headline: typeof value.headline === 'string' ? value.headline.slice(0, 1000) : '',
-      summary: typeof value.summary === 'string' ? value.summary.slice(0, 20000) : '',
       updatedAt: Number.isFinite(value.updatedAt) ? value.updatedAt : Date.now(),
     }
   }
@@ -1221,7 +1219,7 @@ function resolveCustomizedVariant(repo, doc, variant, body) {
   const current = doc.variants?.[variant]
   if (!current) throw new Error(`当前 YAML 中不存在简历类型 ${variant}`)
 
-  const hasVisualDraft = body.template !== undefined || body.sections !== undefined || body.overrides !== undefined
+  const hasVisualDraft = body.template !== undefined || body.sections !== undefined
   if (!hasVisualDraft) {
     const layout = { ...(doc.defaults?.layout || {}), ...(current.layout || {}) }
     const template = TEMPLATES.find((item) => item.id === layout.template)
@@ -1246,10 +1244,14 @@ function resolveCustomizedVariant(repo, doc, variant, body) {
     order.push(section.key)
   }
   if (Object.keys(blocks).length === 0) throw new Error('布局为空，请先拖入内容')
+  // 基础信息始终用于简历头部，不受可视化正文章节拖拽影响。
+  blocks.basics = { include: true }
+  const currentWithoutOverrides = { ...current }
+  delete currentWithoutOverrides.overrides
 
   return {
     next: {
-      ...current,
+      ...currentWithoutOverrides,
       layout: {
         engine: template.engine,
         template: template.id,
@@ -1258,9 +1260,6 @@ function resolveCustomizedVariant(repo, doc, variant, body) {
       htmlLayout: undefined,
       sectionOrder: order,
       blocks,
-      overrides: body.overrides?.basics
-        ? { ...(current.overrides || {}), basics: body.overrides.basics }
-        : current.overrides,
     },
     template,
     engine: template.engine,

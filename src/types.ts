@@ -37,7 +37,6 @@ export interface Variant {
   layout?: { engine?: string; template?: string; typography?: { fontSize?: string } }
   htmlLayout?: { engine?: string; template?: string; typography?: { fontSize?: string } }
   sectionOrder?: string[]
-  overrides?: { basics?: { headline?: string; summary?: string[] } }
   blocks?: Record<string, { include?: string | boolean; tags?: string[]; ids?: string[] }>
   matched?: Record<string, number>
 }

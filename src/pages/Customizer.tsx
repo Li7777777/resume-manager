@@ -21,7 +21,7 @@ import {
 import { api } from '../api'
 import type { Entry, Variant } from '../types'
 import { useToast } from '../toast'
-import { Badge, Button, Card, EmptyState, Input, Select, Spinner, TagChip, Textarea } from '../components/ui'
+import { Badge, Button, Card, EmptyState, Select, Spinner, TagChip } from '../components/ui'
 import PdfViewer from '../components/PdfViewer'
 import YamlWorkspace from '../components/YamlWorkspace'
 
@@ -62,8 +62,6 @@ interface TemplateItem {
 interface CustomizerDraft {
   template: string
   sections: Section[]
-  headline: string
-  summary: string
   updatedAt?: number
 }
 
@@ -118,8 +116,6 @@ export default function Customizer() {
   const [templates, setTemplates] = useState<TemplateItem[]>([])
   const [template, setTemplate] = useState('moderncv-banking')
   const [sections, setSections] = useState<Section[]>([])
-  const [headline, setHeadline] = useState('')
-  const [summary, setSummary] = useState('')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewEngine, setPreviewEngine] = useState<'latex' | 'html'>('latex')
   const [busyAction, setBusyAction] = useState<'preview' | 'release' | null>(null)
@@ -185,12 +181,6 @@ export default function Customizer() {
   ) => {
     const variant = source.find((item) => item.name === name)
     setSections(sectionsFromVariant(variant))
-    setHeadline(variant?.overrides?.basics?.headline || '')
-    setSummary(
-      Array.isArray(variant?.overrides?.basics?.summary)
-        ? variant!.overrides!.basics!.summary!.join('\n')
-        : '',
-    )
     setTemplate(variant?.layout?.template || defaults.layout?.template || 'moderncv-banking')
     setPreviewUrl(null)
     setLastAction(null)
@@ -214,8 +204,6 @@ export default function Customizer() {
       return
     }
     setSections(cloneSections(draft.sections || []))
-    setHeadline(draft.headline || '')
-    setSummary(draft.summary || '')
     setTemplate(draft.template || source.find((item) => item.name === name)?.layout?.template || defaults.layout?.template || 'moderncv-banking')
     setPreviewUrl(null)
     setLastAction(null)
@@ -228,8 +216,6 @@ export default function Customizer() {
       [selectedType]: {
         template,
         sections: cloneSections(sections),
-        headline,
-        summary,
         updatedAt: Date.now(),
       },
     }
@@ -241,8 +227,6 @@ export default function Customizer() {
     const draft: CustomizerDraft = {
       template,
       sections: cloneSections(sections),
-      headline,
-      summary,
       updatedAt: Date.now(),
     }
     const drafts = { ...draftsRef.current, [selectedType]: draft }
@@ -261,7 +245,7 @@ export default function Customizer() {
     }, 350)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftReady, selectedType, workspaceMode, cat, template, sections, headline, summary])
+  }, [draftReady, selectedType, workspaceMode, cat, template, sections])
 
   useEffect(() => {
     const flush = () => {
@@ -450,12 +434,6 @@ export default function Customizer() {
             variant: selectedType,
             sections,
             template: activeTemplate!.id,
-            overrides: {
-              basics: {
-                ...(headline.trim() ? { headline: headline.trim() } : {}),
-                ...(summary.trim() ? { summary: summary.split('\n').map((line) => line.trim()).filter(Boolean) } : {}),
-              },
-            },
           }
         : { variant: selectedType }
       const result = await api.post<{
@@ -781,22 +759,6 @@ export default function Customizer() {
           fill
           actions={<Button size="sm" variant="ghost" disabled={!canEditVisual} onClick={() => commit([])}><Trash2 size={12} /> 清空</Button>}
         >
-          <div className="space-y-2 border-b border-zinc-800 p-3">
-            <Input
-              value={headline}
-              disabled={!canEditVisual}
-              onChange={(event) => { setHeadline(event.target.value); setPreviewUrl(null) }}
-              placeholder="针对该类型的职位头衔"
-              className="text-xs"
-            />
-            <Textarea
-              value={summary}
-              disabled={!canEditVisual}
-              onChange={(event) => { setSummary(event.target.value); setPreviewUrl(null) }}
-              placeholder="针对该类型的个人简介，每行一条"
-              className="min-h-[68px] text-xs"
-            />
-          </div>
           <div
             className={`min-h-0 flex-1 overflow-auto p-3 ${dragOver === 'canvas' ? 'ring-2 ring-inset ring-indigo-500/40' : ''}`}
             data-customizer-canvas

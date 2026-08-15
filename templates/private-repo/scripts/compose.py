@@ -156,10 +156,8 @@ def compact_interests(items):
     return [{"name": "、".join(names), "keywords": []}] if names else []
 
 
-def compose_basics(overrides):
+def compose_basics():
     b = strip_meta(load(os.path.join(DATA_DIR, "basics.yml")))
-    ov = (overrides or {}).get("basics") or {}
-    b.update(ov)  # 变体级覆盖（headline / summary 等）
     if isinstance(b.get("summary"), list):
         b["summary"] = to_summary_string(b["summary"])
     return b if b else None
@@ -296,7 +294,7 @@ def compose_variant(name, v, defaults):
     content = {}
     for block, cfg in (v.get("blocks") or {}).items():
         if block == "basics":
-            b = compose_basics(v.get("overrides"))
+            b = compose_basics()
             if b:
                 content["basics"] = b
         else:

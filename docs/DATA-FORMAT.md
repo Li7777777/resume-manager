@@ -125,7 +125,7 @@ summary:              # 字符串数组或字符串（markdown 列表）
 
 ## 4. 简历类型配置（scripts/variants.yml）
 
-每个 `variants` 条目是一个简历类型的组稿规则。展示名与 `resume/<type>` 分支映射由管理端保存在本机；私有仓只保留会影响简历输出的内容选择、覆盖字段和模板。
+每个 `variants` 条目是一个简历类型的组稿规则。展示名与 `resume/<type>` 分支映射由管理端保存在本机；私有仓只保留会影响简历输出的内容选择、模板和布局。职业头衔与个人简介统一读取 `data/basics.yml`，不再按类型覆盖。
 
 ```yaml
 defaults:                 # 全局默认，可被类型覆盖
@@ -140,11 +140,6 @@ variants:
   frontend:               # 类型标识 = 生成的 resumes/<name>.yml
     locale: zh-hans       # 可选，覆盖 defaults
     sectionOrder: [skills, work, projects, education]  # 原生章节顺序，未列出的按默认排后
-    overrides:            # 针对该方向覆盖 basics 字段
-      basics:
-        headline: 高级前端工程师（React / TypeScript）
-        summary:
-          - 针对性简介要点
     blocks:               # 各章节的选择规则
       basics: { include: true }        # basics 仅支持 include
       work: { tags: [frontend] }       # 命中任一标签即入选
@@ -167,7 +162,7 @@ variants:
 ### 组合输出规则
 
 - 类型展示名和分支按 `resume/<类型标识>` 映射在本机管理状态中，不属于 `variants.yml`；
-- 类型页负责类型/分支 CRUD 与切换，`blocks/sectionOrder/layout/overrides` 由简历定制页维护；
+- 类型页负责类型/分支 CRUD 与切换，`blocks/sectionOrder/layout` 由简历定制页维护；职业头衔与个人简介始终来自 `data/basics.yml`；
 - 剥除所有元数据键（`id/tags/notes/_*`、`achievements`）；
 - `work.company` → `name`；`achievements` → `summary`（markdown 列表字符串）；
 - 专业技能按细分方向（tags）分组：每个方向输出一行“方向：技能、技能”，跨方向技能同时出现在多行；优先罗列 `keywords`，为空时使用条目 `name`；yamlresume 模板自动追加的等级文字与正文列调整在构建后移除；
@@ -184,7 +179,7 @@ variants:
 content:
   basics:
     name: 张三
-    headline: 高级前端工程师（React / TypeScript）   # overrides 生效
+    headline: 资深前端工程师（React / TypeScript）
     summary: |
       - 8 年前端开发经验…
   education:

@@ -114,10 +114,8 @@ function compactInterests(items) {
   return names.length ? [{ name: names.join('、'), keywords: [] }] : []
 }
 
-function composeBasics(repo, overrides) {
+function composeBasics(repo) {
   const b = { ...readCategory(repo, 'basics') }
-  const ov = (overrides && overrides.basics) || {}
-  Object.assign(b, ov)
   b.summary = toSummaryString(b.summary)
   return Object.keys(b).length ? b : null
 }
@@ -202,7 +200,7 @@ export function composeVariant(repo, name, v, defaults) {
   const content = {}
   for (const [block, cfg] of Object.entries(v.blocks || {})) {
     if (block === 'basics') {
-      const b = composeBasics(repo, v.overrides)
+      const b = composeBasics(repo)
       if (b) content.basics = b
     } else {
       const items = composeList(repo, block, cfg)

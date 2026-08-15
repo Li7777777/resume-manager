@@ -126,9 +126,9 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | --- | --- | --- |
 | GET | `/api/templates` | 全部官网 LaTeX/HTML 模板元数据；由简历定制页使用 || GET | `/api/html/:name` | 已生成的 HTML 简历预览（no-cache） |
 | GET | `/api/custom/state` | 获取当前数据仓的最后简历类型、工作区模式、信息库分类与各类型可视化草稿（本机侧车） |
-| PUT | `/api/custom/state` | 自动保存模板、章节顺序/选择、头衔和简介；按草稿 `updatedAt` 合并，不写私有仓 |
-| POST | `/api/custom/preview` | `{variant, sections?, template?, overrides?}`：可视化模式按当前草稿、YAML 模式按落盘文件生成临时 HTML/PDF；不保存配方、不写时间轴 |
-| POST | `/api/custom/release` | `{variant, sections?, template?, overrides?}`：保存可视化配方（YAML 模式直接使用落盘配置）、归档不可变 HTML/PDF 正式版并写入时间轴 |
+| PUT | `/api/custom/state` | 自动保存模板、章节顺序/选择；职业头衔和个人简介始终读取基础信息，不作为定制草稿保存 |
+| POST | `/api/custom/preview` | `{variant, sections?, template?}`：可视化模式按当前草稿、YAML 模式按落盘文件生成临时 HTML/PDF；不保存配方、不写时间轴 |
+| POST | `/api/custom/release` | `{variant, sections?, template?}`：保存可视化配方（YAML 模式直接使用落盘配置）、归档不可变 HTML/PDF 正式版并写入时间轴 |
 | POST | `/api/custom/layout` | 旧客户端兼容端点，按“保存发布正式版”处理 |
 | POST | `/api/template/apply` | 旧客户端兼容端点；当前 UI 不再使用，模板入口已合并至简历定制 |
 
@@ -141,7 +141,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 ## 5. 前端结构要点
 
 - **页面切换**：`App.tsx` 用 state + hash 导航（`#/entries` 等可直达）；导航顺序为信息/类型/定制/PDF/Git，旧 `#/yaml` 自动重定向到 `#/customizer`，主内容区没有独立顶栏。
-- **定制工作区**：`pages/Customizer.tsx` 在可视化编排与 YAML 源码间切换，右侧预览常驻；最后选中的类型/模式/信息库分类以及每个类型的模板、章节、头衔、简介会自动保存到本机侧车并在重访时恢复；`components/YamlWorkspace.tsx` 负责文件选择、未保存保护、CodeMirror 保存与同步状态。
+- **定制工作区**：`pages/Customizer.tsx` 在可视化编排与 YAML 源码间切换，右侧预览常驻；最后选中的类型/模式/信息库分类以及每个类型的模板、章节会自动保存到本机侧车并在重访时恢复；职业头衔和个人简介统一来自 `data/basics.yml`；`components/YamlWorkspace.tsx` 负责文件选择、未保存保护、CodeMirror 保存与同步状态。
 - **组件库** `components/ui.tsx`：Button/Card/Field/Input/Textarea/Select/Modal/TagChip/TagInput/Badge/Spinner/EmptyState/relativeTime。
 - **表单字段配置** `pages/Entries.tsx` 的 `FIELDS`：新增分类时在此登记字段（type: text/textarea/select/tags/summary/achievements），并同步 `server/lib/data-store.js` 的 `CATEGORIES`。
 - **编辑器** `components/YamlEditor.tsx`：CodeMirror 6 + lang-yaml + oneDark。
