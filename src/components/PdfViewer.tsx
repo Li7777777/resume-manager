@@ -1,5 +1,5 @@
 // 更强大的 PDF 渲染组件：基于 react-pdf（pdf.js 封装）
-// 支持：缩放、翻页、加载/错误状态；页面宽度自适应容器并限制最大宽度（避免过宽）
+// 支持：缩放、翻页、加载/错误状态；定制页可按可视区域完整适配单页。
 import React, { useEffect, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -8,38 +8,54 @@ import { Button } from './ui'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
-const MAX_PAGE_WIDTH = 720 // 页面最大渲染宽度（px），避免 PDF 过宽
+const MAX_PAGE_WIDTH = 720 // 非全页模式的页面最大渲染宽度（px）
+const FIT_PAGE_GAP = 16
+const DEFAULT_PAGE_ASPECT = 1 / Math.SQRT2 // A4 宽 / 高
 
-export default function PdfViewer({ url }: { url: string }) {
+export default function PdfViewer({ url, fitPage = false }: { url: string; fitPage?: boolean }) {
   const [numPages, setNumPages] = useState(0)
   const [pageNumber, setPageNumber] = useState(1)
   const [scale, setScale] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState(0)
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
+  const [toolbarHeight, setToolbarHeight] = useState(0)
+  const [pageAspect, setPageAspect] = useState(DEFAULT_PAGE_ASPECT)
 
   useEffect(() => {
     setNumPages(0)
     setPageNumber(1)
     setError(null)
     setLoaded(false)
+    setScale(1)
+    setPageAspect(DEFAULT_PAGE_ASPECT)
   }, [url])
 
-  // 响应容器宽度（页面适配 + 限宽）
+  // 响应容器和工具栏尺寸，整页模式据此做 contain 缩放。
   useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) setContainerWidth(e.contentRect.width)
-    })
-    ro.observe(el)
-    setContainerWidth(el.clientWidth)
+    const container = containerRef.current
+    if (!container) return
+    const measure = () => {
+      setContainerSize({ width: container.clientWidth, height: container.clientHeight })
+      setToolbarHeight(toolbarRef.current?.offsetHeight || 0)
+    }
+    const ro = new ResizeObserver(measure)
+    ro.observe(container)
+    if (toolbarRef.current) ro.observe(toolbarRef.current)
+    measure()
     return () => ro.disconnect()
-  }, [])
+  }, [loaded])
 
-  // 页面渲染宽度：容器测量后限宽适配；未测量时用合理默认宽度（避免初始过小）
-  const pageWidth = (containerWidth ? Math.min(containerWidth, MAX_PAGE_WIDTH) : 640) * scale
+  const standardWidth = containerSize.width ? Math.min(containerSize.width, MAX_PAGE_WIDTH) : 640
+  const fittedWidth = containerSize.width && containerSize.height
+    ? Math.min(
+        Math.max(1, containerSize.width - 4),
+        Math.max(1, containerSize.height - toolbarHeight - FIT_PAGE_GAP) * pageAspect,
+      )
+    : standardWidth
+  const pageWidth = (fitPage ? fittedWidth : standardWidth) * scale
 
   if (error) {
     return (
@@ -51,10 +67,10 @@ export default function PdfViewer({ url }: { url: string }) {
   }
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} className={fitPage ? 'flex h-full min-h-0 flex-col' : ''}>
       {/* 工具栏 */}
       {loaded && numPages > 0 && (
-        <div className="mb-3 flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2">
+        <div ref={toolbarRef} className="mb-3 flex shrink-0 items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2">
           <div className="flex items-center gap-1">
             <Button size="sm" variant="ghost" disabled={pageNumber <= 1} onClick={() => setPageNumber((p) => Math.max(1, p - 1))}>
               <ChevronLeft size={14} />
@@ -78,13 +94,20 @@ export default function PdfViewer({ url }: { url: string }) {
         </div>
       )}
 
-      {/* 页面渲染区：限宽居中 */}
-      <div className="mx-auto" style={{ maxWidth: MAX_PAGE_WIDTH + 40 }}>
+      {/* 页面渲染区：定制页整页适配，其余页面维持宽度优先。 */}
+      <div
+        className={fitPage ? 'flex min-h-0 flex-1 items-center justify-center overflow-auto' : 'mx-auto'}
+        style={fitPage ? undefined : { maxWidth: MAX_PAGE_WIDTH + 40 }}
+      >
         <Document
           file={url}
-          onLoadSuccess={({ numPages: n }) => {
-            setNumPages(n)
+          onLoadSuccess={(pdf) => {
+            setNumPages(pdf.numPages)
             setLoaded(true)
+            void pdf.getPage(1).then((page) => {
+              const viewport = page.getViewport({ scale: 1 })
+              if (viewport.width > 0 && viewport.height > 0) setPageAspect(viewport.width / viewport.height)
+            }).catch(() => {})
           }}
           onLoadError={(e) => setError(String(e?.message || e))}
           loading={

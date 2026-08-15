@@ -897,13 +897,13 @@ export default function Customizer() {
           </div>
         }
       >
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="min-h-0 flex-1 overflow-hidden">
           {rendering ? (
             <div className="flex h-full items-center justify-center">
               <Spinner label={busyAction === 'release' ? '正在生成并归档正式版…' : '正在组合并生成预览…'} />
             </div>
           ) : previewUrl ? (
-            previewEngine === 'latex' ? <PdfViewer url={previewUrl} /> : <iframe key={previewUrl} src={previewUrl} className="h-full w-full bg-white" title="HTML 简历预览" />
+            previewEngine === 'latex' ? <PdfViewer url={previewUrl} fitPage /> : <iframe key={previewUrl} src={previewUrl} className="h-full w-full bg-white" title="HTML 简历预览" />
           ) : (
             <div className="flex h-full items-center justify-center">
               <EmptyState icon={<FileCode2 size={30} />} title="选择模板并预览" desc="预览只用于检查效果，不进入版本时间轴；确认后再发布正式版。" />
