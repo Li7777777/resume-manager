@@ -27,6 +27,12 @@ HTML_SKILL_LEVEL = re.compile(
 GITHUB_BADGE = re.compile(
     r"\s*\[github\|([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)?\]"
 )
+CJK_FONT_PATCH_MARK = "rm-microsoft-yahei-font"
+CJK_FONT_PATCH_TEX = (
+    "% " + CJK_FONT_PATCH_MARK + "\n"
+    "\\IfFontExistsTF{Microsoft YaHei}{\\setCJKmainfont{Microsoft YaHei}}{}\n"
+    "\\IfFontExistsTF{Microsoft YaHei}{\\setCJKsansfont{Microsoft YaHei}}{}\n"
+)
 GITHUB_BADGE_MARK = "rm-github-badge"
 GITHUB_BADGE_TEX = (
     "% " + GITHUB_BADGE_MARK + "\n"
@@ -101,6 +107,13 @@ def rewrite(path, transform):
 
 
 def normalize_tex(text):
+    if CJK_FONT_PATCH_MARK not in text:
+        text = re.sub(
+            r"^(\\begin\{document\})",
+            lambda m: CJK_FONT_PATCH_TEX + m.group(1),
+            text,
+            flags=re.MULTILINE,
+        )
     text = MODERNCV_SKILL.sub(r"\\cvline{}{\1}", text)
     # 项目关键字：改名为“技术栈”并另起一行（必须先于 JAKE_SKILL 执行，避免被其误删）。
     # 用 \\leavevmode\\ 强制换行：cventry 是非 long 宏（参数禁 \\par），且摘要可能是 itemize（\\newline 会报错）。
@@ -125,6 +138,12 @@ def normalize_tex(text):
 
 def normalize_html(text):
     text = HTML_SKILL_LEVEL.sub(r"\1", text)
+    # HTML 输出优先使用 Windows 中文字体，其他系统通过 sans-serif 回退。
+    text = re.sub(
+        r"--text-default-font-family:\s*[^;]+;",
+        '--text-default-font-family: "Microsoft YaHei", sans-serif;',
+        text,
+    )
     # 项目关键字改名为“技术栈”（HTML 中已是独立行）。
     text = HTML_KEYWORDS_LABEL.sub("<span>技术栈</span>", text)
     # GitHub 仓库徽章：Logo + owner/repo + stars 数

@@ -86,8 +86,8 @@ const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
   \\setmainfont[Ligatures={TeX, Common}, Numbers=Lining]{Linux Libertine O}
 }{}
 \\usepackage[UTF8, heading=false, punct=kaiming, scheme=plain, space=auto]{ctex}
-\\IfFontExistsTF{Noto Serif CJK SC}{\\setCJKmainfont{Noto Serif CJK SC}}{}
-\\IfFontExistsTF{Noto Sans CJK SC}{\\setCJKsansfont{Noto Sans CJK SC}}{}
+\\IfFontExistsTF{Microsoft YaHei}{\\setCJKmainfont{Microsoft YaHei}}{\\IfFontExistsTF{Noto Serif CJK SC}{\\setCJKmainfont{Noto Serif CJK SC}}{}}
+\\IfFontExistsTF{Microsoft YaHei}{\\setCJKsansfont{Microsoft YaHei}}{\\IfFontExistsTF{Noto Sans CJK SC}{\\setCJKsansfont{Noto Sans CJK SC}}{}}
 
 \\pagestyle{fancy}
 \\fancyhf{}

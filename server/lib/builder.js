@@ -69,6 +69,9 @@ const CVITEM_PATCH = `% ${CVITEM_PATCH_MARK}
 
 function normalizeGroupedLatex(text) {
   let next = text
+  if (!next.includes(CJK_FONT_PATCH_MARK)) {
+    next = next.replace(/^(\\begin\{document\})/m, `${CJK_FONT_PATCH_TEX}$1`)
+  }
   // ModernCV：技能（“方向：技能、技能”）与兴趣爱好整行移入正文列，移除模板追加的等级标记。
   next = next.replace(/^\\cvline\{([^{}\r\n]+)\}\{[^{}\r\n]*\}$/gm, '\\cvline{}{$1}')
   // 项目关键字：改名为“技术栈”并另起一行（必须先于 Jake 技能正则执行，避免被其误删）。
@@ -95,6 +98,12 @@ function normalizeGroupedLatex(text) {
   return next
 }
 
+const CJK_FONT_PATCH_MARK = '% rm-microsoft-yahei-font'
+const CJK_FONT_PATCH_TEX = `${CJK_FONT_PATCH_MARK}
+\\IfFontExistsTF{Microsoft YaHei}{\\setCJKmainfont{Microsoft YaHei}}{}
+\\IfFontExistsTF{Microsoft YaHei}{\\setCJKsansfont{Microsoft YaHei}}{}
+`
+
 const GITHUB_BADGE_MARK = '% rm-github-badge'
 const GITHUB_BADGE_TEX = `${GITHUB_BADGE_MARK}
 \\IfFileExists{fontawesome5.sty}{\\usepackage{fontawesome5}}{\\providecommand{\\faGithub}{GitHub}\\providecommand{\\faStar}{*}}
@@ -117,7 +126,11 @@ function normalizeGroupedHtml(text) {
   )
   // 项目关键字改名为“技术栈”（HTML 中已是独立行）。
   next = next.replace(/<span>关键字<\/span>/g, '<span>技术栈</span>')
-  // GitHub 仓库徽章：Logo + owner/repo + stars 数
+  // HTML 输出优先使用 Windows 中文字体，其他系统通过 sans-serif 回退。
+  next = next.replace(
+    /--text-default-font-family:\s*[^;]+;/,
+    '--text-default-font-family: "Microsoft YaHei", sans-serif;',
+  )
   return next.replace(
     /\s*\[github\|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)?\]/g,
     (_, repo, n) => githubBadgeHtml(repo, n || ''),
