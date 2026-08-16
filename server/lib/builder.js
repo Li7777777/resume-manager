@@ -4,10 +4,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import yaml from 'js-yaml'
-import { generateAll } from './compose.js'
+import { generateAll, loadVariantsDoc } from './compose.js'
 import { renderJakeOriginal } from './jake-original.js'
 import { readCategory } from './data-store.js'
 import { resolveProfilePhoto } from './profile-photo.js'
+import {
+  getHtmlFontConfiguration,
+  getLatexFontFamilies,
+  normalizeFontSettings,
+} from './font-options.js'
 
 export function checkEnvironment() {
   const which = (cmd) => {
@@ -93,11 +98,8 @@ const JAKE_SUBHEADING_PATCH = `% ${JAKE_SUBHEADING_PATCH_MARK}
 }
 `
 
-function normalizeGroupedLatex(text, photoPath = null) {
-  let next = text
-  if (!next.includes(CJK_FONT_PATCH_MARK)) {
-    next = next.replace(/^(\\begin\{document\})/m, `${CJK_FONT_PATCH_TEX}$1`)
-  }
+function normalizeGroupedLatex(text, photoPath = null, fonts = {}) {
+  let next = injectFontPreferencesLatex(text, fonts)
   // ModernCV：技能（“方向：技能、技能”）与兴趣爱好整行移入正文列，移除模板追加的等级标记。
   next = next.replace(/^\\cvline\{([^{}\r\n]+)\}\{[^{}\r\n]*\}$/gm, '\\cvline{}{$1}')
   // 项目关键字：改名为“技术栈”并另起一行（必须先于 Jake 技能正则执行，避免被其误删）。
@@ -128,11 +130,58 @@ function normalizeGroupedLatex(text, photoPath = null) {
   return injectProfilePhotoLatex(next, photoPath)
 }
 
-const CJK_FONT_PATCH_MARK = '% rm-microsoft-yahei-font'
-const CJK_FONT_PATCH_TEX = `${CJK_FONT_PATCH_MARK}
-\\IfFontExistsTF{Microsoft YaHei}{\\setCJKmainfont{Microsoft YaHei}}{}
-\\IfFontExistsTF{Microsoft YaHei}{\\setCJKsansfont{Microsoft YaHei}}{}
+const FONT_PREFERENCES_MARK = 'rm-font-preferences'
+
+function latexFontCommands(families, commands) {
+  return [...families].reverse().map((family) => `\\IfFontExistsTF{${family}}{${commands.map((command) => `\\${command}{${family}}`).join('')}}{}`).join('\n')
+}
+
+function latexCjkFontCommands(families) {
+  return [...families].reverse().map((family) => `\\IfFontExistsTF{${family}}{\\setCJKmainfont[AutoFakeBold,AutoFakeSlant]{${family}}\\setCJKsansfont[AutoFakeBold,AutoFakeSlant]{${family}}}{}`).join('\n')
+}
+
+function injectFontPreferencesLatex(text, fonts) {
+  if (text.includes(FONT_PREFERENCES_MARK)) return text
+  const selected = normalizeFontSettings(fonts)
+  const latinFamilies = selected.latin ? getLatexFontFamilies('latin', selected.latin) : []
+  // 未选择中文字体时保持原有行为：本机优先微软雅黑，CI 沿用 YAMLResume 的 Noto 回退。
+  const cjkFamilies = selected.cjk ? getLatexFontFamilies('cjk', selected.cjk) : ['Microsoft YaHei']
+  const cjkCommands = latexCjkFontCommands(cjkFamilies)
+  const patch = `% ${FONT_PREFERENCES_MARK}
+${latinFamilies.length ? `${latexFontCommands(latinFamilies, ['setmainfont', 'setsansfont'])}\n` : ''}\\ifdefined\\setCJKmainfont\\else
+\\IfFileExists{xeCJK.sty}{\\usepackage{xeCJK}}{}
+\\fi
+\\ifdefined\\setCJKmainfont
+${cjkCommands}
+\\fi
 `
+  return text.replace(/^(\\begin\{document\})/m, patch + '$1')
+}
+
+function injectFontPreferencesHtml(text, fonts, template) {
+  const config = getHtmlFontConfiguration(fonts, template)
+  if (!config || text.includes(FONT_PREFERENCES_MARK)) return text
+  const localSources = (families) => families.map((family) => `local("${family}")`).join(', ')
+  const fallbackFamilies = [...config.latinFamilies, ...config.cjkFamilies]
+    .filter((family, index, list) => list.indexOf(family) === index)
+    .map((family) => (/\s/.test(family) ? `"${family}"` : family))
+    .join(', ')
+  const css = `
+/* ${FONT_PREFERENCES_MARK} */
+@font-face {
+  font-family: "Resume Manager Selected";
+  src: ${localSources(config.latinFamilies)};
+  unicode-range: U+0000-024F, U+1E00-1EFF;
+}
+@font-face {
+  font-family: "Resume Manager Selected";
+  src: ${localSources(config.cjkFamilies)};
+  unicode-range: U+2E80-2FDF, U+3000-303F, U+31C0-31EF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+}
+:root { --text-font-family: "Resume Manager Selected", ${fallbackFamilies}, ${config.generic}; }
+`
+  return text.replace('</style>', `${css}</style>`)
+}
 
 const GITHUB_BADGE_MARK = '% rm-github-badge'
 const GITHUB_BADGE_TEX = `${GITHUB_BADGE_MARK}
@@ -149,7 +198,7 @@ const GITHUB_BADGE_TEX = `${GITHUB_BADGE_MARK}
 \\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1.6pt}\\hspace{0.35em}\\raisebox{1pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.8}{8}\\selectfont\\faGithub\\ \\texttt{#1}}}\\if\\relax\\detokenize{#2}\\relax\\else\\colorbox{rmbadgeright}{\\textcolor{black}{\\fontsize{7}{8.2}\\selectfont\\faStar\\ #2}}\\fi}\\hspace{0.25em}\\endgroup}
 `
 
-function normalizeGroupedHtml(text, photo = null) {
+function normalizeGroupedHtml(text, photo = null, fonts = {}, template = 'calm') {
   let next = text.replace(
     /(<div class="resume-skill-name">[^<]*)<span class="resume-skill-level">[^<]*<\/span>/g,
     '$1',
@@ -161,6 +210,7 @@ function normalizeGroupedHtml(text, photo = null) {
     /--text-default-font-family:\s*[^;]+;/,
     '--text-default-font-family: "Microsoft YaHei", sans-serif;',
   )
+  next = injectFontPreferencesHtml(next, fonts, template)
   next = next.replace(
     /\s*\[github\|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)?\]/g,
     (_, repo, n) => githubBadgeHtml(repo, n || ''),
@@ -230,25 +280,45 @@ function injectProfilePhotoHtml(text, photo) {
   return next.replace(/<header class="resume-header">/, (header) => `${header}\n      ${image}`)
 }
 
-async function normalizeGeneratedOutputs(repo, variant, env) {
+function resolveVariantFonts(repo, variant, override) {
+  if (override !== undefined) return normalizeFontSettings(override)
+  try {
+    return normalizeFontSettings(loadVariantsDoc(repo).variants?.[variant]?.fonts)
+  } catch {
+    return {}
+  }
+}
+
+async function normalizeGeneratedOutputs(repo, variant, env, fontOverride) {
   const outDir = path.join(repo, 'resumes')
   const texPath = path.join(outDir, `${variant}.tex`)
   const htmlPath = path.join(outDir, `${variant}.html`)
+  const ymlPath = path.join(outDir, `${variant}.yml`)
   const photo = getProfilePhoto(repo)
   const photoPath = photo ? path.relative(outDir, photo.file).replace(/\\/g, '/') : null
+  const fonts = resolveVariantFonts(repo, variant, fontOverride)
+  let layouts = []
+  try {
+    layouts = yaml.load(fs.readFileSync(ymlPath, 'utf8'))?.layouts || []
+  } catch {
+    /* 构建器会在上游报告无效 YAML；后处理保持安全默认值。 */
+  }
+  const hasLatexLayout = layouts.some((layout) => layout?.engine === 'latex')
+  const hasHtmlLayout = layouts.some((layout) => layout?.engine === 'html')
+  const htmlTemplate = layouts.find((layout) => layout?.engine === 'html')?.template || 'calm'
   let texChanged = false
   let output = ''
 
-  if (fs.existsSync(texPath)) {
+  if (hasLatexLayout && fs.existsSync(texPath)) {
     const original = fs.readFileSync(texPath, 'utf8')
-    const normalized = normalizeGroupedLatex(original, photoPath)
+    const normalized = normalizeGroupedLatex(original, photoPath, fonts)
     texChanged = normalized !== original
     if (texChanged) fs.writeFileSync(texPath, normalized, 'utf8')
   }
 
-  if (fs.existsSync(htmlPath)) {
+  if (hasHtmlLayout && fs.existsSync(htmlPath)) {
     const original = fs.readFileSync(htmlPath, 'utf8')
-    const normalized = normalizeGroupedHtml(original, photo)
+    const normalized = normalizeGroupedHtml(original, photo, fonts, htmlTemplate)
     if (normalized !== original) fs.writeFileSync(htmlPath, normalized, 'utf8')
   }
 
@@ -267,7 +337,7 @@ async function normalizeGeneratedOutputs(repo, variant, env) {
 }
 
 // 构建某个方向的 PDF（自动先组合）
-export async function buildVariant(repo, variant, { verbose = true, compose = true } = {}) {
+export async function buildVariant(repo, variant, { verbose = true, compose = true, fonts } = {}) {
   if (!/^[\w-]+$/.test(variant)) {
     return { ok: false, output: `非法方向名：${variant}` }
   }
@@ -290,7 +360,7 @@ export async function buildVariant(repo, variant, { verbose = true, compose = tr
     /* 保持默认，走 yamlresume 分支时再报错 */
   }
   if (template === 'jake-original') {
-    return buildJakeOriginal(repo, variant, env)
+    return buildJakeOriginal(repo, variant, env, fonts)
   }
 
   if (!env.yamlresume) {
@@ -302,7 +372,7 @@ export async function buildVariant(repo, variant, { verbose = true, compose = tr
   const pdf = path.join(repo, 'resumes', `${variant}.pdf`)
   let output = r.stdout + r.stderr
   if (r.code === 0) {
-    const normalized = await normalizeGeneratedOutputs(repo, variant, env)
+    const normalized = await normalizeGeneratedOutputs(repo, variant, env, fonts)
     output += normalized.output || ''
     if (!normalized.ok) return { ok: false, output: output.trim(), pdf: null }
   }
@@ -311,7 +381,7 @@ export async function buildVariant(repo, variant, { verbose = true, compose = tr
 }
 
 // 自定义模板 Jake 原版：从组合 YAML 生成 tex 并编译 PDF
-async function buildJakeOriginal(repo, variant, env) {
+async function buildJakeOriginal(repo, variant, env, fontOverride) {
   const outDir = path.join(repo, 'resumes')
   const ymlPath = path.join(outDir, `${variant}.yml`)
   const texPath = path.join(outDir, `${variant}.tex`)
@@ -320,7 +390,8 @@ async function buildJakeOriginal(repo, variant, env) {
     const doc = yaml.load(fs.readFileSync(ymlPath, 'utf8'))
     const photo = getProfilePhoto(repo)
     const photoPath = photo ? path.relative(outDir, photo.file).replace(/\\/g, '/') : null
-    const tex = injectProfilePhotoLatex(renderJakeOriginal(doc), photoPath)
+    const fonts = resolveVariantFonts(repo, variant, fontOverride)
+    const tex = injectProfilePhotoLatex(injectFontPreferencesLatex(renderJakeOriginal(doc), fonts), photoPath)
     fs.writeFileSync(texPath, tex, 'utf8')
   } catch (err) {
     return { ok: false, output: `Jake 原版模板渲染失败：${err.message}` }
@@ -340,7 +411,7 @@ export function pdfPath(repo, variant) {
 }
 
 // 仅构建 HTML 输出（html 引擎，无需 xelatex，用于简历定制实时渲染）
-export async function buildHtmlVariant(repo, variant) {
+export async function buildHtmlVariant(repo, variant, { fonts } = {}) {
   const env = checkEnvironment()
   if (!env.yamlresume) {
     return { ok: false, output: '未找到 yamlresume CLI，请先安装：npm install -g yamlresume' }
@@ -350,7 +421,7 @@ export async function buildHtmlVariant(repo, variant) {
   const html = path.join(repo, 'resumes', `${variant}.html`)
   let output = r.stdout + r.stderr
   if (r.code === 0) {
-    const normalized = await normalizeGeneratedOutputs(repo, variant, env)
+    const normalized = await normalizeGeneratedOutputs(repo, variant, env, fonts)
     output += normalized.output || ''
     if (!normalized.ok) return { ok: false, output: output.trim(), html: null }
   }

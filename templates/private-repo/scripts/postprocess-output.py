@@ -6,6 +6,12 @@ import re
 
 import yaml
 
+from font_options import (
+    get_html_font_configuration,
+    get_latex_font_families,
+    normalize_font_settings,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "resumes"
 
@@ -30,12 +36,7 @@ HTML_SKILL_LEVEL = re.compile(
 GITHUB_BADGE = re.compile(
     r"\s*\[github\|([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)?\]"
 )
-CJK_FONT_PATCH_MARK = "rm-microsoft-yahei-font"
-CJK_FONT_PATCH_TEX = (
-    "% " + CJK_FONT_PATCH_MARK + "\n"
-    "\\IfFontExistsTF{Microsoft YaHei}{\\setCJKmainfont{Microsoft YaHei}}{}\n"
-    "\\IfFontExistsTF{Microsoft YaHei}{\\setCJKsansfont{Microsoft YaHei}}{}\n"
-)
+FONT_PREFERENCES_MARK = "rm-font-preferences"
 GITHUB_BADGE_MARK = "rm-github-badge"
 GITHUB_BADGE_TEX = (
     "% " + GITHUB_BADGE_MARK + "\n"
@@ -80,6 +81,123 @@ def github_badge_html(repo, stars):
         'color:#fff;padding:4px 6px;border-radius:3px 0 0 3px;">'
         + github_logo + repo + '</span>' + right + '</span>'
     )
+
+
+def latex_font_commands(families, commands):
+    lines = []
+    for family in reversed(families):
+        body = "".join(f"\\{command}{{{family}}}" for command in commands)
+        lines.append(f"\\IfFontExistsTF{{{family}}}{{{body}}}{{}}")
+    return "\n".join(lines)
+
+
+def latex_cjk_font_commands(families):
+    lines = []
+    for family in reversed(families):
+        options = "[AutoFakeBold,AutoFakeSlant]"
+        body = (
+            f"\\setCJKmainfont{options}{{{family}}}"
+            f"\\setCJKsansfont{options}{{{family}}}"
+        )
+        lines.append(f"\\IfFontExistsTF{{{family}}}{{{body}}}{{}}")
+    return "\n".join(lines)
+
+
+def inject_font_preferences_tex(text, fonts):
+    if FONT_PREFERENCES_MARK in text:
+        return text
+    selected = normalize_font_settings(fonts)
+    latin_families = (
+        get_latex_font_families("latin", selected.get("latin"))
+        if selected.get("latin")
+        else []
+    )
+    # 未选择中文字体时保持原有行为：本机优先微软雅黑，CI 沿用 YAMLResume 的 Noto 回退。
+    cjk_families = (
+        get_latex_font_families("cjk", selected.get("cjk"))
+        if selected.get("cjk")
+        else ["Microsoft YaHei"]
+    )
+    patch = f"% {FONT_PREFERENCES_MARK}\n"
+    if latin_families:
+        patch += latex_font_commands(latin_families, ["setmainfont", "setsansfont"]) + "\n"
+    patch += "\\ifdefined\\setCJKmainfont\\else\n"
+    patch += "\\IfFileExists{xeCJK.sty}{\\usepackage{xeCJK}}{}\n"
+    patch += "\\fi\n\\ifdefined\\setCJKmainfont\n"
+    patch += latex_cjk_font_commands(cjk_families) + "\n"
+    patch += "\\fi\n"
+    return re.sub(
+        r"^(\\begin\{document\})",
+        lambda match: patch + match.group(1),
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+
+def inject_font_preferences_html(text, fonts, template):
+    config = get_html_font_configuration(fonts, template)
+    if not config or FONT_PREFERENCES_MARK in text:
+        return text
+
+    def local_sources(families):
+        return ", ".join(f'local("{family}")' for family in families)
+
+    fallback_families = []
+    for family in config["latinFamilies"] + config["cjkFamilies"]:
+        if family not in fallback_families:
+            fallback_families.append(family)
+    fallback = ", ".join(
+        f'"{family}"' if any(char.isspace() for char in family) else family
+        for family in fallback_families
+    )
+    css = (
+        f"\n/* {FONT_PREFERENCES_MARK} */\n"
+        '@font-face {\n  font-family: "Resume Manager Selected";\n'
+        f'  src: {local_sources(config["latinFamilies"])};\n'
+        "  unicode-range: U+0000-024F, U+1E00-1EFF;\n}\n"
+        '@font-face {\n  font-family: "Resume Manager Selected";\n'
+        f'  src: {local_sources(config["cjkFamilies"])};\n'
+        "  unicode-range: U+2E80-2FDF, U+3000-303F, U+31C0-31EF, "
+        "U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;\n}\n"
+        f':root {{ --text-font-family: "Resume Manager Selected", {fallback}, {config["generic"]}; }}\n'
+    )
+    return text.replace("</style>", css + "</style>", 1)
+
+
+def get_variant_render_settings(name):
+    fonts = {}
+    template = "calm"
+    engines = set()
+    try:
+        variants_doc = yaml.safe_load((ROOT / "scripts" / "variants.yml").read_text(encoding="utf-8")) or {}
+        variants = variants_doc.get("variants") if isinstance(variants_doc, dict) else {}
+        variant = (variants or {}).get(name) or {}
+        fonts = normalize_font_settings(variant.get("fonts") if isinstance(variant, dict) else {})
+    except (OSError, yaml.YAMLError):
+        pass
+    try:
+        generated_doc = yaml.safe_load((OUT_DIR / f"{name}.yml").read_text(encoding="utf-8")) or {}
+        layouts = (generated_doc.get("layouts") or []) if isinstance(generated_doc, dict) else []
+        engines = {
+            layout.get("engine")
+            for layout in layouts
+            if isinstance(layout, dict) and layout.get("engine") in {"latex", "html"}
+        }
+        html_layout = next(
+            (
+                layout
+                for layout in layouts
+                if isinstance(layout, dict) and layout.get("engine") == "html"
+            ),
+            None,
+        )
+        if html_layout and html_layout.get("template"):
+            template = html_layout["template"]
+    except (OSError, yaml.YAMLError):
+        pass
+    return fonts, template, engines
+
 
 def get_profile_photo():
     basics_file = ROOT / "data" / "basics.yml"
@@ -220,14 +338,8 @@ def rewrite(path, transform):
     return True
 
 
-def normalize_tex(text, photo=None):
-    if CJK_FONT_PATCH_MARK not in text:
-        text = re.sub(
-            r"^(\\begin\{document\})",
-            lambda m: CJK_FONT_PATCH_TEX + m.group(1),
-            text,
-            flags=re.MULTILINE,
-        )
+def normalize_tex(text, photo=None, fonts=None):
+    text = inject_font_preferences_tex(text, fonts or {})
     text = MODERNCV_SKILL.sub(r"\\cvline{}{\1}", text)
     # 项目关键字：改名为“技术栈”并另起一行（必须先于 JAKE_SKILL 执行，避免被其误删）。
     # 用 \\leavevmode\\ 强制换行：cventry 是非 long 宏（参数禁 \\par），且摘要可能是 itemize（\\newline 会报错）。
@@ -262,7 +374,7 @@ def normalize_tex(text, photo=None):
     return inject_profile_photo_tex(text, photo)
 
 
-def normalize_html(text, photo=None):
+def normalize_html(text, photo=None, fonts=None, template="calm"):
     text = HTML_SKILL_LEVEL.sub(r"\1", text)
     # HTML 输出优先使用 Windows 中文字体，其他系统通过 sans-serif 回退。
     text = re.sub(
@@ -270,6 +382,7 @@ def normalize_html(text, photo=None):
         '--text-default-font-family: "Microsoft YaHei", sans-serif;',
         text,
     )
+    text = inject_font_preferences_html(text, fonts or {}, template)
     # 项目关键字改名为“技术栈”（HTML 中已是独立行）。
     text = HTML_KEYWORDS_LABEL.sub("<span>技术栈</span>", text)
     # GitHub 仓库徽章：Logo + owner/repo + stars 数
@@ -281,10 +394,20 @@ def main():
     photo = get_profile_photo()
     changed_tex = []
     for path in sorted(OUT_DIR.glob("*.tex")):
-        if rewrite(path, lambda text: normalize_tex(text, photo)):
+        fonts, _, engines = get_variant_render_settings(path.stem)
+        if "latex" in engines and rewrite(
+            path, lambda text, fonts=fonts: normalize_tex(text, photo, fonts)
+        ):
             changed_tex.append(path.name)
     for path in sorted(OUT_DIR.glob("*.html")):
-        rewrite(path, lambda text: normalize_html(text, photo))
+        fonts, template, engines = get_variant_render_settings(path.stem)
+        if "html" in engines:
+            rewrite(
+                path,
+                lambda text, fonts=fonts, template=template: normalize_html(
+                    text, photo, fonts, template
+                ),
+            )
     print("changed-tex=" + " ".join(changed_tex))
 
 

@@ -145,6 +145,9 @@ defaults:                 # 全局默认，可被类型覆盖
 variants:
   frontend:               # 类型标识 = 生成的 resumes/<name>.yml
     locale: zh-hans       # 可选，覆盖 defaults
+    fonts:                # 可选；中英文分别选择，值必须来自下方白名单
+      cjk: microsoft-yahei
+      latin: arial
     sectionOrder: [skills, work, projects, education]  # 原生章节顺序，未列出的按默认排后
     blocks:               # 各章节的选择规则
       basics: { include: true }        # basics 仅支持 include
@@ -165,10 +168,21 @@ variants:
 | `{ids: [id1]}` | 精确指定条目 id |
 | 省略块 | 不生成该章节 |
 
+### 字体规则
+
+`fonts` 是 Resume Manager 的配方扩展，不属于 YAMLResume 原始 schema。可视化编排中的“中文字体”和“英文字体”是独立组件；移除组件会删除对应键，恢复组件会使用该组默认项。
+
+| 键 | 可选值 | 默认组件值 |
+| --- | --- | --- |
+| `fonts.cjk` | `microsoft-yahei`、`noto-sans-cjk`、`noto-serif-cjk`、`simsun` | `microsoft-yahei` |
+| `fonts.latin` | `linux-libertine`、`arial`、`times-new-roman`、`tex-gyre-heros`、`consolas` | `linux-libertine` |
+
+组合器只把 YAMLResume 支持的西文字体栈写入 `layouts[].typography.fontFamily`。构建后处理再根据同一配方设置 CJK 字体：LaTeX 分别调用 `setmainfont/setCJKmainfont`，HTML 使用带 Unicode 范围的本地 `@font-face`，因此英文、数字与中文字符能命中不同字体。所有预设均有 Windows 与开源字体回退，不下载远程字体；非法值会被白名单清除。未添加字体组件时保持模板原有西文字体，并继续使用 Microsoft YaHei 优先的现有中文回退。
+
 ### 组合输出规则
 
 - 类型展示名和分支按 `resume/<类型标识>` 映射在本机管理状态中，不属于 `variants.yml`；
-- 类型页负责类型/分支 CRUD 与切换，`blocks/sectionOrder/layout` 由简历定制页维护；职业头衔与个人简介始终来自 `data/basics.yml`；
+- 类型页负责类型/分支 CRUD 与切换，`blocks/sectionOrder/layout/fonts` 由简历定制页维护；职业头衔与个人简介始终来自 `data/basics.yml`；
 - 剥除所有元数据键（`id/tags/notes/_*`、`achievements`）；
 - `work.company` → `name`；`achievements` → `summary`（markdown 列表字符串）；
 - 专业技能按细分方向（tags）分组：每个方向输出一行“方向：技能、技能”，跨方向技能同时出现在多行；优先罗列 `keywords`，为空时使用条目 `name`；yamlresume 模板自动追加的等级文字与正文列调整在构建后移除；
@@ -214,6 +228,7 @@ layouts:
     template: moderncv-banking
     typography:
       fontSize: 11pt
+      fontFamily: Arial, TeX Gyre Heros  # 由 fonts.latin 生成；CJK 字体在构建后独立注入
     sections:
       order: [skills, work, projects, education]
 ```

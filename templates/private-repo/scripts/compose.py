@@ -19,6 +19,8 @@ import sys
 
 import yaml
 
+from font_options import get_typography_font_family, normalize_font_settings
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(ROOT, "data")
 VARIANTS_FILE = os.path.join(ROOT, "scripts", "variants.yml")
@@ -287,6 +289,17 @@ def inject_github_stars(items):
         it["name"] = "%s [github|%s|%s]" % (it["name"], owner_repo, badge)
 
 
+def apply_layout_fonts(layout, fonts):
+    family = get_typography_font_family(
+        layout.get("engine"),
+        layout.get("template"),
+        normalize_font_settings(fonts),
+    )
+    if family:
+        layout["typography"] = {**(layout.get("typography") or {}), "fontFamily": family}
+    return layout
+
+
 def build_layout(v, defaults):
     d = dict(defaults.get("layout") or {})
     d.update(v.get("layout") or {})
@@ -295,7 +308,7 @@ def build_layout(v, defaults):
         d.setdefault("sections", {})["order"] = list(order)
     if d.get("engine") == "latex":
         d["advanced"] = {"showUrls": False, **(d.get("advanced") or {})}
-    return d
+    return apply_layout_fonts(d, v.get("fonts"))
 
 
 def build_layouts(v, defaults):
@@ -304,12 +317,12 @@ def build_layouts(v, defaults):
     html = v.get("htmlLayout")
     if html and html.get("template"):
         html_layout = {"engine": "html", "template": html["template"]}
-        if html.get("typography", {}).get("fontSize"):
-            html_layout["typography"] = {"fontSize": html["typography"]["fontSize"]}
+        if isinstance(html.get("typography"), dict):
+            html_layout["typography"] = dict(html["typography"])
         order = v.get("sectionOrder") or defaults.get("sectionOrder")
         if order:
             html_layout.setdefault("sections", {})["order"] = list(order)
-        return [latex, html_layout]
+        return [latex, apply_layout_fonts(html_layout, v.get("fonts"))]
     return [latex]
 
 

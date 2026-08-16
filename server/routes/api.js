@@ -16,6 +16,7 @@ import AdmZip from 'adm-zip'
 import { recordBuild, listBuilds } from '../lib/build-history.js'
 import { TEMPLATES, ENGINE_LABELS } from '../lib/templates.js'
 import { deleteProfilePhotoFiles, resolveProfilePhoto, writeProfilePhoto } from '../lib/profile-photo.js'
+import { getFontOptionsPayload, normalizeFontSettings } from '../lib/font-options.js'
 
 const router = express.Router()
 const TEMPLATE_DIR = path.resolve('templates/private-repo')
@@ -1136,6 +1137,10 @@ router.get('/templates', (req, res) => {
   }
 })
 
+router.get('/font-options', (_req, res) => {
+  res.json({ ok: true, groups: getFontOptionsPayload() })
+})
+
 // 把模板应用到指定方向（实时切换：默认同时触发构建以便立即预览）
 router.post('/template/apply', async (req, res) => {
   const repo = getRepoPath()
@@ -1186,7 +1191,7 @@ function sanitizeCustomizerState(repo, input) {
   const doc = compose.loadVariantsDoc(repo)
   const variantNames = new Set(Object.keys(doc.variants || {}))
   const categories = store.getCategories(repo).map((item) => item.key)
-  const allowedCategories = new Set(categories)
+  const allowedCategories = new Set([...categories, '__fonts'])
   const drafts = {}
 
   for (const [name, value] of Object.entries(raw.drafts || {})) {
@@ -1199,7 +1204,7 @@ function sanitizeCustomizerState(repo, input) {
     const sections = []
     const sectionKeys = new Set()
     for (const section of Array.isArray(value.sections) ? value.sections : []) {
-      if (!section || typeof section.key !== 'string' || !allowedCategories.has(section.key) || sectionKeys.has(section.key)) continue
+      if (!section || typeof section.key !== 'string' || !categories.includes(section.key) || sectionKeys.has(section.key)) continue
       sectionKeys.add(section.key)
       if (section.mode === 'all') sections.push({ key: section.key, mode: 'all' })
       else if (section.mode === 'ids') {
@@ -1211,9 +1216,23 @@ function sanitizeCustomizerState(repo, input) {
       }
     }
 
+    const fonts = normalizeFontSettings(value.fonts)
+    const allowedComponentIds = new Set([
+      ...sections.map((section) => `section:${section.key}`),
+      ...Object.keys(fonts).map((kind) => `font:${kind}`),
+    ])
+    const componentOrder = [...new Set(
+      (Array.isArray(value.componentOrder) ? value.componentOrder : [])
+        .filter((id) => typeof id === 'string' && allowedComponentIds.has(id)),
+    )]
+    for (const id of allowedComponentIds) {
+      if (!componentOrder.includes(id)) componentOrder.push(id)
+    }
     drafts[name] = {
       template,
       sections,
+      fonts,
+      componentOrder,
       updatedAt: Number.isFinite(value.updatedAt) ? value.updatedAt : Date.now(),
     }
   }
@@ -1293,6 +1312,9 @@ function resolveCustomizedVariant(repo, doc, variant, body) {
   blocks.basics = { include: true }
   const currentWithoutOverrides = { ...current }
   delete currentWithoutOverrides.overrides
+  const fonts = body.fonts === undefined
+    ? normalizeFontSettings(current.fonts)
+    : normalizeFontSettings(body.fonts)
 
   return {
     next: {
@@ -1302,6 +1324,7 @@ function resolveCustomizedVariant(repo, doc, variant, body) {
         template: template.id,
         typography: { fontSize: template.engine === 'html' ? '16px' : '11pt' },
       },
+      fonts: Object.keys(fonts).length ? fonts : undefined,
       htmlLayout: undefined,
       sectionOrder: order,
       blocks,
@@ -1331,10 +1354,11 @@ async function renderCustomizedVariant(repo, variant, config, defaults, engine, 
       // 拉取失败不阻断发布，组合时退回旧缓存或无徽章
     }
   }
+  const fonts = config.fonts || {}
   compose.generateVariant(repo, variant, config, defaults)
   const result = engine === 'html'
-    ? await builder.buildHtmlVariant(repo, variant)
-    : await builder.buildVariant(repo, variant, { compose: false })
+    ? await builder.buildHtmlVariant(repo, variant, { fonts })
+    : await builder.buildVariant(repo, variant, { compose: false, fonts })
   const preview = result.ok
     ? engine === 'html'
       ? `/api/html/${encodeURIComponent(variant)}`

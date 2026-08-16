@@ -7,6 +7,7 @@ import yaml from 'js-yaml'
 import { readCategory, dataFile, META_KEYS } from './data-store.js'
 import { getSettings } from '../config.js'
 import { loadStarsCache, parseGithubRepoUrl, formatStarCount } from './github-stars.js'
+import { getTypographyFontFamily, normalizeFontSettings } from './font-options.js'
 
 const ACHIEVEMENTS_KEY = 'achievements'
 const VARIANTS_FILE = (repo) => path.join(repo, 'scripts', 'variants.yml')
@@ -192,6 +193,13 @@ function injectGithubStars(items) {
   }
 }
 
+function applyLayoutFonts(layout, fonts) {
+  const family = getTypographyFontFamily(layout.engine, layout.template, normalizeFontSettings(fonts))
+  if (!family) return layout
+  layout.typography = { ...(layout.typography || {}), fontFamily: family }
+  return layout
+}
+
 function buildLayout(v, defaults) {
   const d = { ...((defaults && defaults.layout) || {}) }
   Object.assign(d, v.layout || {})
@@ -200,7 +208,7 @@ function buildLayout(v, defaults) {
     d.sections = { ...(d.sections || {}), order: [...order] }
   }
   if (d.engine === 'latex') d.advanced = { showUrls: false, ...(d.advanced || {}) }
-  return d
+  return applyLayoutFonts(d, v.fonts)
 }
 
 // 多引擎支持：v.htmlLayout（如 {engine:'html', template:'calm'}）存在时，
@@ -210,13 +218,13 @@ function buildLayouts(v, defaults) {
   const html = v.htmlLayout
   if (html && html.template) {
     const htmlLayout = { engine: 'html', template: html.template }
-    if (html.typography?.fontSize) htmlLayout.typography = { fontSize: html.typography.fontSize }
+    if (html.typography && typeof html.typography === 'object') htmlLayout.typography = { ...html.typography }
     // html 引擎章节顺序同样生效
     const order = v.sectionOrder || (defaults && defaults.sectionOrder)
     if (Array.isArray(order) && order.length) {
       htmlLayout.sections = { ...(htmlLayout.sections || {}), order: [...order] }
     }
-    return [latex, htmlLayout]
+    return [latex, applyLayoutFonts(htmlLayout, v.fonts)]
   }
   return [latex]
 }

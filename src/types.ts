@@ -29,13 +29,37 @@ export interface Settings {
   starsEnabled?: boolean
 }
 
+export type ResumeFontKind = 'cjk' | 'latin'
+
+export interface ResumeFontSettings {
+  cjk?: string
+  latin?: string
+}
+
+export interface ResumeFontOption {
+  id: string
+  label: string
+  description: string
+  sample: string
+  cssFamilies: string[]
+}
+
+export interface ResumeFontGroup {
+  kind: ResumeFontKind
+  label: string
+  description: string
+  defaultId: string
+  options: ResumeFontOption[]
+}
+
 export interface Variant {
   name: string
   label?: string
   branch?: string
   locale?: string
-  layout?: { engine?: string; template?: string; typography?: { fontSize?: string } }
-  htmlLayout?: { engine?: string; template?: string; typography?: { fontSize?: string } }
+  layout?: { engine?: string; template?: string; typography?: { fontSize?: string; fontFamily?: string } }
+  htmlLayout?: { engine?: string; template?: string; typography?: { fontSize?: string; fontFamily?: string } }
+  fonts?: ResumeFontSettings
   sectionOrder?: string[]
   blocks?: Record<string, { include?: string | boolean; tags?: string[]; ids?: string[] }>
   matched?: Record<string, number>

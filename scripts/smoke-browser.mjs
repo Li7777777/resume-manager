@@ -2,7 +2,7 @@
 import puppeteer from 'puppeteer-core'
 
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
-const BASE = 'http://127.0.0.1:8787'
+const BASE = process.env.SMOKE_BASE || 'http://127.0.0.1:8787'
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const browser = await puppeteer.launch({ executablePath: EDGE, headless: 'new' })
@@ -12,6 +12,9 @@ page.on('console', (message) => {
   if (message.type() === 'error') errors.push(`[console] ${message.text()}`)
 })
 page.on('pageerror', (error) => errors.push(`[page] ${String(error)}`))
+page.on('response', (response) => {
+  if (response.status() >= 400) errors.push(`[http ${response.status()}] ${response.url()}`)
+})
 await page.setViewport({ width: 1600, height: 950 })
 
 async function visit(hash, screenshot) {
@@ -86,12 +89,27 @@ console.log('信息管理:', entriesDragOk)
 
 console.log('=== 简历定制与 YAML ===')
 const customizer = await visit('customizer', 'rm-smoke-customizer.png')
+await page.evaluate(() => {
+  const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.includes('可视化编排'))
+  if (button instanceof HTMLButtonElement) button.click()
+})
+await sleep(400)
 const templateNames = ['ModernCV Banking', 'ModernCV Casual', 'ModernCV Classic', "Jake's Resume", 'Jake 原版', 'Calm', 'VS Code']
 const sectionsDraggable = await page.evaluate(() => {
   const cards = [...document.querySelectorAll('[data-section-key]')]
   return cards.length >= 1 && cards.every((card) => card.getAttribute('draggable') === 'true')
 })
 console.log('章节可拖拽:', sectionsDraggable)
+await page.evaluate(() => {
+  const category = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('字体'))
+  if (category instanceof HTMLButtonElement) category.click()
+})
+await sleep(300)
+const fontLibraryOk = await page.evaluate(() => {
+  const components = [...document.querySelectorAll('[data-font-library]')]
+  return components.length === 2 && ['cjk', 'latin'].every((kind) => components.some((component) => component.getAttribute('data-font-library') === kind))
+})
+console.log('字体组件库:', fontLibraryOk)
 await page.evaluate(() => {
   const category = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('项目经历'))
   if (category instanceof HTMLButtonElement) category.click()
@@ -109,6 +127,10 @@ if (firstLibraryEntry) {
   selectionFlow.restored = await page.$eval('[data-library-bulk-action]', (element) => element.textContent?.includes('拖入所有') || false)
 }
 console.log('信息库选择:', selectionBefore.includes('拖入所有') && selectionFlow.available && selectionFlow.selected && selectionFlow.restored)
+const fontStateBeforeYaml = await page.evaluate(() => [...document.querySelectorAll('[data-customizer-canvas] [data-font-component], [data-customizer-canvas] [data-section-key]')].map((element) => ({
+  id: element.hasAttribute('data-font-component') ? `font:${element.getAttribute('data-font-component')}` : `section:${element.getAttribute('data-section-key')}`,
+  value: element.querySelector('select')?.value || null,
+})))
 const releasesBeforePreview = await page.evaluate(async () => {
   const result = await (await fetch('/api/history?variant=main&limit=50')).json()
   return (result.items || []).filter((item) => item.kind === 'release').length
@@ -148,6 +170,17 @@ await page.evaluate(() => {
 })
 const draftPreserved = await page.$eval('.cm-content', (element) => element.textContent?.includes('smoke-unsaved-draft') || false)
 await page.click('button[aria-label="放弃修改"]')
+await page.evaluate(() => {
+  const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.includes('可视化编排'))
+  if (button instanceof HTMLButtonElement) button.click()
+})
+await sleep(400)
+const fontStateAfterYaml = await page.evaluate(() => [...document.querySelectorAll('[data-customizer-canvas] [data-font-component], [data-customizer-canvas] [data-section-key]')].map((element) => ({
+  id: element.hasAttribute('data-font-component') ? `font:${element.getAttribute('data-font-component')}` : `section:${element.getAttribute('data-section-key')}`,
+  value: element.querySelector('select')?.value || null,
+})))
+const fontStatePreserved = JSON.stringify(fontStateAfterYaml) === JSON.stringify(fontStateBeforeYaml)
+console.log('YAML 往返保留字体:', fontStatePreserved)
 const customizerOk =
   templateNames.every((name) => customizer.text.includes(name)) &&
   customizer.buttons.some((label) => label === '预览') &&
@@ -160,7 +193,9 @@ const customizerOk =
   yamlWorkspace.hasVariantsFile &&
   yamlWorkspace.text.includes('模板预览') &&
   draftPreserved &&
-  sectionsDraggable
+  sectionsDraggable &&
+  fontLibraryOk &&
+  fontStatePreserved
 console.log('定制页:', customizerOk)
 
 console.log('=== 旧 YAML 路由兼容 ===')

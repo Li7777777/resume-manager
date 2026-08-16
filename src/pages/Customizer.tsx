@@ -17,9 +17,16 @@ import {
   Eye,
   PackageCheck,
   Tag,
+  Type,
 } from 'lucide-react'
 import { api } from '../api'
-import type { Entry, Variant } from '../types'
+import type {
+  Entry,
+  ResumeFontGroup,
+  ResumeFontKind,
+  ResumeFontSettings,
+  Variant,
+} from '../types'
 import { useToast } from '../toast'
 import { Badge, Button, Card, EmptyState, Select, Spinner, TagChip } from '../components/ui'
 import PdfViewer from '../components/PdfViewer'
@@ -62,6 +69,8 @@ interface TemplateItem {
 interface CustomizerDraft {
   template: string
   sections: Section[]
+  fonts?: ResumeFontSettings
+  componentOrder?: string[]
   updatedAt?: number
 }
 
@@ -93,8 +102,34 @@ function sectionsFromVariant(variant?: Variant): Section[] {
     .filter(Boolean) as Section[]
 }
 
+const TYPOGRAPHY_CATEGORY = { key: '__fonts', label: '字体' }
+const FONT_KINDS: ResumeFontKind[] = ['cjk', 'latin']
+const sectionItemId = (key: string) => `section:${key}`
+const fontItemId = (kind: ResumeFontKind) => `font:${kind}`
+
+function normalizeComponentOrder(
+  order: string[] | undefined,
+  sections: Section[],
+  fonts: ResumeFontSettings,
+) {
+  const valid = new Set([
+    ...sections.map((section) => sectionItemId(section.key)),
+    ...FONT_KINDS.filter((kind) => !!fonts[kind]).map(fontItemId),
+  ])
+  const normalized = (order || []).filter((id, index, list) => valid.has(id) && list.indexOf(id) === index)
+  for (const section of sections) {
+    const id = sectionItemId(section.key)
+    if (!normalized.includes(id)) normalized.push(id)
+  }
+  for (const kind of FONT_KINDS) {
+    const id = fontItemId(kind)
+    if (fonts[kind] && !normalized.includes(id)) normalized.push(id)
+  }
+  return normalized
+}
+
 interface DragData {
-  type: 'entry' | 'entries' | 'section'
+  type: 'entry' | 'entries' | 'section' | 'font'
   key: string
   id?: string
   ids?: string[]
@@ -114,8 +149,11 @@ export default function Customizer() {
   const [types, setTypes] = useState<ResumeType[]>([])
   const [selectedType, setSelectedType] = useState('')
   const [templates, setTemplates] = useState<TemplateItem[]>([])
+  const [fontGroups, setFontGroups] = useState<ResumeFontGroup[]>([])
   const [template, setTemplate] = useState('moderncv-banking')
   const [sections, setSections] = useState<Section[]>([])
+  const [fonts, setFonts] = useState<ResumeFontSettings>({})
+  const [componentOrder, setComponentOrder] = useState<string[]>([])
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewEngine, setPreviewEngine] = useState<'latex' | 'html'>('latex')
   const [busyAction, setBusyAction] = useState<'preview' | 'release' | null>(null)
@@ -132,6 +170,8 @@ export default function Customizer() {
   const [draftReady, setDraftReady] = useState(false)
   const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const draftsRef = useRef<Record<string, CustomizerDraft>>({})
+  const dragItemRef = useRef<string | null>(null)
+  const dragTargetRef = useRef<{ id: string | null; side: 'before' | 'after' } | null>(null)
   const persistPayloadRef = useRef<CustomizerMemory | null>(null)
   const rendering = busyAction !== null
 
@@ -141,15 +181,17 @@ export default function Customizer() {
       api.get<{ variants: Variant[]; defaults?: { layout?: { engine?: string; template?: string } } }>('/api/variants').catch(() => ({ variants: [], defaults: undefined })),
       api.get<{ types: ResumeType[] }>('/api/resume-types').catch(() => ({ types: [] })),
       api.get<{ templates: TemplateItem[] }>('/api/templates').catch(() => ({ templates: [] })),
+      api.get<{ groups: ResumeFontGroup[] }>('/api/font-options').catch(() => ({ groups: [] })),
       api.get<{ categories: { key: string; label: string; visible: boolean }[] }>('/api/categories').catch(() => ({ categories: [] })),
       api.get<{ state: CustomizerMemory }>('/api/custom/state').catch(() => ({ state: {} as CustomizerMemory })),
     ])
-      .then(([entryData, variantData, typeData, templateData, categoryData, customizerData]) => {
+      .then(([entryData, variantData, typeData, templateData, fontData, categoryData, customizerData]) => {
         setEntries(entryData.entries)
         setVariants(variantData.variants)
         setVariantDefaults(variantData.defaults || {})
         setTypes(typeData.types)
         setTemplates(templateData.templates)
+        setFontGroups(fontData.groups)
         const visibleCats = categoryData.categories?.length
           ? categoryData.categories.filter((item) => item.visible !== false).map((item) => ({ key: item.key, label: item.label }))
           : DEFAULT_CATS
@@ -158,7 +200,7 @@ export default function Customizer() {
         const memory = customizerData.state || {}
         draftsRef.current = memory.drafts || {}
         if (memory.workspaceMode === 'yaml' || memory.workspaceMode === 'visual') setWorkspaceMode(memory.workspaceMode)
-        if (memory.category && visibleCats.some((item) => item.key === memory.category)) setCat(memory.category)
+        if (typeof memory.category === 'string' && (memory.category === TYPOGRAPHY_CATEGORY.key || visibleCats.some((item) => item.key === memory.category))) setCat(memory.category)
 
         const initial = typeData.types.find((item) => item.name === memory.selectedType)
           || typeData.types.find((item) => item.current)
@@ -180,7 +222,11 @@ export default function Customizer() {
     defaults = variantDefaults,
   ) => {
     const variant = source.find((item) => item.name === name)
-    setSections(sectionsFromVariant(variant))
+    const nextSections = sectionsFromVariant(variant)
+    const nextFonts = { ...(variant?.fonts || {}) }
+    setSections(nextSections)
+    setFonts(nextFonts)
+    setComponentOrder(normalizeComponentOrder(undefined, nextSections, nextFonts))
     setTemplate(variant?.layout?.template || defaults.layout?.template || 'moderncv-banking')
     setPreviewUrl(null)
     setLastAction(null)
@@ -203,7 +249,11 @@ export default function Customizer() {
       applyVariant(name, source, defaults)
       return
     }
-    setSections(cloneSections(draft.sections || []))
+    const nextSections = cloneSections(draft.sections || [])
+    const nextFonts = { ...(draft.fonts || {}) }
+    setSections(nextSections)
+    setFonts(nextFonts)
+    setComponentOrder(normalizeComponentOrder(draft.componentOrder, nextSections, nextFonts))
     setTemplate(draft.template || source.find((item) => item.name === name)?.layout?.template || defaults.layout?.template || 'moderncv-banking')
     setPreviewUrl(null)
     setLastAction(null)
@@ -216,6 +266,8 @@ export default function Customizer() {
       [selectedType]: {
         template,
         sections: cloneSections(sections),
+        fonts: { ...fonts },
+        componentOrder: [...componentOrder],
         updatedAt: Date.now(),
       },
     }
@@ -227,6 +279,8 @@ export default function Customizer() {
     const draft: CustomizerDraft = {
       template,
       sections: cloneSections(sections),
+      fonts: { ...fonts },
+      componentOrder: [...componentOrder],
       updatedAt: Date.now(),
     }
     const drafts = { ...draftsRef.current, [selectedType]: draft }
@@ -245,7 +299,7 @@ export default function Customizer() {
     }, 350)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftReady, selectedType, workspaceMode, cat, template, sections])
+  }, [draftReady, selectedType, workspaceMode, cat, template, sections, fonts, componentOrder])
 
   useEffect(() => {
     const flush = () => {
@@ -269,11 +323,39 @@ export default function Customizer() {
   const activeTemplate = templates.find((item) => item.id === template)
   const canCustomize = !!selected?.current && selected.configured
   const canEditVisual = canCustomize && !yamlDirty
+  const libraryCategories = [...cats, TYPOGRAPHY_CATEGORY]
+
+  const invalidatePreview = () => {
+    setPreviewUrl(null)
+    setLastAction(null)
+  }
 
   const commit = (next: Section[]) => {
     setSections(next)
-    setPreviewUrl(null)
-    setLastAction(null)
+    setComponentOrder((current) => normalizeComponentOrder(current, next, fonts))
+    invalidatePreview()
+  }
+
+  const commitFonts = (next: ResumeFontSettings) => {
+    setFonts(next)
+    setComponentOrder((current) => normalizeComponentOrder(current, sections, next))
+    invalidatePreview()
+  }
+
+  const addFontComponent = (kind: ResumeFontKind) => {
+    if (fonts[kind]) {
+      toast('warn', `${fontGroups.find((group) => group.kind === kind)?.label || '字体'}组件已在布局中`)
+      return
+    }
+    const group = fontGroups.find((item) => item.kind === kind)
+    if (!group) return
+    commitFonts({ ...fonts, [kind]: group.defaultId })
+  }
+
+  const removeFontComponent = (kind: ResumeFontKind) => {
+    const next = { ...fonts }
+    delete next[kind]
+    commitFonts(next)
   }
 
   const onDragStart = (data: DragData) => (event: React.DragEvent) => {
@@ -291,6 +373,10 @@ export default function Customizer() {
 
   // 统一投放逻辑：条目/整章从左侧信息库拖入布局
   const applyDrop = (data: DragData) => {
+    if (data.type === 'font' && FONT_KINDS.includes(data.id as ResumeFontKind)) {
+      addFontComponent(data.id as ResumeFontKind)
+      return
+    }
     const label = cats.find((item) => item.key === data.key)?.label || data.key
     const existing = sections.find((item) => item.key === data.key)
 
@@ -333,64 +419,79 @@ export default function Customizer() {
     commit(sections.map((s) => (s === existing ? { ...s, ids: [...new Set([...(s.ids || []), ...missing])] } : s)))
   }
 
-  // 章节拖拽排序：把 fromKey 移动到 toKey 前/后（toKey 为 null 时移到末尾）
-  const applyReorder = (fromKey: string, toKey: string | null, side: 'before' | 'after') => {
-    const from = sections.findIndex((s) => s.key === fromKey)
+  // 内容章节与字体组件共享同一画布顺序；输出时只提取章节顺序。
+  const applyReorder = (fromId: string, toId: string | null, side: 'before' | 'after') => {
+    const from = componentOrder.indexOf(fromId)
     if (from < 0) return
-    let insertAt = sections.length - 1
-    if (toKey) {
-      const to = sections.findIndex((s) => s.key === toKey)
-      if (to < 0) return
-      if (to === from) return
-      let target = to + (side === 'after' ? 1 : 0)
-      if (from < to) target -= 1
-      insertAt = target
-    }
-    const next = [...sections]
+    const next = [...componentOrder]
     const [moved] = next.splice(from, 1)
+    let insertAt = next.length
+    if (toId) {
+      const to = next.indexOf(toId)
+      if (to < 0) return
+      insertAt = to + (side === 'after' ? 1 : 0)
+    }
     next.splice(insertAt, 0, moved)
-    commit(next)
+    setComponentOrder(next)
+    const byKey = new Map(sections.map((section) => [section.key, section]))
+    setSections(next.flatMap((id) => id.startsWith('section:') ? [byKey.get(id.slice(8))].filter(Boolean) as Section[] : []))
+    invalidatePreview()
   }
 
   const resetDrag = () => {
+    dragItemRef.current = null
+    dragTargetRef.current = null
     setDragOver(null)
     setDragSectionKey(null)
     setReorderOverKey(null)
   }
 
-  const onSectionDragStart = (key: string) => (event: React.DragEvent) => {
-    event.dataTransfer.setData(DND_REORDER_MIME, key)
-    event.dataTransfer.effectAllowed = 'move'
-    setDragSectionKey(key)
+  const finishDrag = () => {
+    const source = dragItemRef.current
+    const target = dragTargetRef.current
+    if (source && target) applyReorder(source, target.id, target.side)
+    resetDrag()
   }
 
-  const onSectionDragOver = (key: string) => (event: React.DragEvent) => {
+  const onSectionDragStart = (itemId: string) => (event: React.DragEvent) => {
+    event.dataTransfer.setData(DND_REORDER_MIME, itemId)
+    event.dataTransfer.effectAllowed = 'move'
+    dragItemRef.current = itemId
+    setDragSectionKey(itemId)
+  }
+
+  const onSectionDragOver = (itemId: string) => (event: React.DragEvent) => {
     if (!canEditVisual) return
     const types = Array.from(event.dataTransfer.types)
     if (types.includes(DND_REORDER_MIME)) {
-      if (dragSectionKey && dragSectionKey !== key) {
+      event.stopPropagation()
+      if (dragItemRef.current && dragItemRef.current !== itemId) {
         event.preventDefault()
         event.dataTransfer.dropEffect = 'move'
         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-        setReorderOverKey(key)
-        setReorderSide(event.clientY < rect.top + rect.height / 2 ? 'before' : 'after')
+        const side = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+        dragTargetRef.current = { id: itemId, side }
+        setReorderOverKey(itemId)
+        setReorderSide(side)
       }
       return
     }
     if (types.includes(DND_MIME)) {
       event.preventDefault()
-      setDragOver(key)
+      event.stopPropagation()
+      setDragOver(itemId)
     }
   }
 
-  const onSectionDrop = (event: React.DragEvent, key: string) => {
+  const onSectionDrop = (event: React.DragEvent, itemId: string) => {
     event.preventDefault()
     event.stopPropagation()
     const reorderKey = event.dataTransfer.getData(DND_REORDER_MIME)
     if (reorderKey) {
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
       const side = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
-      applyReorder(reorderKey, key, side)
+      dragTargetRef.current = null
+      applyReorder(reorderKey, itemId, side)
       resetDrag()
       return
     }
@@ -412,12 +513,11 @@ export default function Customizer() {
     setDragOver(null)
   }
 
-  const move = (index: number, direction: -1 | 1) => {
+  const move = (itemId: string, direction: -1 | 1) => {
+    const index = componentOrder.indexOf(itemId)
     const target = index + direction
-    if (target < 0 || target >= sections.length) return
-    const next = [...sections]
-    ;[next[index], next[target]] = [next[target], next[index]]
-    commit(next)
+    if (index < 0 || target < 0 || target >= componentOrder.length) return
+    applyReorder(itemId, componentOrder[target], direction < 0 ? 'before' : 'after')
   }
 
   const renderCurrent = async (publish: boolean) => {
@@ -433,6 +533,7 @@ export default function Customizer() {
         ? {
             variant: selectedType,
             sections,
+            fonts,
             template: activeTemplate!.id,
           }
         : { variant: selectedType }
@@ -511,7 +612,9 @@ export default function Customizer() {
 
   const listOf = (key: string): Entry[] => (Array.isArray(entries[key]) ? entries[key] : [])
   const sectionLabel = (key: string) => cats.find((item) => item.key === key)?.label || key
-  const categoryCount = (key: string) => (Array.isArray(entries[key]) ? entries[key].length : entries[key] ? 1 : 0)
+  const categoryCount = (key: string) => key === TYPOGRAPHY_CATEGORY.key
+    ? fontGroups.length
+    : (Array.isArray(entries[key]) ? entries[key].length : entries[key] ? 1 : 0)
   // 信息库 tag 筛选：当前分类条目的标签选项 + 过滤后的条目
   const infoTagOptions = useMemo(() => {
     const seen = new Set<string>()
@@ -554,7 +657,7 @@ export default function Customizer() {
             </Select>
           </div>
           {selected?.current ? <Badge tone="emerald">当前分支</Badge> : <Badge tone="amber">未切换到此分支</Badge>}
-          <span className="text-xs text-zinc-600">模板、内容和布局均保存到该类型分支。</span>
+          <span className="text-xs text-zinc-600">模板、内容、字体和布局均保存到该类型分支。</span>
           {!canCustomize && (
             <Button size="sm" variant="secondary" onClick={() => { window.location.hash = '/variants' }}>
               <GitBranch size={13} /> 前往切换分支
@@ -631,9 +734,9 @@ export default function Customizer() {
         <div className={`flex min-h-0 min-w-0 flex-1 ${workspaceMode === 'visual' ? 'flex-col gap-4 2xl:flex-row' : 'flex-col'}`}>
           {workspaceMode === 'visual' && (
             <>
-        <Card title="简历信息库" desc="拖拽条目或章节到布局" className="w-full xl:min-h-0 xl:flex-1 xl:basis-0 2xl:w-72 2xl:flex-none" pad={false} fill>
+        <Card title="简历信息库" desc="拖拽条目、章节或字体到布局" className="w-full xl:min-h-0 xl:flex-1 xl:basis-0 2xl:w-72 2xl:flex-none" pad={false} fill>
           <div className="flex flex-wrap gap-1 border-b border-zinc-800 p-2">
-            {cats.map((item) => (
+            {libraryCategories.map((item) => (
               <button
                 key={item.key}
                 onClick={() => {
@@ -649,6 +752,7 @@ export default function Customizer() {
               </button>
             ))}
           </div>
+          {cat !== TYPOGRAPHY_CATEGORY.key && (
           <div className="flex flex-wrap items-center gap-1 border-b border-zinc-800 px-2 py-1.5">
             <Tag size={11} className="shrink-0 text-zinc-600" />
             <button
@@ -674,7 +778,54 @@ export default function Customizer() {
               <span className="ml-auto text-[10px] text-zinc-600">已筛选：{tagFilter}</span>
             )}
           </div>
+          )}
           <div className="min-h-0 flex-1 overflow-auto p-2">
+            {cat === TYPOGRAPHY_CATEGORY.key ? (
+              <div className="space-y-2">
+                {fontGroups.map((group) => {
+                  const active = !!fonts[group.kind]
+                  const defaultOption = group.options.find((option) => option.id === group.defaultId)
+                  return (
+                    <div
+                      key={group.kind}
+                      role="button"
+                      tabIndex={canEditVisual && !active ? 0 : -1}
+                      aria-disabled={!canEditVisual || active}
+                      draggable={canEditVisual && !active}
+                      data-font-library={group.kind}
+                      onClick={() => canEditVisual && !active && addFontComponent(group.kind)}
+                      onKeyDown={(event) => {
+                        if ((event.key === 'Enter' || event.key === ' ') && canEditVisual && !active) {
+                          event.preventDefault()
+                          addFontComponent(group.kind)
+                        }
+                      }}
+                      onDragStart={onDragStart({ type: 'font', key: TYPOGRAPHY_CATEGORY.key, id: group.kind })}
+                      className={`rounded-md border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 ${
+                        !canEditVisual || active
+                          ? 'cursor-not-allowed border-zinc-800 bg-zinc-950/30 opacity-55'
+                          : 'cursor-grab border-zinc-800 bg-zinc-950/50 hover:border-indigo-500/50 active:cursor-grabbing'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Type size={14} className={active ? 'text-emerald-400' : 'text-indigo-400'} />
+                        <span className="text-xs font-medium text-zinc-200">{group.label}</span>
+                        {active && <Badge tone="emerald">已添加</Badge>}
+                        <GripVertical size={13} className="ml-auto text-zinc-600" />
+                      </div>
+                      <p className="mt-2 text-[11px] text-zinc-500">{group.description}</p>
+                      <p
+                        className="mt-2 truncate border-t border-zinc-800 pt-2 text-sm text-zinc-300"
+                        style={{ fontFamily: defaultOption?.cssFamilies.join(', ') }}
+                      >
+                        {defaultOption?.sample}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+            <>
             <div
               draggable={canEditVisual}
               onDragStart={onDragStart(bulkDragData)}
@@ -751,6 +902,8 @@ export default function Customizer() {
                 )
               })
             )}
+            </>
+            )}
           </div>
         </Card>
 
@@ -760,7 +913,7 @@ export default function Customizer() {
           className="min-w-0 xl:min-h-0 xl:flex-1 xl:basis-0"
           pad={false}
           fill
-          actions={<Button size="sm" variant="ghost" disabled={!canEditVisual} onClick={() => commit([])}><Trash2 size={12} /> 清空</Button>}
+          actions={<Button size="sm" variant="ghost" disabled={!canEditVisual} onClick={() => { setSections([]); setFonts({}); setComponentOrder([]); invalidatePreview() }}><Trash2 size={12} /> 清空</Button>}
         >
           <div
             className={`min-h-0 flex-1 overflow-auto p-3 ${dragOver === 'canvas' ? 'ring-2 ring-inset ring-indigo-500/40' : ''}`}
@@ -771,6 +924,7 @@ export default function Customizer() {
               if (types.includes(DND_REORDER_MIME)) {
                 event.preventDefault()
                 event.dataTransfer.dropEffect = 'move'
+                dragTargetRef.current = { id: null, side: 'after' }
                 setReorderOverKey(null)
                 setDragOver('canvas')
                 return
@@ -783,68 +937,111 @@ export default function Customizer() {
             onDragLeave={() => setDragOver(null)}
             onDrop={onCanvasDrop}
           >
-            {sections.length === 0 ? (
-              <EmptyState icon={<Layers size={30} />} title="布局为空" desc="从左侧拖入信息条目或整个章节。" />
+            {componentOrder.length === 0 ? (
+              <EmptyState icon={<Layers size={30} />} title="布局为空" desc="从左侧拖入信息条目、章节或字体组件。" />
             ) : (
               <div className="space-y-2">
-                {sections.map((section, index) => {
-                  const isReorderSource = dragSectionKey === section.key
-                  const isReorderTarget = reorderOverKey === section.key
+                {componentOrder.map((itemId) => {
+                  const isReorderSource = dragSectionKey === itemId
+                  const isReorderTarget = reorderOverKey === itemId
+                  const sharedProps = {
+                    draggable: canEditVisual,
+                    onDragStart: onSectionDragStart(itemId),
+                    onDragEnd: finishDrag,
+                    onDragOver: onSectionDragOver(itemId),
+                    onDragLeave: () => setDragOver(null),
+                    onDrop: (event: React.DragEvent) => onSectionDrop(event, itemId),
+                  }
+                  const sharedClass = `relative rounded-md border p-2.5 transition ${
+                    isReorderSource
+                      ? 'border-zinc-700 opacity-40'
+                      : dragOver === itemId
+                        ? 'border-indigo-500/60 bg-indigo-500/5'
+                        : 'border-zinc-800 bg-zinc-950/40'
+                  } ${canEditVisual ? 'cursor-grab active:cursor-grabbing' : ''}`
+                  const dropIndicator = isReorderTarget ? (
+                    <span
+                      className={`pointer-events-none absolute left-2 right-2 h-0.5 rounded-full bg-indigo-400 ${
+                        reorderSide === 'before' ? '-top-1.5' : '-bottom-1.5'
+                      }`}
+                    />
+                  ) : null
+
+                  if (itemId.startsWith('font:')) {
+                    const kind = itemId.slice(5) as ResumeFontKind
+                    const group = fontGroups.find((item) => item.kind === kind)
+                    if (!group || !fonts[kind]) return null
+                    const selectedOption = group.options.find((option) => option.id === fonts[kind]) || group.options[0]
+                    return (
+                      <div key={itemId} data-font-component={kind} {...sharedProps} className={sharedClass}>
+                        {dropIndicator}
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <GripVertical size={13} className="shrink-0 text-zinc-600" />
+                          <Type size={13} className="shrink-0 text-indigo-400" />
+                          <span className="truncate text-xs font-semibold text-zinc-200">{group.label}</span>
+                          <Badge tone="indigo">字体</Badge>
+                          <div className="ml-auto flex shrink-0 gap-0.5">
+                            <button type="button" draggable={false} title="上移" aria-label={`上移${group.label}`} disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(itemId, -1)}><ArrowUp size={12} /></button>
+                            <button type="button" draggable={false} title="下移" aria-label={`下移${group.label}`} disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(itemId, 1)}><ArrowDown size={12} /></button>
+                            <button type="button" draggable={false} title="移除" aria-label={`移除${group.label}`} disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-red-400" onClick={() => removeFontComponent(kind)}><Trash2 size={12} /></button>
+                          </div>
+                        </div>
+                        <div className="mt-2 grid min-w-0 gap-2 pl-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-center">
+                          <Select
+                            value={fonts[kind]}
+                            disabled={!canEditVisual}
+                            aria-label={group.label}
+                            draggable={false}
+                            onChange={(event) => commitFonts({ ...fonts, [kind]: event.target.value })}
+                            className="min-w-0"
+                          >
+                            {group.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                          </Select>
+                          <div className="min-w-0 rounded border border-zinc-800 bg-zinc-900/70 px-2.5 py-2">
+                            <p className="truncate text-sm text-zinc-200" style={{ fontFamily: selectedOption?.cssFamilies.join(', ') }}>{selectedOption?.sample}</p>
+                            <p className="mt-0.5 truncate text-[10px] text-zinc-600">{selectedOption?.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  const key = itemId.slice(8)
+                  const section = sections.find((item) => item.key === key)
+                  if (!section) return null
                   return (
-                  <div
-                    key={section.key}
-                    data-section-key={section.key}
-                    draggable={canEditVisual}
-                    onDragStart={onSectionDragStart(section.key)}
-                    onDragEnd={resetDrag}
-                    onDragOver={onSectionDragOver(section.key)}
-                    onDragLeave={() => setDragOver(null)}
-                    onDrop={(event) => onSectionDrop(event, section.key)}
-                    className={`relative rounded-md border p-2.5 transition ${
-                      isReorderSource
-                        ? 'border-zinc-700 opacity-40'
-                        : dragOver === section.key
-                          ? 'border-indigo-500/60 bg-indigo-500/5'
-                          : 'border-zinc-800 bg-zinc-950/40'
-                    } ${canEditVisual ? 'cursor-grab active:cursor-grabbing' : ''}`}
-                  >
-                    {isReorderTarget && (
-                      <span
-                        className={`pointer-events-none absolute left-2 right-2 h-0.5 rounded-full bg-indigo-400 ${
-                          reorderSide === 'before' ? '-top-1.5' : '-bottom-1.5'
-                        }`}
-                      />
-                    )}
-                    <div className="flex items-center gap-1.5">
-                      <GripVertical size={13} className="text-zinc-600" />
-                      <span className="text-xs font-semibold text-zinc-200">{sectionLabel(section.key)}</span>
-                      <Badge tone={section.mode === 'all' ? 'emerald' : section.mode === 'ids' ? 'sky' : 'indigo'}>
-                        {section.mode === 'all' ? '全部' : section.mode === 'ids' ? `${(section.ids || []).length} 条` : `${(section.tags || []).length} 标签`}
-                      </Badge>
-                      <div className="ml-auto flex gap-0.5">
-                        <button disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(index, -1)}><ArrowUp size={12} /></button>
-                        <button disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(index, 1)}><ArrowDown size={12} /></button>
-                        <button disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-red-400" onClick={() => commit(sections.filter((item) => item !== section))}><Trash2 size={12} /></button>
+                    <div key={itemId} data-section-key={section.key} {...sharedProps} className={sharedClass}>
+                      {dropIndicator}
+                      <div className="flex items-center gap-1.5">
+                        <GripVertical size={13} className="text-zinc-600" />
+                        <span className="text-xs font-semibold text-zinc-200">{sectionLabel(section.key)}</span>
+                        <Badge tone={section.mode === 'all' ? 'emerald' : section.mode === 'ids' ? 'sky' : 'indigo'}>
+                          {section.mode === 'all' ? '全部' : section.mode === 'ids' ? `${(section.ids || []).length} 条` : `${(section.tags || []).length} 标签`}
+                        </Badge>
+                        <div className="ml-auto flex gap-0.5">
+                          <button type="button" draggable={false} title="上移" aria-label={`上移${sectionLabel(section.key)}`} disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(itemId, -1)}><ArrowUp size={12} /></button>
+                          <button type="button" draggable={false} title="下移" aria-label={`下移${sectionLabel(section.key)}`} disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" onClick={() => move(itemId, 1)}><ArrowDown size={12} /></button>
+                          <button type="button" draggable={false} title="移除" aria-label={`移除${sectionLabel(section.key)}`} disabled={!canEditVisual} className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-red-400" onClick={() => commit(sections.filter((item) => item !== section))}><Trash2 size={12} /></button>
+                        </div>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-5">
+                        {section.mode === 'all' ? (
+                          <span className="text-[11px] text-zinc-500">展示该章节全部条目</span>
+                        ) : section.mode === 'ids' ? (
+                          (section.ids || []).map((id) => {
+                            const entry = layoutEntries.get(`${section.key}:${id}`)
+                            return (
+                              <span key={id} className="inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300">
+                                {entry ? entryTitle(section.key, entry) : id}
+                                <button type="button" draggable={false} aria-label={`移除${entry ? entryTitle(section.key, entry) : id}`} disabled={!canEditVisual} className="text-zinc-600 hover:text-red-400" onClick={() => commit(sections.map((item) => item === section ? { ...item, ids: (item.ids || []).filter((value) => value !== id) } : item))}><Trash2 size={10} /></button>
+                              </span>
+                            )
+                          })
+                        ) : (
+                          (section.tags || []).map((tag) => <TagChip key={tag} tag={tag} />)
+                        )}
                       </div>
                     </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-5">
-                      {section.mode === 'all' ? (
-                        <span className="text-[11px] text-zinc-500">展示该章节全部条目</span>
-                      ) : section.mode === 'ids' ? (
-                        (section.ids || []).map((id) => {
-                          const entry = layoutEntries.get(`${section.key}:${id}`)
-                          return (
-                            <span key={id} className="inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300">
-                              {entry ? entryTitle(section.key, entry) : id}
-                              <button disabled={!canEditVisual} className="text-zinc-600 hover:text-red-400" onClick={() => commit(sections.map((item) => item === section ? { ...item, ids: (item.ids || []).filter((value) => value !== id) } : item))}><Trash2 size={10} /></button>
-                            </span>
-                          )
-                        })
-                      ) : (
-                        (section.tags || []).map((tag) => <TagChip key={tag} tag={tag} />)
-                      )}
-                    </div>
-                  </div>
                   )
                 })}
               </div>
