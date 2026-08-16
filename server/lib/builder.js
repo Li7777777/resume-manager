@@ -150,10 +150,9 @@ function githubBadgeHtml(repo, stars) {
 const PROFILE_PHOTO_MARK = 'rm-profile-photo'
 const PROFILE_PHOTO_HTML_CSS = `
 /* ${PROFILE_PHOTO_MARK} */
-.resume-header { position: relative; min-height: 108px; padding-right: 96px; box-sizing: border-box; }
-.rm-profile-photo { position: absolute; top: 0; right: 0; width: 78px; height: 104px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }
+.resume-header { position: relative; }
+.rm-profile-photo { position: absolute; top: -12px; right: -32px; width: 66px; height: 88px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }
 @media (max-width: 520px) {
-  .resume-header { min-height: 0; padding-right: 0; }
   .rm-profile-photo { position: static; display: block; margin: 0 auto 16px; }
 }
 `
@@ -169,36 +168,28 @@ function getProfilePhoto(repo) {
 function injectProfilePhotoLatex(text, photoPath) {
   if (!photoPath || text.includes(PROFILE_PHOTO_MARK)) return text
   const source = `\\detokenize{${String(photoPath).replace(/\\/g, '/')}}`
-
-  if (/\\documentclass[^\n]*\{moderncv\}/.test(text)) {
-    if (/\\moderncvstyle\{banking\}/.test(text)) {
-      return text.replace(
-        /^(\\begin\{document\})/m,
-        `% ${PROFILE_PHOTO_MARK}\n$1\n\\noindent\\makebox[\\textwidth][r]{\\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{${source}}}\n\\vspace{-2.6cm}`,
-      )
-    }
-    return text.replace(
-      /^(\\begin\{document\})/m,
-      `% ${PROFILE_PHOTO_MARK}\n\\photo[70pt][0.4pt]{${source}}\n$1`,
-    )
-  }
-
-  const preamble = `${text.includes('\\usepackage{graphicx}') ? '' : '\\usepackage{graphicx}\n'}% ${PROFILE_PHOTO_MARK}\n`
-  let next = text.replace(/^(\\begin\{document\})/m, preamble + '$1')
-  const header = /(\\begin\{document\}\s*)\\begin\{center\}([\s\S]*?)\\end\{center\}/
-  if (header.test(next)) {
-    return next.replace(header, (_, start, body) => `${start}\\noindent\\begin{minipage}[c]{0.78\\textwidth}
-\\begin{center}${body}\\end{center}
-\\end{minipage}\\hfill
-\\begin{minipage}[c]{0.18\\textwidth}
-\\raggedleft\\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{${source}}
-\\end{minipage}`)
-  }
-
-  return next.replace(
-    /^(\\begin\{document\})/m,
-    `$1\n\\noindent\\makebox[\\textwidth][r]{\\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{${source}}}\n\\vspace{-2.6cm}`,
-  )
+  const packages = [
+    text.includes('\\usepackage{graphicx}') ? '' : '\\usepackage{graphicx}',
+    text.includes('\\usepackage{eso-pic}') ? '' : '\\usepackage{eso-pic}',
+  ].filter(Boolean).join('\n')
+  // ModernCV Casual 的姓名原生右对齐，照片放在相反角；其余模板右上角留白更充足。
+  const horizontalPosition = /\\moderncvstyle\{casual\}/.test(text)
+    ? '\\hspace*{0.2cm}%'
+    : '\\hspace*{\\dimexpr\\paperwidth-2.0cm\\relax}%'
+  const preamble = `${packages ? `${packages}\n` : ''}% ${PROFILE_PHOTO_MARK}
+\\newcommand{\\rmprofilephoto}[1]{%
+  \\AddToShipoutPictureFG*{%
+    \\AtPageUpperLeft{%
+      \\raisebox{-2.9cm}[0pt][0pt]{%
+        ${horizontalPosition}
+        \\includegraphics[width=1.8cm,height=2.4cm,keepaspectratio]{#1}%
+      }%
+    }%
+  }%
+}
+`
+  const next = text.replace(/^(\\begin\{document\})/m, preamble + '$1')
+  return next.replace(/^(\\begin\{document\})/m, `$1\n\\rmprofilephoto{${source}}`)
 }
 
 function injectProfilePhotoHtml(text, photo) {
@@ -301,7 +292,7 @@ async function buildJakeOriginal(repo, variant, env) {
     const doc = yaml.load(fs.readFileSync(ymlPath, 'utf8'))
     const photo = getProfilePhoto(repo)
     const photoPath = photo ? path.relative(outDir, photo.file).replace(/\\/g, '/') : null
-    const tex = renderJakeOriginal(doc, photoPath)
+    const tex = injectProfilePhotoLatex(renderJakeOriginal(doc), photoPath)
     fs.writeFileSync(texPath, tex, 'utf8')
   } catch (err) {
     return { ok: false, output: `Jake 原版模板渲染失败：${err.message}` }

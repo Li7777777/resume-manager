@@ -57,10 +57,9 @@ GITHUB_BADGE_TEX = (
 PROFILE_PHOTO_MARK = "rm-profile-photo"
 PROFILE_PHOTO_HTML_CSS = f"""
 /* {PROFILE_PHOTO_MARK} */
-.resume-header {{ position: relative; min-height: 108px; padding-right: 96px; box-sizing: border-box; }}
-.rm-profile-photo {{ position: absolute; top: 0; right: 0; width: 78px; height: 104px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }}
+.resume-header {{ position: relative; }}
+.rm-profile-photo {{ position: absolute; top: -12px; right: -32px; width: 66px; height: 88px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }}
 @media (max-width: 520px) {{
-  .resume-header {{ min-height: 0; padding-right: 0; }}
   .rm-profile-photo {{ position: static; display: block; margin: 0 auto 16px; }}
 }}
 """
@@ -104,47 +103,40 @@ def inject_profile_photo_tex(text, photo):
         return text
     _, relative, _ = photo
     source = r"\detokenize{../" + relative + "}"
-    if re.search(r"\\documentclass[^\n]*\{moderncv\}", text):
-        if r"\moderncvstyle{banking}" in text:
-            return re.sub(
-                r"^(\\begin\{document\})",
-                lambda match: (
-                    f"% {PROFILE_PHOTO_MARK}\n" + match.group(1) + "\n"
-                    + r"\noindent\makebox[\textwidth][r]{\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{"
-                    + source + "}}\n" + r"\vspace{-2.6cm}"
-                ),
-                text,
-                count=1,
-                flags=re.MULTILINE,
-            )
-        return re.sub(
-            r"^(\\begin\{document\})",
-            lambda match: f"% {PROFILE_PHOTO_MARK}\n\\photo[70pt][0.4pt]{{{source}}}\n" + match.group(1),
-            text,
-            count=1,
-            flags=re.MULTILINE,
-        )
-
-    preamble = ("" if r"\usepackage{graphicx}" in text else "\\usepackage{graphicx}\n") + f"% {PROFILE_PHOTO_MARK}\n"
-    text = re.sub(r"^(\\begin\{document\})", lambda match: preamble + match.group(1), text, count=1, flags=re.MULTILINE)
-    header = re.compile(r"(\\begin\{document\}\s*)\\begin\{center\}([\s\S]*?)\\end\{center\}")
-    if header.search(text):
-        return header.sub(
-            lambda match: (
-                match.group(1)
-                + r"\noindent\begin{minipage}[c]{0.78\textwidth}" + "\n"
-                + r"\begin{center}" + match.group(2) + r"\end{center}" + "\n"
-                + r"\end{minipage}\hfill" + "\n"
-                + r"\begin{minipage}[c]{0.18\textwidth}" + "\n"
-                + r"\raggedleft\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{" + source + "}\n"
-                + r"\end{minipage}"
-            ),
-            text,
-            count=1,
-        )
+    packages = []
+    if r"\usepackage{graphicx}" not in text:
+        packages.append(r"\usepackage{graphicx}")
+    if r"\usepackage{eso-pic}" not in text:
+        packages.append(r"\usepackage{eso-pic}")
+    # ModernCV Casual 的姓名原生右对齐，照片放在相反角；其余模板右上角留白更充足。
+    horizontal_position = (
+        r"\hspace*{0.2cm}%"
+        if r"\moderncvstyle{casual}" in text
+        else r"\hspace*{\dimexpr\paperwidth-2.0cm\relax}%"
+    )
+    preamble = ("\n".join(packages) + "\n" if packages else "") + (
+        f"% {PROFILE_PHOTO_MARK}\n"
+        "\\newcommand{\\rmprofilephoto}[1]{%\n"
+        "  \\AddToShipoutPictureFG*{%\n"
+        "    \\AtPageUpperLeft{%\n"
+        "      \\raisebox{-2.9cm}[0pt][0pt]{%\n"
+        f"        {horizontal_position}\n"
+        "        \\includegraphics[width=1.8cm,height=2.4cm,keepaspectratio]{#1}%\n"
+        "      }%\n"
+        "    }%\n"
+        "  }%\n"
+        "}\n"
+    )
+    text = re.sub(
+        r"^(\\begin\{document\})",
+        lambda match: preamble + match.group(1),
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
     return re.sub(
         r"^(\\begin\{document\})",
-        lambda match: match.group(1) + "\n" + r"\noindent\makebox[\textwidth][r]{\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{" + source + "}}\n" + r"\vspace{-2.6cm}",
+        lambda match: match.group(1) + "\n\\rmprofilephoto{" + source + "}",
         text,
         count=1,
         flags=re.MULTILINE,

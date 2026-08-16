@@ -171,7 +171,7 @@ variants:
 - 专业技能按细分方向（tags）分组：每个方向输出一行“方向：技能、技能”，跨方向技能同时出现在多行；优先罗列 `keywords`，为空时使用条目 `name`；yamlresume 模板自动追加的等级文字与正文列调整在构建后移除；
 - 兴趣爱好合并成一行，以 `、` 直接罗列，不输出冒号；
 - 项目 `description` 在组合输出中保留完整内容，不再人为截断；LaTeX 默认隐藏原始 URL，改为项目名称超链接；GitHub 项目名称后可附加 GitHub Logo、`owner/repo` 地址和 star 数徽章；
-- `basics.photo` 是仓内证件照路径（固定为 `assets/profile-photo.jpg` 或 `.png`）；组合器生成 YAML 时剥离该管理字段，再由 Jake 原版渲染器或 TeX/HTML 后处理注入页首，避免违反 YAMLResume 的严格 basics schema；
+- `basics.photo` 是仓内证件照路径（固定为 `assets/profile-photo.jpg` 或 `.png`）；组合器生成 YAML 时剥离该管理字段，再由 Jake 原版渲染器或 TeX/HTML 后处理注入不占正文排版宽度的独立页首浮层，避免违反 YAMLResume 的严格 basics schema，也不压缩原有文字；
 - `summary` 统一转字符串（数组 → `- 项` 列表）；
 - 空章节自动省略；`endDate` 空值输出为空（表示"至今"）；
 - 生成文件写入 `resumes/<variant>.yml`，带"自动生成，请勿手改"头注释。

@@ -79,7 +79,6 @@ const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
 \\usepackage{fancyhdr}
 \\usepackage[english]{babel}
 \\usepackage{tabularx}
-\\usepackage{graphicx}
 \\usepackage[a4paper,top=1.27cm,bottom=1.27cm,left=1.27cm,right=1.27cm]{geometry}
 
 \\usepackage{fontspec}
@@ -138,7 +137,7 @@ const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
 \\newcommand{\\resumeItemListEnd}{\\end{itemize}\\vspace{-5pt}}
 `
 
-function renderHeader(basics, photoPath = null) {
+function renderHeader(basics) {
   const name = escapeLatex(basics.name || '')
   const headline = escapeLatex(basics.headline || '')
   const phone = escapeLatex(basics.phone || '')
@@ -153,16 +152,7 @@ function renderHeader(basics, photoPath = null) {
   const lines = [`\\textbf{\\Huge \\scshape ${name}}\\vspace{2pt}`]
   if (headline) lines.push(`{\\small ${headline}}`)
   if (contact) lines.push(`{\\small ${contact}}`)
-  const header = `\\begin{center}\n${lines.join(' \\\\\n')}\n\\end{center}`
-  if (!photoPath) return header
-  const source = `\\detokenize{${String(photoPath).replace(/\\/g, '/')}}`
-  return `% rm-profile-photo
-\\noindent\\begin{minipage}[c]{0.78\\textwidth}
-${header}
-\\end{minipage}\\hfill
-\\begin{minipage}[c]{0.18\\textwidth}
-\\raggedleft\\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{${source}}
-\\end{minipage}`
+  return `\\begin{center}\n${lines.join(' \\\\\n')}\n\\end{center}`
 }
 
 function renderSummary(summary) {
@@ -286,7 +276,7 @@ function renderInterests(entries) {
 }
 
 // 从组合后的 YAML 对象生成完整 .tex
-export function renderJakeOriginal(resume, photoPath = null) {
+export function renderJakeOriginal(resume) {
   const content = resume?.content || {}
   const basics = content.basics || {}
   const order = resume?.layouts?.[0]?.sections?.order || Object.keys(content)
@@ -321,7 +311,7 @@ export function renderJakeOriginal(resume, photoPath = null) {
 
 \\begin{document}
 
-${renderHeader(basics, photoPath)}
+${renderHeader(basics)}
 
 ${sections.join('\n\n')}
 
