@@ -145,9 +145,9 @@ defaults:                 # 全局默认，可被类型覆盖
 variants:
   frontend:               # 类型标识 = 生成的 resumes/<name>.yml
     locale: zh-hans       # 可选，覆盖 defaults
-    fonts:                # 可选；中英文分别选择，值必须来自下方白名单
-      cjk: microsoft-yahei
-      latin: arial
+    fonts:                # 可选；中英文分别选择，保存系统字体家族原名
+      cjk: Microsoft YaHei
+      latin: Arial
     sectionOrder: [skills, work, projects, education]  # 原生章节顺序，未列出的按默认排后
     blocks:               # 各章节的选择规则
       basics: { include: true }        # basics 仅支持 include
@@ -174,10 +174,12 @@ variants:
 
 | 键 | 可选值 | 默认组件值 |
 | --- | --- | --- |
-| `fonts.cjk` | `microsoft-yahei`、`noto-sans-cjk`、`noto-serif-cjk`、`simsun` | `microsoft-yahei` |
-| `fonts.latin` | `linux-libertine`、`arial`、`times-new-roman`、`tex-gyre-heros`、`consolas` | `linux-libertine` |
+| `fonts.cjk` | 当前系统检测到且包含中文字形的字体家族名，如 `Microsoft YaHei`、`Noto Serif CJK SC` | 优先 `Microsoft YaHei`，否则取系统列表首项 |
+| `fonts.latin` | 当前系统检测到且包含拉丁字形的字体家族名，如 `Arial`、`Times New Roman` | 优先 `Arial`，否则取系统列表首项 |
 
-组合器只把 YAMLResume 支持的西文字体栈写入 `layouts[].typography.fontFamily`。构建后处理再根据同一配方设置 CJK 字体：LaTeX 分别调用 `setmainfont/setCJKmainfont`，HTML 使用带 Unicode 范围的本地 `@font-face`，因此英文、数字与中文字符能命中不同字体。所有预设均有 Windows 与开源字体回退，不下载远程字体；非法值会被白名单清除。未添加字体组件时保持模板原有西文字体，并继续使用 Microsoft YaHei 优先的现有中文回退。
+字体列表由管理端从当前操作系统读取：Windows 使用系统字体集合和实际字形映射，Linux/macOS 使用 `fontconfig`（不可用时退回安全基础集合）；“重新扫描”可在安装字体后刷新目录。配方保存稳定的字体家族原名，而不是本机文件路径。旧值 `microsoft-yahei`、`noto-sans-cjk`、`noto-serif-cjk`、`simsun`、`linux-libertine`、`arial`、`times-new-roman`、`tex-gyre-heros`、`consolas` 会自动转换为对应字体家族名。
+
+组合器只把 YAMLResume 支持的西文字体栈写入 `layouts[].typography.fontFamily`。构建后处理再根据同一配方设置 CJK 字体：LaTeX 分别调用 `setmainfont/setCJKmainfont`，HTML 使用带 Unicode 范围的本地 `@font-face`，因此英文、数字与中文字符能命中不同字体。每个系统字体会按衬线、无衬线或等宽类型附加本地跨平台回退，不下载远程字体；字体名经过长度和控制字符校验，不能注入 LaTeX/CSS。跨机器打开配方时，即使当前系统未安装所选字体，也会保留原值并在构建时使用回退。未添加字体组件时保持模板原有西文字体，并继续使用 Microsoft YaHei 优先的现有中文回退。
 
 ### 组合输出规则
 

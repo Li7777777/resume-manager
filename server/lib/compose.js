@@ -260,7 +260,8 @@ export function listVariants(repo) {
       const n = selectEntries(readCategory(repo, block), cfg).length
       if (n > 0) counts[block] = n
     }
-    return { name, ...v, matched: counts }
+    const fonts = normalizeFontSettings(v.fonts)
+    return { name, ...v, fonts: Object.keys(fonts).length ? fonts : undefined, matched: counts }
   })
 }
 

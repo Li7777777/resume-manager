@@ -31,6 +31,20 @@ function sendError(res, err) {
   res.status(400).json({ ok: false, error: String(err?.message || err) })
 }
 
+const repositoryOperationLocks = new Map()
+
+async function withRepositoryOperationLock(repo, task) {
+  const key = path.resolve(repo)
+  const previous = repositoryOperationLocks.get(key) || Promise.resolve()
+  const current = previous.catch(() => {}).then(task)
+  repositoryOperationLocks.set(key, current)
+  try {
+    return await current
+  } finally {
+    if (repositoryOperationLocks.get(key) === current) repositoryOperationLocks.delete(key)
+  }
+}
+
 /* ---------- 健康检查 ---------- */
 router.get('/health', (req, res) => {
   const repo = getRepoPath()
@@ -550,27 +564,30 @@ router.post('/resume-types', async (req, res) => {
   if (!TYPE_NAME_RE.test(name)) return res.json({ ok: false, error: '类型标识只能使用小写字母、数字、下划线和连字符，且必须以字母开头' })
   if (!TYPE_BRANCH_RE.test(branch)) return res.json({ ok: false, error: '分支必须以 resume/ 开头，并使用合法的 Git 分支字符' })
   try {
-    const doc = compose.loadVariantsDoc(repo)
-    doc.variants = doc.variants || {}
-    if (doc.variants[name]) return res.json({ ok: false, error: `简历类型 ${name} 已存在` })
-    const branches = await gitSvc.listBranches(repo)
-    if (branches.local.includes(branch)) return res.json({ ok: false, error: `Git 分支 ${branch} 已存在` })
-    await gitSvc.createBranch(repo, branch)
-    await gitSvc.checkoutBranch(repo, branch)
-    doc.variants[name] = {
-      blocks: {
-        basics: { include: 'all' },
-        work: { include: 'all' },
-        education: { include: 'all' },
-        projects: { include: 'all' },
-        skills: { include: 'all' },
-      },
-      sectionOrder: ['basics', 'skills', 'work', 'projects', 'education'],
-      layout: { engine: 'latex', template: doc.defaults?.layout?.template || 'moderncv-banking' },
-    }
-    compose.saveVariantsDoc(repo, doc)
-    managerState.setResumeTypeMeta(repo, name, { label: label || name, branch })
-    res.json({ ok: true, type: { name, label: label || name, branch, configured: true, current: true, local: true, remote: false } })
+    const response = await withRepositoryOperationLock(repo, async () => {
+      const doc = compose.loadVariantsDoc(repo)
+      doc.variants = doc.variants || {}
+      if (doc.variants[name]) return { ok: false, error: `简历类型 ${name} 已存在` }
+      const branches = await gitSvc.listBranches(repo)
+      if (branches.local.includes(branch)) return { ok: false, error: `Git 分支 ${branch} 已存在` }
+      await gitSvc.createBranch(repo, branch)
+      await gitSvc.checkoutBranch(repo, branch)
+      doc.variants[name] = {
+        blocks: {
+          basics: { include: 'all' },
+          work: { include: 'all' },
+          education: { include: 'all' },
+          projects: { include: 'all' },
+          skills: { include: 'all' },
+        },
+        sectionOrder: ['basics', 'skills', 'work', 'projects', 'education'],
+        layout: { engine: 'latex', template: doc.defaults?.layout?.template || 'moderncv-banking' },
+      }
+      compose.saveVariantsDoc(repo, doc)
+      managerState.setResumeTypeMeta(repo, name, { label: label || name, branch })
+      return { ok: true, type: { name, label: label || name, branch, configured: true, current: true, local: true, remote: false } }
+    })
+    res.json(response)
   } catch (err) {
     sendError(res, err)
   }
@@ -616,12 +633,16 @@ router.post('/resume-types/:name/checkout', async (req, res) => {
   if (!gitSyncGuard(res)) return
   const name = String(req.params.name || '')
   try {
-    const doc = compose.loadVariantsDoc(repo)
-    const branch = typeBranch(repo, name)
-    const branches = await gitSvc.listBranches(repo)
-    if (!branches.local.includes(branch)) return res.json({ ok: false, error: `类型分支 ${branch} 尚未创建` })
-    await gitSvc.checkoutBranch(repo, branch)
-    res.json({ ok: true, name, branch })
+    const response = await withRepositoryOperationLock(repo, async () => {
+      const doc = compose.loadVariantsDoc(repo)
+      if (!doc.variants?.[name]) return { ok: false, error: `简历类型 ${name} 不存在` }
+      const branch = typeBranch(repo, name)
+      const branches = await gitSvc.listBranches(repo)
+      if (!branches.local.includes(branch)) return { ok: false, error: `类型分支 ${branch} 尚未创建` }
+      await gitSvc.checkoutBranch(repo, branch)
+      return { ok: true, name, branch }
+    })
+    res.json(response)
   } catch (err) {
     sendError(res, err)
   }
@@ -702,7 +723,7 @@ router.post('/build', async (req, res) => {
     return res.json({ ok: false, error: '本地 PDF 编译已关闭，请在「设置」页开启后再构建' })
   }
   try {
-    const result = await builder.buildVariant(repo, variant)
+    const result = await withRepositoryOperationLock(repo, () => builder.buildVariant(repo, variant))
     if (result.ok) {
       // 兼容构建只生成临时产物；正式版必须从简历定制页显式发布。
       res.json({ ok: true, pdf: `/api/pdf/${variant}.pdf`, output: result.output })
@@ -764,7 +785,7 @@ router.post('/git/commit', async (req, res) => {
   const { message } = req.body || {}
   if (!message || !message.trim()) return res.json({ ok: false, error: '提交信息不能为空' })
   try {
-    const oid = await gitSvc.commitAll(repo, message.trim(), getSettings())
+    const oid = await withRepositoryOperationLock(repo, () => gitSvc.commitAll(repo, message.trim(), getSettings()))
     res.json({ ok: true, oid })
   } catch (err) {
     sendError(res, err)
@@ -786,7 +807,7 @@ router.post('/git/pull', async (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   try {
-    const r = await gitSvc.pullRemote(repo, getSettings())
+    const r = await withRepositoryOperationLock(repo, () => gitSvc.pullRemote(repo, getSettings()))
     res.json({ ok: true, ...r })
   } catch (err) {
     sendError(res, err)
@@ -1137,8 +1158,12 @@ router.get('/templates', (req, res) => {
   }
 })
 
-router.get('/font-options', (_req, res) => {
-  res.json({ ok: true, groups: getFontOptionsPayload() })
+router.get('/font-options', async (req, res) => {
+  try {
+    res.json({ ok: true, groups: await getFontOptionsPayload({ refresh: req.query.refresh === '1' }) })
+  } catch (err) {
+    sendError(res, err)
+  }
 })
 
 // 把模板应用到指定方向（实时切换：默认同时触发构建以便立即预览）
@@ -1147,27 +1172,30 @@ router.post('/template/apply', async (req, res) => {
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   const { variant, template, engine, build = true } = req.body || {}
   try {
-    const doc = compose.loadVariantsDoc(repo)
-    const v = doc.variants?.[variant]
-    if (!v) return res.json({ ok: false, error: `方向 ${variant} 不存在` })
-    const tpl = TEMPLATES.find((t) => t.id === template)
-    if (!tpl) return res.json({ ok: false, error: '未知模板' })
-    v.layout = { ...(v.layout || {}), engine: engine || tpl.engine, template: tpl.id }
-    compose.saveVariantsDoc(repo, doc)
-    // 用新 layout 重新组合该方向的简历 YAML，再构建产物
-    compose.generateAll(repo, [variant])
-    let preview = null
-    let output = ''
-    if (build && tpl.engine === 'latex') {
-      const r = await builder.buildVariant(repo, variant)
-      if (r.ok) preview = `/api/pdf/${variant}.pdf`
-      output = r.output
-    } else if (build && tpl.engine === 'html') {
-      const r = await builder.buildHtmlVariant(repo, variant)
-      if (r.ok) preview = `/api/html/${variant}`
-      output = r.output
-    }
-    res.json({ ok: true, variant, template: tpl.id, engine: tpl.engine, preview, output: output.slice(0, 300) })
+    const response = await withRepositoryOperationLock(repo, async () => {
+      const doc = compose.loadVariantsDoc(repo)
+      const v = doc.variants?.[variant]
+      if (!v) return { ok: false, error: `方向 ${variant} 不存在` }
+      const tpl = TEMPLATES.find((t) => t.id === template)
+      if (!tpl) return { ok: false, error: '未知模板' }
+      v.layout = { ...(v.layout || {}), engine: engine || tpl.engine, template: tpl.id }
+      compose.saveVariantsDoc(repo, doc)
+      // 用新 layout 重新组合该方向的简历 YAML，再构建产物
+      compose.generateAll(repo, [variant])
+      let preview = null
+      let output = ''
+      if (build && tpl.engine === 'latex') {
+        const result = await builder.buildVariant(repo, variant)
+        if (result.ok) preview = `/api/pdf/${variant}.pdf`
+        output = result.output
+      } else if (build && tpl.engine === 'html') {
+        const result = await builder.buildHtmlVariant(repo, variant)
+        if (result.ok) preview = `/api/html/${variant}`
+        output = result.output
+      }
+      return { ok: true, variant, template: tpl.id, engine: tpl.engine, preview, output: output.slice(0, 300) }
+    })
+    res.json(response)
   } catch (err) {
     sendError(res, err)
   }
@@ -1283,54 +1311,68 @@ function resolveCustomizedVariant(repo, doc, variant, body) {
   const current = doc.variants?.[variant]
   if (!current) throw new Error(`当前 YAML 中不存在简历类型 ${variant}`)
 
-  const hasVisualDraft = body.template !== undefined || body.sections !== undefined
+  const currentLayout = { ...(doc.defaults?.layout || {}), ...(current.layout || {}) }
+  const hasVisualDraft = body.template !== undefined || body.sections !== undefined || body.fonts !== undefined
   if (!hasVisualDraft) {
-    const layout = { ...(doc.defaults?.layout || {}), ...(current.layout || {}) }
-    const template = TEMPLATES.find((item) => item.id === layout.template)
-    if (!template) throw new Error(`当前 YAML 使用了未知模板 ${layout.template || '—'}`)
-    const engine = layout.engine || template.engine
+    const template = TEMPLATES.find((item) => item.id === currentLayout.template)
+    if (!template) throw new Error(`当前 YAML 使用了未知模板 ${currentLayout.template || '—'}`)
+    const engine = currentLayout.engine || template.engine
     if (engine !== 'latex' && engine !== 'html') throw new Error(`不支持的预览引擎 ${engine}`)
     return { next: current, template, engine }
   }
 
-  if (!Array.isArray(body.sections)) throw new Error('布局格式无效')
-  const template = TEMPLATES.find((item) => item.id === body.template)
+  const templateId = body.template === undefined ? currentLayout.template : body.template
+  const template = TEMPLATES.find((item) => item.id === templateId)
   if (!template) throw new Error('请选择有效的简历模板')
-  const allowed = new Set(store.getCategories(repo).map((category) => category.key))
-  const blocks = {}
-  const order = []
-  for (const section of body.sections) {
-    if (!allowed.has(section.key)) continue
-    if (section.mode === 'all') blocks[section.key] = { include: 'all' }
-    else if (section.mode === 'ids' && Array.isArray(section.ids) && section.ids.length) blocks[section.key] = { ids: [...new Set(section.ids)] }
-    else if (section.mode === 'tags' && Array.isArray(section.tags) && section.tags.length) blocks[section.key] = { tags: [...new Set(section.tags)] }
-    else continue
-    order.push(section.key)
+  const engine = body.template === undefined ? currentLayout.engine || template.engine : template.engine
+  if (engine !== 'latex' && engine !== 'html') throw new Error(`不支持的预览引擎 ${engine}`)
+
+  let blocks = current.blocks
+  let order = current.sectionOrder
+  if (body.sections !== undefined) {
+    if (!Array.isArray(body.sections)) throw new Error('布局格式无效')
+    const allowed = new Set(store.getCategories(repo).map((category) => category.key))
+    blocks = {}
+    order = []
+    for (const section of body.sections) {
+      if (!allowed.has(section.key)) continue
+      if (section.mode === 'all') blocks[section.key] = { include: 'all' }
+      else if (section.mode === 'ids' && Array.isArray(section.ids) && section.ids.length) blocks[section.key] = { ids: [...new Set(section.ids)] }
+      else if (section.mode === 'tags' && Array.isArray(section.tags) && section.tags.length) blocks[section.key] = { tags: [...new Set(section.tags)] }
+      else continue
+      order.push(section.key)
+    }
+    if (Object.keys(blocks).length === 0) throw new Error('布局为空，请先拖入内容')
+    // 基础信息始终用于简历头部，不受可视化正文章节拖拽影响。
+    blocks.basics = { include: true }
   }
-  if (Object.keys(blocks).length === 0) throw new Error('布局为空，请先拖入内容')
-  // 基础信息始终用于简历头部，不受可视化正文章节拖拽影响。
-  blocks.basics = { include: true }
+
   const currentWithoutOverrides = { ...current }
-  delete currentWithoutOverrides.overrides
+  if (body.template !== undefined || body.sections !== undefined) delete currentWithoutOverrides.overrides
   const fonts = body.fonts === undefined
     ? normalizeFontSettings(current.fonts)
     : normalizeFontSettings(body.fonts)
+  const layoutOverride = body.template === undefined
+    ? {}
+    : {
+        layout: {
+          engine: template.engine,
+          template: template.id,
+          typography: { fontSize: template.engine === 'html' ? '16px' : '11pt' },
+        },
+        htmlLayout: undefined,
+      }
 
   return {
     next: {
       ...currentWithoutOverrides,
-      layout: {
-        engine: template.engine,
-        template: template.id,
-        typography: { fontSize: template.engine === 'html' ? '16px' : '11pt' },
-      },
+      ...layoutOverride,
       fonts: Object.keys(fonts).length ? fonts : undefined,
-      htmlLayout: undefined,
       sectionOrder: order,
       blocks,
     },
     template,
-    engine: template.engine,
+    engine,
   }
 }
 
@@ -1394,38 +1436,41 @@ function customizedHandler({ persist, publish }) {
     const variant = String(req.body?.variant || '')
     if (!TYPE_NAME_RE.test(variant)) return res.json({ ok: false, error: '请选择有效的简历类型' })
     try {
-      const doc = compose.loadVariantsDoc(repo)
-      const expectedBranch = typeBranch(repo, variant)
-      const activeBranch = await gitSvc.currentBranchSafe(repo)
-      if (activeBranch !== expectedBranch) {
-        return res.json({ ok: false, error: `请先在「简历类型」页切换到 ${expectedBranch}，再定制该类型` })
-      }
-      const resolved = resolveCustomizedVariant(repo, doc, variant, req.body || {})
-      if (resolved.engine === 'latex' && getSettings().localPdfBuild === false) {
-        return res.json({ ok: false, error: '本地 PDF 编译已关闭，请在「设置」页开启后再生成 LaTeX 版本' })
-      }
-      if (persist) {
-        doc.variants[variant] = resolved.next
-        compose.saveVariantsDoc(repo, doc)
-      }
-      const { result, preview, release } = await renderCustomizedVariant(
-        repo,
-        variant,
-        resolved.next,
-        doc.defaults || {},
-        resolved.engine,
-        expectedBranch,
-        publish,
-      )
-      res.json({
-        ok: result.ok,
-        preview,
-        engine: resolved.engine,
-        template: resolved.template.id,
-        release: release ? { id: release.id, timestamp: release.timestamp } : null,
-        error: result.ok ? undefined : (result.output || (publish ? '正式版发布失败' : '预览构建失败')).slice(-500),
-        output: (result.output || '').slice(-500),
+      const response = await withRepositoryOperationLock(repo, async () => {
+        const doc = compose.loadVariantsDoc(repo)
+        const expectedBranch = typeBranch(repo, variant)
+        const activeBranch = await gitSvc.currentBranchSafe(repo)
+        if (activeBranch !== expectedBranch) {
+          return { ok: false, error: `请先在「简历类型」页切换到 ${expectedBranch}，再定制该类型` }
+        }
+        const resolved = resolveCustomizedVariant(repo, doc, variant, req.body || {})
+        if (resolved.engine === 'latex' && getSettings().localPdfBuild === false) {
+          return { ok: false, error: '本地 PDF 编译已关闭，请在「设置」页开启后再生成 LaTeX 版本' }
+        }
+        if (persist) {
+          doc.variants[variant] = resolved.next
+          compose.saveVariantsDoc(repo, doc)
+        }
+        const { result, preview, release } = await renderCustomizedVariant(
+          repo,
+          variant,
+          resolved.next,
+          doc.defaults || {},
+          resolved.engine,
+          expectedBranch,
+          publish,
+        )
+        return {
+          ok: result.ok,
+          preview,
+          engine: resolved.engine,
+          template: resolved.template.id,
+          release: release ? { id: release.id, timestamp: release.timestamp } : null,
+          error: result.ok ? undefined : (result.output || (publish ? '正式版发布失败' : '预览构建失败')).slice(-500),
+          output: (result.output || '').slice(-500),
+        }
       })
+      res.json(response)
     } catch (err) {
       sendError(res, err)
     }

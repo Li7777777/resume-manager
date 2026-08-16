@@ -128,12 +128,12 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/templates` | 全部官网 LaTeX/HTML 模板元数据；由简历定制页使用 |
-| GET | `/api/font-options` | 返回中文/英文字体白名单、默认项、样张和本地 CSS 回退栈 |
+| GET | `/api/font-options` | 从当前操作系统枚举可用中文/英文字体、默认项、样张和本地回退栈；`?refresh=1` 强制重新扫描 |
 | GET | `/api/html/:name` | 已生成的 HTML 简历预览（no-cache） |
 | GET | `/api/custom/state` | 获取最后简历类型、工作区模式、信息库分类，以及各类型的模板、章节、字体和画布组件顺序草稿（本机侧车） |
-| PUT | `/api/custom/state` | 自动保存并白名单清洗模板、章节、`fonts` 与 `componentOrder`；职业头衔和个人简介不作为定制草稿保存 |
-| POST | `/api/custom/preview` | `{variant, sections?, template?, fonts?}`：可视化模式按当前草稿、YAML 模式按落盘文件生成临时 HTML/PDF；不保存配方、不写时间轴 |
-| POST | `/api/custom/release` | `{variant, sections?, template?, fonts?}`：保存可视化配方（YAML 模式直接使用落盘配置）、归档不可变 HTML/PDF 正式版并写入时间轴 |
+| PUT | `/api/custom/state` | 自动保存并清洗模板、章节、安全字体家族名与 `componentOrder`；职业头衔和个人简介不作为定制草稿保存 |
+| POST | `/api/custom/preview` | `{variant, sections?, template?, fonts?}`：可视化模式按当前草稿、YAML 模式按落盘文件生成临时 HTML/PDF；支持仅覆盖字体等部分字段，不保存配方、不写时间轴 |
+| POST | `/api/custom/release` | `{variant, sections?, template?, fonts?}`：保存可视化配方（YAML 模式直接使用落盘配置）、归档不可变 HTML/PDF 正式版并写入时间轴；同一数据仓的构建、旧模板应用、Git 提交/拉取和类型分支切换串行执行，避免共享工作树/产物交叉覆盖 |
 | POST | `/api/custom/layout` | 旧客户端兼容端点，按“保存发布正式版”处理 |
 | POST | `/api/template/apply` | 旧客户端兼容端点；当前 UI 不再使用，模板入口已合并至简历定制 |
 
@@ -146,7 +146,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 ## 5. 前端结构要点
 
 - **页面切换**：`App.tsx` 用 state + hash 导航（`#/entries` 等可直达）；导航顺序为信息/类型/定制/PDF/Git，旧 `#/yaml` 自动重定向到 `#/customizer`，主内容区没有独立顶栏。
-- **定制工作区**：`pages/Customizer.tsx` 在可视化编排与 YAML 源码间切换，右侧预览常驻；信息库“字体”页签提供可点击/拖入的中文与英文字体组件，它们可与内容章节在同一画布排序，组件值和画布顺序随模板、章节一起自动保存到本机侧车；输出章节顺序会过滤字体组件，避免污染 `blocks/sectionOrder`。职业头衔和个人简介统一来自 `data/basics.yml`；`components/YamlWorkspace.tsx` 负责文件选择、未保存保护、CodeMirror 保存与同步状态。
+- **定制工作区**：`pages/Customizer.tsx` 在可视化编排与 YAML 源码间切换，右侧预览常驻；信息库“字体”页签提供可点击/拖入的中文与英文字体组件，字体列表由 `/api/font-options` 从当前系统扫描、按实际字形覆盖分类并支持搜索/重新扫描；字体组件可与内容章节在同一画布排序，组件值和画布顺序随模板、章节一起自动保存到本机侧车；输出章节顺序会过滤字体组件，避免污染 `blocks/sectionOrder`。职业头衔和个人简介统一来自 `data/basics.yml`；`components/YamlWorkspace.tsx` 负责文件选择、未保存保护、CodeMirror 保存与同步状态。
 - **组件库** `components/ui.tsx`：Button/Card/Field/Input/Textarea/Select/Modal/TagChip/TagInput/Badge/Spinner/EmptyState/relativeTime。
 - **表单字段配置** `pages/Entries.tsx` 的 `FIELDS`：新增分类时在此登记字段（type: text/textarea/select/tags/summary/markdown/achievements），并同步 `server/lib/data-store.js` 的 `CATEGORIES`；项目要点使用专用 Markdown 编辑器，快捷工具栏和 Tab 缩进保留多级列表源码。
 - **编辑器** `components/YamlEditor.tsx`：CodeMirror 6 + lang-yaml + oneDark。
@@ -159,7 +159,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - `listVariants(repo)`：解析 variants.yml + 计算每方向命中条目数（`matched`，供 UI 预览）。
 - `generateAll(repo, only?)`：组合并写出 `resumes/<name>.yml`（含头部注释，null → 空值）。
 - 字段映射：`company → name`；`achievements → summary`（按标签过滤）；列表 summary 转字符串；剥除元数据。
-- PDF/HTML 紧凑输出：技能按细分方向（tags）分组为“方向：技能、技能”每方向一行，兴趣合并为单行；项目 description 组合为无项目符号的“项目背景：xxx”，summary 按 Markdown 多级列表渲染并保留加粗/斜体，旧纯文本兼容为顶级列表；LaTeX 原始 URL 改为项目名链接；`server/lib/font-options.js` 与私有仓 `scripts/font_options.py` 维护同一字体白名单和跨平台回退，组合器写合法 `typography.fontFamily`，`builder.js` / `postprocess-output.py` 再分别设置 LaTeX CJK 字体和 HTML Unicode 字体范围；未选字体时保留 Microsoft YaHei 优先的现有中文行为。后处理同时移除 yamlresume 模板强加的等级文本，并让 ModernCV/Jake 的标题首列和项目背景按正文宽度自然换行。
+- PDF/HTML 紧凑输出：技能按细分方向（tags）分组为“方向：技能、技能”每方向一行，兴趣合并为单行；项目 description 组合为无项目符号的“项目背景：xxx”，summary 按 Markdown 多级列表渲染并保留加粗/斜体，旧纯文本兼容为顶级列表；LaTeX 原始 URL 改为项目名链接；`server/lib/system-fonts.js` 枚举当前操作系统字体，`server/lib/font-options.js` 与私有仓 `scripts/font_options.py` 对安全字体家族名维护一致的旧值迁移和跨平台回退，组合器写合法 `typography.fontFamily`，`builder.js` / `postprocess-output.py` 再分别设置 LaTeX CJK 字体和 HTML Unicode 字体范围；未选字体时保留 Microsoft YaHei 优先的现有中文行为。后处理同时移除 yamlresume 模板强加的等级文本，并让 ModernCV/Jake 的标题首列和项目背景按正文宽度自然换行。
 - 证件照：基础信息页把 JPEG/PNG 保存到私有仓 `assets/profile-photo.*`，`basics.photo` 只记录仓内路径；组合器剥离该字段以保持 YAMLResume schema 合法，`builder.js` / `postprocess-output.py` 再将照片作为不占正文排版宽度的独立页首浮层注入 ModernCV、Jake 和 HTML，Jake 原版也复用同一浮层逻辑；桌面/PDF 保持原文字几何，窄屏 HTML 将照片独立置于标题上方。
 - 自定义模板 `jake-original`（Jake 原版）：`server/lib/jake-original.js` 从组合后的 YAML 直接生成 jakegut/resume.tex 风格 LaTeX（居中头部 + `\titlerule` 分节 + tabular* 日期右对齐 + 项目单行标题），`buildVariant` 检测到该模板时跳过 yamlresume 直接用 xelatex 编译。
 - GitHub star 徽章：`server/lib/github-stars.js` 解析项目 URL，在项目名后追加 GitHub Logo + `owner/repo` 地址 + star 数徽章。**仅「保存发布正式版」时拉取 GitHub API 并写本机缓存** `~/.resume-manager/github-stars.json`（预览/组合只读缓存，不访问网络）；0 star 仍显示地址但不显示数量；项目背景 description 保留完整内容；设置页可关（`starsEnabled`，默认开）。
@@ -177,7 +177,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 7. Git 看板：改文件 → 状态出现 → 提交 → 推送（测试用一次性临时私有仓）；
 8. 设置连接空目录：生成骨架 → 目录结构核对 → `yamlresume validate` 通过；
 9. PDF 输出：生成包含长项目描述、技能和兴趣的 ModernCV 简历，确认 `.log` 无 `Overfull/Underfull`，技能按方向分组（如 `Agent：xxx、xxx`）分行、兴趣单行且均无模板等级/冒号；项目 `cventry` 中的“关键字”已改名为“技术栈”并另起一行，不被后处理误伤；项目/教育名称与日期同一行、日期右对齐；
-10. 字体输出：用不同的 `fonts.cjk/latin` 构建 ModernCV Banking/Casual/Classic、Jake、Jake Original、Calm、VS Code；PDF 用 `pdffonts` 核对两类字体嵌入，HTML 用浏览器平台字体信息核对中英字形分别命中，JS/Python 组合与最终 TeX/HTML 保持一致。
+10. 字体输出：确认 `/api/font-options` 返回系统字体全集中的中文/拉丁可用家族，搜索选择和强制重新扫描生效；用含空格、连字符及下划线的系统字体名构建 ModernCV Banking/Casual/Classic、Jake、Jake Original、Calm、VS Code；PDF 用 `pdffonts` 核对两类字体嵌入，HTML 用浏览器平台字体信息核对中英字形分别命中，旧短 ID 自动迁移，恶意字体名被清除，JS/Python 组合与最终 TeX/HTML 保持一致；并发发布同一类型的两组字体，确认两个归档产物互不污染。
 
 ## 8. 隐私红线（评审时检查）
 

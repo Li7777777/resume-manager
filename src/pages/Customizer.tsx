@@ -18,12 +18,15 @@ import {
   PackageCheck,
   Tag,
   Type,
+  RefreshCw,
+  Search,
 } from 'lucide-react'
 import { api } from '../api'
 import type {
   Entry,
   ResumeFontGroup,
   ResumeFontKind,
+  ResumeFontOption,
   ResumeFontSettings,
   Variant,
 } from '../types'
@@ -79,6 +82,66 @@ interface CustomizerMemory {
   workspaceMode?: 'visual' | 'yaml'
   category?: string
   drafts?: Record<string, CustomizerDraft>
+}
+
+interface SystemFontPickerProps {
+  kind: ResumeFontKind
+  label: string
+  value: string
+  options: ResumeFontOption[]
+  disabled: boolean
+  onChange: (value: string) => void
+}
+
+function SystemFontPicker({ kind, label, value, options, disabled, onChange }: SystemFontPickerProps) {
+  const [input, setInput] = useState(value)
+  const listId = `system-fonts-${kind}`
+
+  useEffect(() => setInput(value), [value])
+
+  const commitExactMatch = (candidate: string) => {
+    const normalized = candidate.trim()
+    const match = options.find((option) => option.id.localeCompare(normalized, undefined, { sensitivity: 'base' }) === 0)
+    if (!match) return false
+    setInput(match.id)
+    if (match.id !== value) onChange(match.id)
+    return true
+  }
+
+  return (
+    <div className="relative min-w-0">
+      <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600" />
+      <input
+        type="search"
+        list={listId}
+        value={input}
+        disabled={disabled}
+        draggable={false}
+        data-font-picker={kind}
+        aria-label={label}
+        autoComplete="off"
+        spellCheck={false}
+        onChange={(event) => setInput(event.target.value)}
+        onBlur={() => {
+          if (!commitExactMatch(input)) setInput(value)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            if (!commitExactMatch(input)) setInput(value)
+          } else if (event.key === 'Escape') {
+            setInput(value)
+            event.currentTarget.blur()
+          }
+        }}
+        className="h-9 w-full min-w-0 rounded-md border border-zinc-700 bg-zinc-900 py-2 pl-8 pr-2 text-xs text-zinc-200 outline-none transition placeholder:text-zinc-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+        placeholder={`搜索${label}`}
+      />
+      <datalist id={listId}>
+        {options.map((option) => <option key={option.id} value={option.id}>{option.description}</option>)}
+      </datalist>
+    </div>
+  )
 }
 
 function entryTitle(cat: string, entry: Entry) {
@@ -150,6 +213,7 @@ export default function Customizer() {
   const [selectedType, setSelectedType] = useState('')
   const [templates, setTemplates] = useState<TemplateItem[]>([])
   const [fontGroups, setFontGroups] = useState<ResumeFontGroup[]>([])
+  const [fontCatalogLoading, setFontCatalogLoading] = useState(false)
   const [template, setTemplate] = useState('moderncv-banking')
   const [sections, setSections] = useState<Section[]>([])
   const [fonts, setFonts] = useState<ResumeFontSettings>({})
@@ -324,6 +388,20 @@ export default function Customizer() {
   const canCustomize = !!selected?.current && selected.configured
   const canEditVisual = canCustomize && !yamlDirty
   const libraryCategories = [...cats, TYPOGRAPHY_CATEGORY]
+
+  const refreshSystemFonts = async () => {
+    setFontCatalogLoading(true)
+    try {
+      const data = await api.get<{ groups: ResumeFontGroup[] }>('/api/font-options?refresh=1')
+      setFontGroups(data.groups)
+      const summary = data.groups.map((group) => `${group.label} ${group.options.length}`).join('，')
+      toast('success', `系统字体已更新：${summary}`)
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : '系统字体扫描失败')
+    } finally {
+      setFontCatalogLoading(false)
+    }
+  }
 
   const invalidatePreview = () => {
     setPreviewUrl(null)
@@ -782,6 +860,19 @@ export default function Customizer() {
           <div className="min-h-0 flex-1 overflow-auto p-2">
             {cat === TYPOGRAPHY_CATEGORY.key ? (
               <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2 px-1 pb-1 text-[10px] text-zinc-600">
+                  <span className="min-w-0 truncate">{fontGroups.length ? `系统 ${fontGroups[0].systemCount} · ${fontGroups.map((group) => `${group.label}可用 ${group.options.length}`).join(' · ')}` : '正在读取系统字体'}</span>
+                  <button
+                    type="button"
+                    title="重新扫描系统字体"
+                    aria-label="重新扫描系统字体"
+                    disabled={fontCatalogLoading}
+                    onClick={refreshSystemFonts}
+                    className="rounded p-1 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <RefreshCw size={12} className={fontCatalogLoading ? 'animate-spin' : ''} />
+                  </button>
+                </div>
                 {fontGroups.map((group) => {
                   const active = !!fonts[group.kind]
                   const defaultOption = group.options.find((option) => option.id === group.defaultId)
@@ -813,7 +904,7 @@ export default function Customizer() {
                         {active && <Badge tone="emerald">已添加</Badge>}
                         <GripVertical size={13} className="ml-auto text-zinc-600" />
                       </div>
-                      <p className="mt-2 text-[11px] text-zinc-500">{group.description}</p>
+                      <p className="mt-2 text-[11px] text-zinc-500">{group.description} · {group.options.length} 个可用系统字体</p>
                       <p
                         className="mt-2 truncate border-t border-zinc-800 pt-2 text-sm text-zinc-300"
                         style={{ fontFamily: defaultOption?.cssFamilies.join(', ') }}
@@ -971,7 +1062,15 @@ export default function Customizer() {
                     const kind = itemId.slice(5) as ResumeFontKind
                     const group = fontGroups.find((item) => item.kind === kind)
                     if (!group || !fonts[kind]) return null
-                    const selectedOption = group.options.find((option) => option.id === fonts[kind]) || group.options[0]
+                    const availableOption = group.options.find((option) => option.id === fonts[kind])
+                    const selectedOption: ResumeFontOption = availableOption || {
+                      id: fonts[kind],
+                      label: fonts[kind],
+                      description: '当前系统未检测到，构建时使用本地回退',
+                      sample: kind === 'cjk' ? '中文排版示例' : 'Typography Aa 123',
+                      cssFamilies: [`"${fonts[kind]}"`],
+                    }
+                    const pickerOptions = availableOption ? group.options : [selectedOption, ...group.options]
                     return (
                       <div key={itemId} data-font-component={kind} {...sharedProps} className={sharedClass}>
                         {dropIndicator}
@@ -987,16 +1086,14 @@ export default function Customizer() {
                           </div>
                         </div>
                         <div className="mt-2 grid min-w-0 gap-2 pl-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-center">
-                          <Select
+                          <SystemFontPicker
+                            kind={kind}
+                            label={group.label}
                             value={fonts[kind]}
+                            options={pickerOptions}
                             disabled={!canEditVisual}
-                            aria-label={group.label}
-                            draggable={false}
-                            onChange={(event) => commitFonts({ ...fonts, [kind]: event.target.value })}
-                            className="min-w-0"
-                          >
-                            {group.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                          </Select>
+                            onChange={(value) => commitFonts({ ...fonts, [kind]: value })}
+                          />
                           <div className="min-w-0 rounded border border-zinc-800 bg-zinc-900/70 px-2.5 py-2">
                             <p className="truncate text-sm text-zinc-200" style={{ fontFamily: selectedOption?.cssFamilies.join(', ') }}>{selectedOption?.sample}</p>
                             <p className="mt-0.5 truncate text-[10px] text-zinc-600">{selectedOption?.description}</p>

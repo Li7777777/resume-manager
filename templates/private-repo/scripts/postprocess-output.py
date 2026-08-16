@@ -83,23 +83,29 @@ def github_badge_html(repo, stars):
     )
 
 
+def latex_font_name(family):
+    return f"\\detokenize{{{family}}}"
+
+
 def latex_font_commands(families, commands):
     lines = []
     for family in reversed(families):
-        body = "".join(f"\\{command}{{{family}}}" for command in commands)
-        lines.append(f"\\IfFontExistsTF{{{family}}}{{{body}}}{{}}")
+        name = latex_font_name(family)
+        body = "".join(f"\\{command}{{{name}}}" for command in commands)
+        lines.append(f"\\IfFontExistsTF{{{name}}}{{{body}}}{{}}")
     return "\n".join(lines)
 
 
 def latex_cjk_font_commands(families):
     lines = []
     for family in reversed(families):
+        name = latex_font_name(family)
         options = "[AutoFakeBold,AutoFakeSlant]"
         body = (
-            f"\\setCJKmainfont{options}{{{family}}}"
-            f"\\setCJKsansfont{options}{{{family}}}"
+            f"\\setCJKmainfont{options}{{{name}}}"
+            f"\\setCJKsansfont{options}{{{name}}}"
         )
-        lines.append(f"\\IfFontExistsTF{{{family}}}{{{body}}}{{}}")
+        lines.append(f"\\IfFontExistsTF{{{name}}}{{{body}}}{{}}")
     return "\n".join(lines)
 
 
@@ -147,10 +153,7 @@ def inject_font_preferences_html(text, fonts, template):
     for family in config["latinFamilies"] + config["cjkFamilies"]:
         if family not in fallback_families:
             fallback_families.append(family)
-    fallback = ", ".join(
-        f'"{family}"' if any(char.isspace() for char in family) else family
-        for family in fallback_families
-    )
+    fallback = ", ".join(f'"{family}"' for family in fallback_families)
     css = (
         f"\n/* {FONT_PREFERENCES_MARK} */\n"
         '@font-face {\n  font-family: "Resume Manager Selected";\n'

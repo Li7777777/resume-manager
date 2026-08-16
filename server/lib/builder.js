@@ -132,12 +132,20 @@ function normalizeGroupedLatex(text, photoPath = null, fonts = {}) {
 
 const FONT_PREFERENCES_MARK = 'rm-font-preferences'
 
+const latexFontName = (family) => `\\detokenize{${family}}`
+
 function latexFontCommands(families, commands) {
-  return [...families].reverse().map((family) => `\\IfFontExistsTF{${family}}{${commands.map((command) => `\\${command}{${family}}`).join('')}}{}`).join('\n')
+  return [...families].reverse().map((family) => {
+    const name = latexFontName(family)
+    return `\\IfFontExistsTF{${name}}{${commands.map((command) => `\\${command}{${name}}`).join('')}}{}`
+  }).join('\n')
 }
 
 function latexCjkFontCommands(families) {
-  return [...families].reverse().map((family) => `\\IfFontExistsTF{${family}}{\\setCJKmainfont[AutoFakeBold,AutoFakeSlant]{${family}}\\setCJKsansfont[AutoFakeBold,AutoFakeSlant]{${family}}}{}`).join('\n')
+  return [...families].reverse().map((family) => {
+    const name = latexFontName(family)
+    return `\\IfFontExistsTF{${name}}{\\setCJKmainfont[AutoFakeBold,AutoFakeSlant]{${name}}\\setCJKsansfont[AutoFakeBold,AutoFakeSlant]{${name}}}{}`
+  }).join('\n')
 }
 
 function injectFontPreferencesLatex(text, fonts) {
@@ -164,7 +172,7 @@ function injectFontPreferencesHtml(text, fonts, template) {
   const localSources = (families) => families.map((family) => `local("${family}")`).join(', ')
   const fallbackFamilies = [...config.latinFamilies, ...config.cjkFamilies]
     .filter((family, index, list) => list.indexOf(family) === index)
-    .map((family) => (/\s/.test(family) ? `"${family}"` : family))
+    .map((family) => `"${family}"`)
     .join(', ')
   const css = `
 /* ${FONT_PREFERENCES_MARK} */

@@ -105,9 +105,18 @@ await page.evaluate(() => {
   if (category instanceof HTMLButtonElement) category.click()
 })
 await sleep(300)
-const fontLibraryOk = await page.evaluate(() => {
+const fontLibraryOk = await page.evaluate(async () => {
   const components = [...document.querySelectorAll('[data-font-library]')]
-  return components.length === 2 && ['cjk', 'latin'].every((kind) => components.some((component) => component.getAttribute('data-font-library') === kind))
+  const response = await fetch('/api/font-options')
+  const data = await response.json()
+  const groups = data.groups || []
+  return components.length === 2
+    && ['cjk', 'latin'].every((kind) => components.some((component) => component.getAttribute('data-font-library') === kind))
+    && groups.length === 2
+    && groups.every((group) => group.options.length > 0
+      && group.systemCount >= group.options.length
+      && group.options.some((option) => option.id === group.defaultId)
+      && new Set(group.options.map((option) => option.id)).size === group.options.length)
 })
 console.log('字体组件库:', fontLibraryOk)
 await page.evaluate(() => {
@@ -129,7 +138,7 @@ if (firstLibraryEntry) {
 console.log('信息库选择:', selectionBefore.includes('拖入所有') && selectionFlow.available && selectionFlow.selected && selectionFlow.restored)
 const fontStateBeforeYaml = await page.evaluate(() => [...document.querySelectorAll('[data-customizer-canvas] [data-font-component], [data-customizer-canvas] [data-section-key]')].map((element) => ({
   id: element.hasAttribute('data-font-component') ? `font:${element.getAttribute('data-font-component')}` : `section:${element.getAttribute('data-section-key')}`,
-  value: element.querySelector('select')?.value || null,
+  value: element.querySelector('[data-font-picker]')?.value || null,
 })))
 const releasesBeforePreview = await page.evaluate(async () => {
   const result = await (await fetch('/api/history?variant=main&limit=50')).json()
@@ -177,7 +186,7 @@ await page.evaluate(() => {
 await sleep(400)
 const fontStateAfterYaml = await page.evaluate(() => [...document.querySelectorAll('[data-customizer-canvas] [data-font-component], [data-customizer-canvas] [data-section-key]')].map((element) => ({
   id: element.hasAttribute('data-font-component') ? `font:${element.getAttribute('data-font-component')}` : `section:${element.getAttribute('data-section-key')}`,
-  value: element.querySelector('select')?.value || null,
+  value: element.querySelector('[data-font-picker]')?.value || null,
 })))
 const fontStatePreserved = JSON.stringify(fontStateAfterYaml) === JSON.stringify(fontStateBeforeYaml)
 console.log('YAML 往返保留字体:', fontStatePreserved)

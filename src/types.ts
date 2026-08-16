@@ -49,6 +49,9 @@ export interface ResumeFontGroup {
   label: string
   description: string
   defaultId: string
+  source: 'windows' | 'fontconfig' | 'fallback'
+  detectedAt: string
+  systemCount: number
   options: ResumeFontOption[]
 }
 
