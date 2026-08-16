@@ -21,6 +21,8 @@ import {
   EyeOff,
   PlusCircle,
   GripVertical,
+  ImagePlus,
+  Upload,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Category, Entry } from '../types'
@@ -822,10 +824,90 @@ function CategoryManagerModal({
 
 /* ---------- 基础信息表单（独立单条） ---------- */
 function BasicsForm({ initial, onSave }: { initial: Entry; onSave: (e: Entry) => void }) {
+  const toast = useToast()
+  const inputRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState<Entry>(() => ({ ...initial }))
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoRevision, setPhotoRevision] = useState(() => Date.now())
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }))
+  const photo = typeof form.photo === 'string' ? form.photo : ''
+
+  const uploadPhoto = async (file?: File) => {
+    if (!file) return
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      toast('warn', '证件照仅支持 JPEG 或 PNG')
+      return
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toast('warn', '证件照不能超过 4 MB')
+      return
+    }
+    setUploadingPhoto(true)
+    try {
+      const result = await api.upload<{ photo: string }>('/api/entries/basics/photo', file)
+      set('photo', result.photo)
+      setPhotoRevision(Date.now())
+      toast('success', photo ? '证件照已更换' : '证件照已上传')
+    } catch (error: any) {
+      toast('error', error.message)
+    } finally {
+      setUploadingPhoto(false)
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  const removePhoto = async () => {
+    setUploadingPhoto(true)
+    try {
+      await api.del('/api/entries/basics/photo')
+      setForm((current) => {
+        const { photo: ignoredPhoto, ...next } = current
+        return next
+      })
+      setPhotoRevision(Date.now())
+      toast('success', '证件照已删除')
+    } catch (error: any) {
+      toast('error', error.message)
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
+      <Field label="证件照" hint="JPEG / PNG，最大 4 MB">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex aspect-[3/4] w-28 shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-700 bg-zinc-950">
+            {photo ? (
+              <img
+                key={photoRevision}
+                src={`/api/entries/basics/photo?v=${photoRevision}`}
+                alt="证件照预览"
+                className="h-full w-full object-cover object-top"
+              />
+            ) : (
+              <ImagePlus size={24} className="text-zinc-600" />
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+              className="hidden"
+              onChange={(event) => void uploadPhoto(event.target.files?.[0])}
+            />
+            <Button type="button" loading={uploadingPhoto} onClick={() => inputRef.current?.click()}>
+              <Upload size={14} /> {photo ? '更换照片' : '上传照片'}
+            </Button>
+            {photo && (
+              <Button type="button" variant="danger" disabled={uploadingPhoto} onClick={() => void removePhoto()}>
+                <Trash2 size={14} /> 删除照片
+              </Button>
+            )}
+          </div>
+        </div>
+      </Field>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="姓名" required><Input value={(form.name as string) || ''} onChange={(e) => set('name', e.target.value)} /></Field>
         <Field label="职位头衔"><Input value={(form.headline as string) || ''} onChange={(e) => set('headline', e.target.value)} /></Field>

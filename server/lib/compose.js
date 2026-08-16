@@ -116,6 +116,8 @@ function compactInterests(items) {
 
 function composeBasics(repo) {
   const b = { ...readCategory(repo, 'basics') }
+  // photo 是管理端构建元数据；YAMLResume basics schema 不接受该字段，由渲染后处理注入。
+  delete b.photo
   b.summary = toSummaryString(b.summary)
   return Object.keys(b).length ? b : null
 }

@@ -1,4 +1,5 @@
 # 最小示例：先替换姓名、职位和联系方式即可看到预览。
+# 在管理端「基础信息」上传证件照后，会自动写入：photo: assets/profile-photo.jpg
 name: 示例用户
 headline: 软件工程师
 email: example@example.com

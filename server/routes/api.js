@@ -15,6 +15,7 @@ import { ghApi, ghDownload, parseRemoteUrl } from '../lib/github-api.js'
 import AdmZip from 'adm-zip'
 import { recordBuild, listBuilds } from '../lib/build-history.js'
 import { TEMPLATES, ENGINE_LABELS } from '../lib/templates.js'
+import { deleteProfilePhotoFiles, resolveProfilePhoto, writeProfilePhoto } from '../lib/profile-photo.js'
 
 const router = express.Router()
 const TEMPLATE_DIR = path.resolve('templates/private-repo')
@@ -339,6 +340,50 @@ router.post('/tags/sub-delete', (req, res) => {
 })
 
 /* ---------- 信息条目 ---------- */
+const profilePhotoBody = express.raw({ type: ['image/jpeg', 'image/png'], limit: '4mb' })
+
+router.get('/entries/basics/photo', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  try {
+    const photo = resolveProfilePhoto(repo, store.readCategory(repo, 'basics').photo)
+    if (!photo) return res.status(404).json({ ok: false, error: '尚未上传证件照' })
+    res.type(photo.mime)
+    res.set('Cache-Control', 'no-store')
+    res.sendFile(photo.file)
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+router.post('/entries/basics/photo', profilePhotoBody, (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  try {
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new Error('请选择证件照文件')
+    const photo = writeProfilePhoto(repo, req.body)
+    const basics = store.readCategory(repo, 'basics')
+    const entry = store.upsertEntry(repo, 'basics', { ...basics, photo: photo.relative })
+    res.json({ ok: true, photo: photo.relative, entry })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+router.delete('/entries/basics/photo', (req, res) => {
+  const repo = getRepoPath()
+  if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
+  try {
+    deleteProfilePhotoFiles(repo)
+    const basics = store.readCategory(repo, 'basics')
+    const { photo: ignoredPhoto, ...next } = basics
+    const entry = store.upsertEntry(repo, 'basics', next)
+    res.json({ ok: true, entry })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
 router.get('/entries', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })

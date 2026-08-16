@@ -158,6 +158,8 @@ def compact_interests(items):
 
 def compose_basics():
     b = strip_meta(load(os.path.join(DATA_DIR, "basics.yml")))
+    # photo 是管理端构建元数据；YAMLResume basics schema 不接受该字段，由后处理注入。
+    b.pop("photo", None)
     if isinstance(b.get("summary"), list):
         b["summary"] = to_summary_string(b["summary"])
     return b if b else None

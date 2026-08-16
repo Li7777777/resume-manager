@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Normalize grouped skill rendering after yamlresume generates TeX/HTML."""
 from pathlib import Path
+import base64
 import re
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "resumes"
@@ -51,6 +54,18 @@ GITHUB_BADGE_TEX = (
 )
 
 
+PROFILE_PHOTO_MARK = "rm-profile-photo"
+PROFILE_PHOTO_HTML_CSS = f"""
+/* {PROFILE_PHOTO_MARK} */
+.resume-header {{ position: relative; min-height: 108px; padding-right: 96px; box-sizing: border-box; }}
+.rm-profile-photo {{ position: absolute; top: 0; right: 0; width: 78px; height: 104px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }}
+@media (max-width: 520px) {{
+  .resume-header {{ min-height: 0; padding-right: 0; }}
+  .rm-profile-photo {{ position: static; display: block; margin: 0 auto 16px; }}
+}}
+"""
+
+
 def github_badge_html(repo, stars):
     github_logo = '<svg aria-hidden="true" viewBox="0 0 16 16" width="11" height="11" fill="currentColor" style="vertical-align:middle;margin-right:4px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.2.46.46.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>'
     star_logo = '<svg aria-hidden="true" viewBox="0 0 16 16" width="10" height="10" fill="currentColor" style="vertical-align:middle;margin-right:4px;"><path d="m8 0 2.47 5.01 5.53.81-4 3.9.94 5.51L8 12.63l-4.94 2.6L4 9.72 0 5.82l5.53-.81L8 0z"/></svg>'
@@ -66,6 +81,88 @@ def github_badge_html(repo, stars):
         'color:#fff;padding:4px 6px;border-radius:3px 0 0 3px;">'
         + github_logo + repo + '</span>' + right + '</span>'
     )
+
+def get_profile_photo():
+    basics_file = ROOT / "data" / "basics.yml"
+    try:
+        basics = yaml.safe_load(basics_file.read_text(encoding="utf-8")) or {}
+        relative = str(basics.get("photo") or "").replace("\\", "/")
+        if not re.fullmatch(r"assets/profile-photo\.(jpg|png)", relative):
+            return None
+        photo = (ROOT / relative).resolve()
+        photo.relative_to(ROOT.resolve())
+        if not photo.is_file():
+            return None
+        mime = "image/png" if photo.suffix.lower() == ".png" else "image/jpeg"
+        return photo, relative, mime
+    except (OSError, ValueError, yaml.YAMLError):
+        return None
+
+
+def inject_profile_photo_tex(text, photo):
+    if not photo or PROFILE_PHOTO_MARK in text:
+        return text
+    _, relative, _ = photo
+    source = r"\detokenize{../" + relative + "}"
+    if re.search(r"\\documentclass[^\n]*\{moderncv\}", text):
+        if r"\moderncvstyle{banking}" in text:
+            return re.sub(
+                r"^(\\begin\{document\})",
+                lambda match: (
+                    f"% {PROFILE_PHOTO_MARK}\n" + match.group(1) + "\n"
+                    + r"\noindent\makebox[\textwidth][r]{\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{"
+                    + source + "}}\n" + r"\vspace{-2.6cm}"
+                ),
+                text,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        return re.sub(
+            r"^(\\begin\{document\})",
+            lambda match: f"% {PROFILE_PHOTO_MARK}\n\\photo[70pt][0.4pt]{{{source}}}\n" + match.group(1),
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+
+    preamble = ("" if r"\usepackage{graphicx}" in text else "\\usepackage{graphicx}\n") + f"% {PROFILE_PHOTO_MARK}\n"
+    text = re.sub(r"^(\\begin\{document\})", lambda match: preamble + match.group(1), text, count=1, flags=re.MULTILINE)
+    header = re.compile(r"(\\begin\{document\}\s*)\\begin\{center\}([\s\S]*?)\\end\{center\}")
+    if header.search(text):
+        return header.sub(
+            lambda match: (
+                match.group(1)
+                + r"\noindent\begin{minipage}[c]{0.78\textwidth}" + "\n"
+                + r"\begin{center}" + match.group(2) + r"\end{center}" + "\n"
+                + r"\end{minipage}\hfill" + "\n"
+                + r"\begin{minipage}[c]{0.18\textwidth}" + "\n"
+                + r"\raggedleft\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{" + source + "}\n"
+                + r"\end{minipage}"
+            ),
+            text,
+            count=1,
+        )
+    return re.sub(
+        r"^(\\begin\{document\})",
+        lambda match: match.group(1) + "\n" + r"\noindent\makebox[\textwidth][r]{\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{" + source + "}}\n" + r"\vspace{-2.6cm}",
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+
+def inject_profile_photo_html(text, photo):
+    if not photo or PROFILE_PHOTO_MARK in text:
+        return text
+    photo_path, _, mime = photo
+    encoded = base64.b64encode(photo_path.read_bytes()).decode("ascii")
+    image = f'<!-- {PROFILE_PHOTO_MARK} --><img class="rm-profile-photo" src="data:{mime};base64,{encoded}" alt="证件照">'
+    if "</style>" in text:
+        text = text.replace("</style>", PROFILE_PHOTO_HTML_CSS + "</style>", 1)
+    else:
+        text = text.replace("</head>", f"<style>{PROFILE_PHOTO_HTML_CSS}</style>\n</head>", 1)
+    return text.replace('<header class="resume-header">', '<header class="resume-header">\n      ' + image, 1)
+
 
 # ModernCV 补丁：1) cvitem 正文改 raggedright 防长行溢出；2) cventry 名称与时间同一行、时间右对齐。仅 moderncv 文档注入。
 CVITEM_PATCH_MARK = "rm-moderncv-patches"
@@ -106,7 +203,7 @@ def rewrite(path, transform):
     return True
 
 
-def normalize_tex(text):
+def normalize_tex(text, photo=None):
     if CJK_FONT_PATCH_MARK not in text:
         text = re.sub(
             r"^(\\begin\{document\})",
@@ -133,10 +230,10 @@ def normalize_tex(text):
                 text,
                 flags=re.MULTILINE,
             )
-    return text
+    return inject_profile_photo_tex(text, photo)
 
 
-def normalize_html(text):
+def normalize_html(text, photo=None):
     text = HTML_SKILL_LEVEL.sub(r"\1", text)
     # HTML 输出优先使用 Windows 中文字体，其他系统通过 sans-serif 回退。
     text = re.sub(
@@ -147,16 +244,18 @@ def normalize_html(text):
     # 项目关键字改名为“技术栈”（HTML 中已是独立行）。
     text = HTML_KEYWORDS_LABEL.sub("<span>技术栈</span>", text)
     # GitHub 仓库徽章：Logo + owner/repo + stars 数
-    return GITHUB_BADGE.sub(lambda m: github_badge_html(m.group(1), m.group(2) or ""), text)
+    text = GITHUB_BADGE.sub(lambda m: github_badge_html(m.group(1), m.group(2) or ""), text)
+    return inject_profile_photo_html(text, photo)
 
 
 def main():
+    photo = get_profile_photo()
     changed_tex = []
     for path in sorted(OUT_DIR.glob("*.tex")):
-        if rewrite(path, normalize_tex):
+        if rewrite(path, lambda text: normalize_tex(text, photo)):
             changed_tex.append(path.name)
     for path in sorted(OUT_DIR.glob("*.html")):
-        rewrite(path, normalize_html)
+        rewrite(path, lambda text: normalize_html(text, photo))
     print("changed-tex=" + " ".join(changed_tex))
 
 

@@ -6,6 +6,8 @@ import { spawn, spawnSync } from 'node:child_process'
 import yaml from 'js-yaml'
 import { generateAll } from './compose.js'
 import { renderJakeOriginal } from './jake-original.js'
+import { readCategory } from './data-store.js'
+import { resolveProfilePhoto } from './profile-photo.js'
 
 export function checkEnvironment() {
   const which = (cmd) => {
@@ -67,7 +69,7 @@ const CVITEM_PATCH = `% ${CVITEM_PATCH_MARK}
   \\par\\addvspace{#1}}
 `
 
-function normalizeGroupedLatex(text) {
+function normalizeGroupedLatex(text, photoPath = null) {
   let next = text
   if (!next.includes(CJK_FONT_PATCH_MARK)) {
     next = next.replace(/^(\\begin\{document\})/m, `${CJK_FONT_PATCH_TEX}$1`)
@@ -95,7 +97,7 @@ function normalizeGroupedLatex(text) {
       next = next.replace(/^(\\begin\{document\})/m, GITHUB_BADGE_TEX + '$1')
     }
   }
-  return next
+  return injectProfilePhotoLatex(next, photoPath)
 }
 
 const CJK_FONT_PATCH_MARK = '% rm-microsoft-yahei-font'
@@ -119,7 +121,7 @@ const GITHUB_BADGE_TEX = `${GITHUB_BADGE_MARK}
 \\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1.6pt}\\hspace{0.35em}\\raisebox{1pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.8}{8}\\selectfont\\faGithub\\ \\texttt{#1}}}\\if\\relax\\detokenize{#2}\\relax\\else\\colorbox{rmbadgeright}{\\textcolor{black}{\\fontsize{7}{8.2}\\selectfont\\faStar\\ #2}}\\fi}\\hspace{0.25em}\\endgroup}
 `
 
-function normalizeGroupedHtml(text) {
+function normalizeGroupedHtml(text, photo = null) {
   let next = text.replace(
     /(<div class="resume-skill-name">[^<]*)<span class="resume-skill-level">[^<]*<\/span>/g,
     '$1',
@@ -131,10 +133,11 @@ function normalizeGroupedHtml(text) {
     /--text-default-font-family:\s*[^;]+;/,
     '--text-default-font-family: "Microsoft YaHei", sans-serif;',
   )
-  return next.replace(
+  next = next.replace(
     /\s*\[github\|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)?\]/g,
     (_, repo, n) => githubBadgeHtml(repo, n || ''),
   )
+  return injectProfilePhotoHtml(next, photo)
 }
 
 function githubBadgeHtml(repo, stars) {
@@ -144,23 +147,89 @@ function githubBadgeHtml(repo, stars) {
   return `<span style="display:inline-block;margin-left:8px;vertical-align:0.1em;font-family:Verdana,Geneva,DejaVu Sans,sans-serif;font-size:10px;line-height:1;white-space:nowrap;"><span style="display:inline-block;background:#24292f;color:#fff;padding:4px 6px;border-radius:3px 0 0 3px;">${githubLogo}${repo}</span>${right}</span>`
 }
 
+const PROFILE_PHOTO_MARK = 'rm-profile-photo'
+const PROFILE_PHOTO_HTML_CSS = `
+/* ${PROFILE_PHOTO_MARK} */
+.resume-header { position: relative; min-height: 108px; padding-right: 96px; box-sizing: border-box; }
+.rm-profile-photo { position: absolute; top: 0; right: 0; width: 78px; height: 104px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }
+@media (max-width: 520px) {
+  .resume-header { min-height: 0; padding-right: 0; }
+  .rm-profile-photo { position: static; display: block; margin: 0 auto 16px; }
+}
+`
+
+function getProfilePhoto(repo) {
+  try {
+    return resolveProfilePhoto(repo, readCategory(repo, 'basics').photo)
+  } catch {
+    return null
+  }
+}
+
+function injectProfilePhotoLatex(text, photoPath) {
+  if (!photoPath || text.includes(PROFILE_PHOTO_MARK)) return text
+  const source = `\\detokenize{${String(photoPath).replace(/\\/g, '/')}}`
+
+  if (/\\documentclass[^\n]*\{moderncv\}/.test(text)) {
+    if (/\\moderncvstyle\{banking\}/.test(text)) {
+      return text.replace(
+        /^(\\begin\{document\})/m,
+        `% ${PROFILE_PHOTO_MARK}\n$1\n\\noindent\\makebox[\\textwidth][r]{\\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{${source}}}\n\\vspace{-2.6cm}`,
+      )
+    }
+    return text.replace(
+      /^(\\begin\{document\})/m,
+      `% ${PROFILE_PHOTO_MARK}\n\\photo[70pt][0.4pt]{${source}}\n$1`,
+    )
+  }
+
+  const preamble = `${text.includes('\\usepackage{graphicx}') ? '' : '\\usepackage{graphicx}\n'}% ${PROFILE_PHOTO_MARK}\n`
+  let next = text.replace(/^(\\begin\{document\})/m, preamble + '$1')
+  const header = /(\\begin\{document\}\s*)\\begin\{center\}([\s\S]*?)\\end\{center\}/
+  if (header.test(next)) {
+    return next.replace(header, (_, start, body) => `${start}\\noindent\\begin{minipage}[c]{0.78\\textwidth}
+\\begin{center}${body}\\end{center}
+\\end{minipage}\\hfill
+\\begin{minipage}[c]{0.18\\textwidth}
+\\raggedleft\\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{${source}}
+\\end{minipage}`)
+  }
+
+  return next.replace(
+    /^(\\begin\{document\})/m,
+    `$1\n\\noindent\\makebox[\\textwidth][r]{\\includegraphics[width=2.2cm,height=2.8cm,keepaspectratio]{${source}}}\n\\vspace{-2.6cm}`,
+  )
+}
+
+function injectProfilePhotoHtml(text, photo) {
+  if (!photo || text.includes(PROFILE_PHOTO_MARK)) return text
+  const data = fs.readFileSync(photo.file).toString('base64')
+  const image = `<!-- ${PROFILE_PHOTO_MARK} --><img class="rm-profile-photo" src="data:${photo.mime};base64,${data}" alt="证件照">`
+  let next = text.includes('</style>')
+    ? text.replace('</style>', `${PROFILE_PHOTO_HTML_CSS}</style>`)
+    : text.replace('</head>', `<style>${PROFILE_PHOTO_HTML_CSS}</style>\n</head>`)
+  return next.replace(/<header class="resume-header">/, (header) => `${header}\n      ${image}`)
+}
+
 async function normalizeGeneratedOutputs(repo, variant, env) {
   const outDir = path.join(repo, 'resumes')
   const texPath = path.join(outDir, `${variant}.tex`)
   const htmlPath = path.join(outDir, `${variant}.html`)
+  const photo = getProfilePhoto(repo)
+  const photoPath = photo ? path.relative(outDir, photo.file).replace(/\\/g, '/') : null
   let texChanged = false
   let output = ''
 
   if (fs.existsSync(texPath)) {
     const original = fs.readFileSync(texPath, 'utf8')
-    const normalized = normalizeGroupedLatex(original)
+    const normalized = normalizeGroupedLatex(original, photoPath)
     texChanged = normalized !== original
     if (texChanged) fs.writeFileSync(texPath, normalized, 'utf8')
   }
 
   if (fs.existsSync(htmlPath)) {
     const original = fs.readFileSync(htmlPath, 'utf8')
-    const normalized = normalizeGroupedHtml(original)
+    const normalized = normalizeGroupedHtml(original, photo)
     if (normalized !== original) fs.writeFileSync(htmlPath, normalized, 'utf8')
   }
 
@@ -230,7 +299,9 @@ async function buildJakeOriginal(repo, variant, env) {
   const pdfPath = path.join(outDir, `${variant}.pdf`)
   try {
     const doc = yaml.load(fs.readFileSync(ymlPath, 'utf8'))
-    const tex = renderJakeOriginal(doc)
+    const photo = getProfilePhoto(repo)
+    const photoPath = photo ? path.relative(outDir, photo.file).replace(/\\/g, '/') : null
+    const tex = renderJakeOriginal(doc, photoPath)
     fs.writeFileSync(texPath, tex, 'utf8')
   } catch (err) {
     return { ok: false, output: `Jake 原版模板渲染失败：${err.message}` }

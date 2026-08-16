@@ -78,6 +78,9 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | GET | `/api/entries` | 全部分类条目 + 标签计数 |
 | GET | `/api/entries/:cat` | 单分类 |
 | POST | `/api/entries/:cat` | 新增（basics 为整对象替换） |
+| GET | `/api/entries/basics/photo` | 读取当前证件照（仅仓内固定路径，no-store） |
+| POST | `/api/entries/basics/photo` | 上传/更换 JPEG 或 PNG 证件照（原始图片请求体，最大 4 MB） |
+| DELETE | `/api/entries/basics/photo` | 删除证件照文件并清除 basics.photo |
 | PUT | `/api/entries/:cat/reorder` | 按 id 顺序重排分类条目（写回 YAML 数组顺序） |
 | PUT | `/api/entries/:cat/:id` | 更新（按 id） |
 | DELETE | `/api/entries/:cat/:id` | 删除 |
@@ -155,6 +158,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - `generateAll(repo, only?)`：组合并写出 `resumes/<name>.yml`（含头部注释，null → 空值）。
 - 字段映射：`company → name`；`achievements → summary`（按标签过滤）；列表 summary 转字符串；剥除元数据。
 - PDF/HTML 紧凑输出：技能按细分方向（tags）分组为“方向：技能、技能”每方向一行，兴趣合并为单行；项目 description 保留完整内容，LaTeX 原始 URL 改为项目名链接；中文优先使用 Microsoft YaHei（缺失时沿用模板的 Noto CJK 回退），HTML 同样以 Microsoft YaHei 为首选；`server/lib/builder.js` 与私有仓 `scripts/postprocess-output.py` 移除 yamlresume 模板强加的等级文本，并对 moderncv 正文列注入 raggedright 补丁防长行溢出。
+- 证件照：基础信息页把 JPEG/PNG 保存到私有仓 `assets/profile-photo.*`，`basics.photo` 只记录仓内路径；组合器剥离该字段以保持 YAMLResume schema 合法，`builder.js` / `postprocess-output.py` 再将照片注入 ModernCV、Jake 和 HTML，Jake 原版由自有渲染器直接生成。
 - 自定义模板 `jake-original`（Jake 原版）：`server/lib/jake-original.js` 从组合后的 YAML 直接生成 jakegut/resume.tex 风格 LaTeX（居中头部 + `\titlerule` 分节 + tabular* 日期右对齐 + 项目单行标题），`buildVariant` 检测到该模板时跳过 yamlresume 直接用 xelatex 编译。
 - GitHub star 徽章：`server/lib/github-stars.js` 解析项目 URL，在项目名后追加 GitHub Logo + `owner/repo` 地址 + star 数徽章。**仅「保存发布正式版」时拉取 GitHub API 并写本机缓存** `~/.resume-manager/github-stars.json`（预览/组合只读缓存，不访问网络）；0 star 仍显示地址但不显示数量；项目 description 保留完整内容；设置页可关（`starsEnabled`，默认开）。
 - 与 `templates/private-repo/scripts/compose.py` 行为一致——**改动任一实现必须同步另一份**，
