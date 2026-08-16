@@ -20,6 +20,7 @@
     "https-proxy-agent": "^9.1.0",
     "isomorphic-git": "^1.40.5",
     "js-yaml": "^4.1.0",
+    "marked": "^18.0.9",
     "react-pdf": "^10.4.1"
   },
   "devDependencies": {

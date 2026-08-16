@@ -45,28 +45,52 @@ function run(cmd, args, cwd) {
 // ModernCV 补丁：1) cvitem 正文改 raggedright 防长行溢出；2) cventry 名称与时间同一行、时间右对齐。仅 moderncv 文档注入。
 const CVITEM_PATCH_MARK = 'rm-moderncv-patches'
 const CVITEM_PATCH = `% ${CVITEM_PATCH_MARK}
+\\usepackage{tabularx}
 \\makeatletter
 \\renewcommand*{\\cvitem}[3][.25em]{%
   \\ifstrempty{#2}{}{\\hintstyle{#2}：}\\raggedright#3%
   \\par\\addvspace{#1}}
 \\makeatother
-% 名称与时间同一行，时间在最右侧右对齐
+% 名称与时间同一行；背景/职位移出表格，以正文宽度自然换行
 \\renewcommand*{\\cventry}[7][.25em]{%
-  \\begin{tabular*}{\\maincolumnwidth}{l@{\\extracolsep{\\fill}}r}%
+  \\begin{tabularx}{\\maincolumnwidth}{@{}>{\\raggedright\\arraybackslash}Xr@{}}%
     \\ifboolexpr{%
       test {\\ifstrempty{#4}}
       and
       test {\\ifstrempty{#5}}}%
       {}%
       {{\\bfseries #4} & {\\bfseries #2}\\\\}%
-    {\\itshape #3\\ifstrempty{#6}{}{, #6}} & {}\\\\%
-  \\end{tabular*}%
+  \\end{tabularx}\\par%
+  \\ifboolexpr{%
+    test {\\ifstrempty{#3}}
+    and
+    test {\\ifstrempty{#6}}}%
+    {}%
+    {\\begin{minipage}{\\maincolumnwidth}%
+      \\raggedright\\itshape #3\\ifstrempty{#6}{}{, #6}%
+    \\end{minipage}\\par}%
   \\ifx&#7&%
-  \\else{\\\\%
-    \\begin{minipage}{\\maincolumnwidth}%
+  \\else
+    \\noindent\\begin{minipage}{\\maincolumnwidth}%
       \\small#7%
-    \\end{minipage}}\\fi%
+    \\end{minipage}%
+  \\fi%
   \\par\\addvspace{#1}}
+`
+
+const JAKE_SUBHEADING_PATCH_MARK = 'rm-jake-subheading-patch'
+const JAKE_SUBHEADING_PATCH = `% ${JAKE_SUBHEADING_PATCH_MARK}
+\\usepackage{tabularx}
+% 名称与时间同一行；项目背景/机构移出不可换行的表格列
+\\renewcommand{\\resumeSubheading}[4]{%
+  \\begin{tabularx}{\\textwidth}[t]{@{}>{\\raggedright\\arraybackslash}Xr@{}}%
+    \\textbf{#1} & #2 \\\\%
+  \\end{tabularx}\\par%
+  \\begin{minipage}{\\textwidth}%
+    \\raggedright\\itshape #3%
+    \\ifx&#4&\\else\\hfill #4\\fi%
+  \\end{minipage}\\par
+}
 `
 
 function normalizeGroupedLatex(text, photoPath = null) {
@@ -83,9 +107,13 @@ function normalizeGroupedLatex(text, photoPath = null) {
   next = next.replace(/^\\textbf\{([^{}\r\n]*：[^{}\r\n]*)\}[:：][^{}\r\n]*$/gm, '$1')
   // Jake：移除兴趣行纯粗体包裹（以、连接，无等级）。
   next = next.replace(/^\\textbf\{([^{}\r\n]*、[^{}\r\n]*)\}$/gm, '$1')
-  // ModernCV：正文列改 raggedright，避免长技能行因两端对齐产生 Overfull \\hbox。
+  // ModernCV：正文列改 raggedright，名称/日期同排，背景和职位移出不可换行的表格列。
   if (/moderncv/.test(next) && !next.includes(CVITEM_PATCH_MARK)) {
     next = next.replace(/^(\\begin\{document\})/m, CVITEM_PATCH + '$1')
+  }
+  // YAMLResume Jake 同样把副标题放在 l 列，长项目背景需改为表格后的普通段落。
+  if (!/moderncv/.test(next) && /\\newcommand\{\\resumeSubheading\}/.test(next) && !next.includes(JAKE_SUBHEADING_PATCH_MARK)) {
+    next = next.replace(/^(\\begin\{document\})/m, JAKE_SUBHEADING_PATCH + '$1')
   }
   // GitHub 仓库徽章：[github|owner/repo|N] → Logo + 地址 + stars 数
   if (/\[github\|[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\|(?:[0-9]+(?:\.[0-9]+)?[km]?)?\]/.test(next)) {

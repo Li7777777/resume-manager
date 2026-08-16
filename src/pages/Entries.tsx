@@ -14,6 +14,10 @@ import {
   Heart,
   UserRound,
   ListChecks,
+  List,
+  ListTree,
+  Bold,
+  Italic,
   Settings2,
   Tags,
   ArrowUp,
@@ -127,13 +131,13 @@ const FIELDS: Record<Category, FieldDef[]> = {
   projects: [
     { key: 'name', label: '项目名称', type: 'text', required: true },
     { key: 'subtitle', label: '副标题', type: 'text', hint: '如赛事 / 机构 / 来源' },
-    { key: 'description', label: '一句话简介', type: 'text' },
+    { key: 'description', label: '项目背景', type: 'textarea', hint: '用一两句话说明项目要解决的问题、使用场景或业务背景' },
     { key: 'stage', label: '阶段', type: 'select', options: ['本科', '硕士'] },
     { key: 'url', label: '链接', type: 'text' },
     { key: 'startDate', label: '开始时间', type: 'text' },
     { key: 'endDate', label: '结束时间', type: 'text' },
     { key: 'keywords', label: '细分标签', type: 'tags', hint: '技术栈/技术点' },
-    { key: 'summary', label: '项目要点', type: 'summary' },
+    { key: 'summary', label: '项目要点', type: 'markdown', hint: '支持 Markdown 多级列表' },
     { key: 'tags', label: '方向标签', type: 'tags' },
   ],
   skills: [
@@ -331,7 +335,7 @@ export default function Entries() {
       const parts: string[] = []
       if (e.startDate) parts.push(String(e.startDate))
       if (e.stage) parts.push(String(e.stage))
-      if (e.description) parts.push(String(e.description))
+      if (e.description) parts.push(`项目背景：${String(e.description).replace(/^项目背景[：:]\s*/, '')}`)
       return parts.join(' · ')
     }
     if (category === 'skills') return (LEVEL_LABELS[(e.level as string) || ''] || (e.level as string) || '') as string
@@ -928,6 +932,141 @@ function BasicsForm({ initial, onSave }: { initial: Entry; onSave: (e: Entry) =>
   )
 }
 
+/* ---------- 项目 Markdown 要点编辑器 ---------- */
+function MarkdownListEditor({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string
+  hint?: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const helpId = 'project-markdown-help'
+
+  const commit = (next: string, selectionStart: number, selectionEnd = selectionStart) => {
+    onChange(next)
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current
+      if (!textarea) return
+      textarea.focus()
+      textarea.setSelectionRange(selectionStart, selectionEnd)
+    })
+  }
+
+  const lineBounds = (start: number, end: number) => {
+    const lineStart = value.lastIndexOf('\n', Math.max(0, start - 1)) + 1
+    const nextBreak = value.indexOf('\n', end)
+    return { lineStart, lineEnd: nextBreak === -1 ? value.length : nextBreak }
+  }
+
+  const formatList = (depth: 0 | 1) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const { selectionStart, selectionEnd } = textarea
+    const { lineStart, lineEnd } = lineBounds(selectionStart, selectionEnd)
+    const prefix = depth === 0 ? '- ' : '  - '
+    const block = value.slice(lineStart, lineEnd)
+    const formatted = block
+      .split('\n')
+      .map((line) => `${prefix}${line.replace(/^\s*(?:(?:[-+*]|\d+[.)])\s+)?/, '')}`)
+      .join('\n')
+    const next = value.slice(0, lineStart) + formatted + value.slice(lineEnd)
+    const hasSelection = selectionStart !== selectionEnd
+    commit(next, hasSelection ? lineStart : Math.min(lineStart + formatted.length, selectionStart + prefix.length), hasSelection ? lineStart + formatted.length : undefined)
+  }
+
+  const wrapSelection = (marker: '**' | '*', placeholder: string) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const { selectionStart, selectionEnd } = textarea
+    const selected = value.slice(selectionStart, selectionEnd) || placeholder
+    const replacement = `${marker}${selected}${marker}`
+    const next = value.slice(0, selectionStart) + replacement + value.slice(selectionEnd)
+    const contentStart = selectionStart + marker.length
+    commit(next, contentStart, contentStart + selected.length)
+  }
+
+  const shiftIndent = (outdent: boolean) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const { selectionStart, selectionEnd } = textarea
+    const { lineStart, lineEnd } = lineBounds(selectionStart, selectionEnd)
+    const block = value.slice(lineStart, lineEnd)
+    const shifted = block
+      .split('\n')
+      .map((line) => outdent ? line.replace(/^ {1,2}/, '') : `  ${line}`)
+      .join('\n')
+    commit(value.slice(0, lineStart) + shifted + value.slice(lineEnd), lineStart, lineStart + shifted.length)
+  }
+
+  const continueList = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      shiftIndent(event.shiftKey)
+      return
+    }
+    if (event.key !== 'Enter' || event.currentTarget.selectionStart !== event.currentTarget.selectionEnd) return
+    const cursor = event.currentTarget.selectionStart
+    const lineStart = value.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1
+    const beforeCursor = value.slice(lineStart, cursor)
+    const match = beforeCursor.match(/^(\s*)([-+*])\s+(.*)$/)
+    if (!match) return
+    event.preventDefault()
+    if (!match[3].trim()) {
+      const next = value.slice(0, lineStart) + value.slice(cursor)
+      commit(next, lineStart)
+      return
+    }
+    const prefix = `\n${match[1]}${match[2]} `
+    commit(value.slice(0, cursor) + prefix + value.slice(cursor), cursor + prefix.length)
+  }
+
+  const toolbarButton = 'inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50'
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between text-xs font-medium text-zinc-400">
+        <span>{label}</span>
+        {hint && <span className="text-[11px] text-zinc-600">{hint}</span>}
+      </div>
+      <div className="overflow-hidden rounded-lg border border-zinc-700/70 bg-zinc-900 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20">
+        <div className="flex flex-wrap items-center gap-1 border-b border-zinc-800 px-2 py-1.5" role="toolbar" aria-label="Markdown 快捷格式">
+          <button type="button" className={toolbarButton} title="转换为一级项目要点" onMouseDown={(event) => event.preventDefault()} onClick={() => formatList(0)}>
+            <List size={13} /> 一级要点
+          </button>
+          <button type="button" className={toolbarButton} title="转换为二级项目要点" onMouseDown={(event) => event.preventDefault()} onClick={() => formatList(1)}>
+            <ListTree size={13} /> 二级要点
+          </button>
+          <span className="mx-1 h-4 w-px bg-zinc-800" aria-hidden="true" />
+          <button type="button" className={toolbarButton} title="加粗选中文字" onMouseDown={(event) => event.preventDefault()} onClick={() => wrapSelection('**', '重点')}>
+            <Bold size={13} /> 加粗
+          </button>
+          <button type="button" className={toolbarButton} title="将选中文字设为斜体" onMouseDown={(event) => event.preventDefault()} onClick={() => wrapSelection('*', '补充说明')}>
+            <Italic size={13} /> 斜体
+          </button>
+        </div>
+        <Textarea
+          ref={textareaRef}
+          aria-label={label}
+          aria-describedby={helpId}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={continueList}
+          className="min-h-40 rounded-none border-0 bg-transparent font-mono text-[13px] leading-6 focus:border-transparent focus:ring-0"
+          placeholder={'- 说明你负责的核心工作\n  - 补充实现细节或量化结果\n- 总结另一项关键成果'}
+        />
+      </div>
+      <p id={helpId} className="mt-1.5 text-[11px] leading-5 text-zinc-500">
+        每行以 <code className="text-zinc-300">-</code> 开始；按 Tab 创建下一级，Shift + Tab 返回上一级。选中文字后可快速加粗或设为斜体。
+      </p>
+    </div>
+  )
+}
+
 /* ---------- 条目编辑弹窗 ---------- */
 function EntryModal({
   category,
@@ -1028,9 +1167,19 @@ function EntryModal({
     <Modal open title={entry.id ? '编辑条目' : '新增条目'} onClose={onClose} wide>
       <div className="space-y-4">
         {(FIELDS[category as Category] || GENERIC_FIELDS).map((f) => (
-          <Field key={f.key} label={f.label} hint={f.hint}>
-            {renderField(f)}
-          </Field>
+          f.type === 'markdown' ? (
+            <MarkdownListEditor
+              key={f.key}
+              label={f.label}
+              hint={f.hint}
+              value={Array.isArray(form[f.key]) ? (form[f.key] as string[]).join('\n') : (form[f.key] as string) || ''}
+              onChange={(value) => set(f.key, value)}
+            />
+          ) : (
+            <Field key={f.key} label={f.label} hint={f.hint} required={f.required}>
+              {renderField(f)}
+            </Field>
+          )
         ))}
         <div className="flex justify-end gap-2 pt-2">
           <Button onClick={onClose}>取消</Button>

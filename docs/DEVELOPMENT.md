@@ -146,7 +146,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - **页面切换**：`App.tsx` 用 state + hash 导航（`#/entries` 等可直达）；导航顺序为信息/类型/定制/PDF/Git，旧 `#/yaml` 自动重定向到 `#/customizer`，主内容区没有独立顶栏。
 - **定制工作区**：`pages/Customizer.tsx` 在可视化编排与 YAML 源码间切换，右侧预览常驻；最后选中的类型/模式/信息库分类以及每个类型的模板、章节会自动保存到本机侧车并在重访时恢复；职业头衔和个人简介统一来自 `data/basics.yml`；`components/YamlWorkspace.tsx` 负责文件选择、未保存保护、CodeMirror 保存与同步状态。
 - **组件库** `components/ui.tsx`：Button/Card/Field/Input/Textarea/Select/Modal/TagChip/TagInput/Badge/Spinner/EmptyState/relativeTime。
-- **表单字段配置** `pages/Entries.tsx` 的 `FIELDS`：新增分类时在此登记字段（type: text/textarea/select/tags/summary/achievements），并同步 `server/lib/data-store.js` 的 `CATEGORIES`。
+- **表单字段配置** `pages/Entries.tsx` 的 `FIELDS`：新增分类时在此登记字段（type: text/textarea/select/tags/summary/markdown/achievements），并同步 `server/lib/data-store.js` 的 `CATEGORIES`；项目要点使用专用 Markdown 编辑器，快捷工具栏和 Tab 缩进保留多级列表源码。
 - **编辑器** `components/YamlEditor.tsx`：CodeMirror 6 + lang-yaml + oneDark。
 - **PDF 渲染** `pages/History.tsx` + `components/PdfViewer.tsx`：按类型分支读取时间线与已有 PDF；pdfjs worker 通过 `?url` 导入；本页禁止构建。
 - **Toast** `toast.tsx`：`useToast()` 返回 `(type, message) => void`。
@@ -157,10 +157,10 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - `listVariants(repo)`：解析 variants.yml + 计算每方向命中条目数（`matched`，供 UI 预览）。
 - `generateAll(repo, only?)`：组合并写出 `resumes/<name>.yml`（含头部注释，null → 空值）。
 - 字段映射：`company → name`；`achievements → summary`（按标签过滤）；列表 summary 转字符串；剥除元数据。
-- PDF/HTML 紧凑输出：技能按细分方向（tags）分组为“方向：技能、技能”每方向一行，兴趣合并为单行；项目 description 保留完整内容，LaTeX 原始 URL 改为项目名链接；中文优先使用 Microsoft YaHei（缺失时沿用模板的 Noto CJK 回退），HTML 同样以 Microsoft YaHei 为首选；`server/lib/builder.js` 与私有仓 `scripts/postprocess-output.py` 移除 yamlresume 模板强加的等级文本，并对 moderncv 正文列注入 raggedright 补丁防长行溢出。
+- PDF/HTML 紧凑输出：技能按细分方向（tags）分组为“方向：技能、技能”每方向一行，兴趣合并为单行；项目 description 组合为无项目符号的“项目背景：xxx”，summary 按 Markdown 多级列表渲染并保留加粗/斜体，旧纯文本兼容为顶级列表；LaTeX 原始 URL 改为项目名链接；中文优先使用 Microsoft YaHei（缺失时沿用模板的 Noto CJK 回退），HTML 同样以 Microsoft YaHei 为首选；`server/lib/builder.js` 与私有仓 `scripts/postprocess-output.py` 移除 yamlresume 模板强加的等级文本，并让 ModernCV/Jake 的标题首列和项目背景按正文宽度自然换行。
 - 证件照：基础信息页把 JPEG/PNG 保存到私有仓 `assets/profile-photo.*`，`basics.photo` 只记录仓内路径；组合器剥离该字段以保持 YAMLResume schema 合法，`builder.js` / `postprocess-output.py` 再将照片作为不占正文排版宽度的独立页首浮层注入 ModernCV、Jake 和 HTML，Jake 原版也复用同一浮层逻辑；桌面/PDF 保持原文字几何，窄屏 HTML 将照片独立置于标题上方。
 - 自定义模板 `jake-original`（Jake 原版）：`server/lib/jake-original.js` 从组合后的 YAML 直接生成 jakegut/resume.tex 风格 LaTeX（居中头部 + `\titlerule` 分节 + tabular* 日期右对齐 + 项目单行标题），`buildVariant` 检测到该模板时跳过 yamlresume 直接用 xelatex 编译。
-- GitHub star 徽章：`server/lib/github-stars.js` 解析项目 URL，在项目名后追加 GitHub Logo + `owner/repo` 地址 + star 数徽章。**仅「保存发布正式版」时拉取 GitHub API 并写本机缓存** `~/.resume-manager/github-stars.json`（预览/组合只读缓存，不访问网络）；0 star 仍显示地址但不显示数量；项目 description 保留完整内容；设置页可关（`starsEnabled`，默认开）。
+- GitHub star 徽章：`server/lib/github-stars.js` 解析项目 URL，在项目名后追加 GitHub Logo + `owner/repo` 地址 + star 数徽章。**仅「保存发布正式版」时拉取 GitHub API 并写本机缓存** `~/.resume-manager/github-stars.json`（预览/组合只读缓存，不访问网络）；0 star 仍显示地址但不显示数量；项目背景 description 保留完整内容；设置页可关（`starsEnabled`，默认开）。
 - 与 `templates/private-repo/scripts/compose.py` 行为一致——**改动任一实现必须同步另一份**，
   并以 `yamlresume validate` 验证输出（长度/必填规则）。
 

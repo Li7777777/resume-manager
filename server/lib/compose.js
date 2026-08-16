@@ -35,6 +35,25 @@ function toSummaryString(summary) {
   return String(summary)
 }
 
+function normalizeProjectSummary(summary) {
+  const text = toSummaryString(summary)?.trim()
+  if (!text) return null
+  // 已使用 Markdown 列表时原样保留缩进；旧纯文本按行迁移为顶级项目要点。
+  if (/^\s{0,3}(?:[-+*]|\d+[.)])\s+/m.test(text)) return text
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `- ${line}`)
+    .join('\n')
+}
+
+function normalizeProjectBackground(description) {
+  const text = String(description || '').trim()
+  if (!text) return null
+  return /^项目背景[：:]/.test(text) ? text : `项目背景：${text}`
+}
+
 function tagOverlap(itemTags, wanted) {
   if (!wanted || wanted.length === 0) return true
   if (!itemTags || itemTags.length === 0) return false
@@ -140,9 +159,13 @@ function composeList(repo, block, cfg) {
       delete item.company
     }
     const summary = buildSummary(e, wanted)
-    if (summary != null) item.summary = toSummaryString(summary)
-    // 保留项目 description 原文，简历内容不能因组合阶段被截断
-    if (Array.isArray(item.summary)) item.summary = toSummaryString(item.summary)
+    if (summary != null) item.summary = block === 'projects' ? normalizeProjectSummary(summary) : toSummaryString(summary)
+    if (block === 'projects') {
+      const background = normalizeProjectBackground(item.description)
+      if (background) item.description = background
+      else delete item.description
+    }
+    // 项目背景保留完整原文；项目要点保留 Markdown 层级。
     out.push(item)
   }
   // 技能/兴趣分组需要方向（tags）元数据，因此直接用原始选中条目（含 tags）

@@ -1,3 +1,5 @@
+import { Lexer } from 'marked'
+
 // Jake Gut 原版模板渲染器：从组合后的简历 YAML 直接生成 jakegut/resume.tex 风格 LaTeX
 // 参考：https://github.com/jakegut/resume —— 单栏 ATS 友好排版：
 //   居中姓名头部 + \titlerule 下划线分节 + tabular* 日期右对齐 + 项目单行标题 + 紧凑 itemize 要点
@@ -64,6 +66,44 @@ function parseItems(summary) {
   return lines
 }
 
+function renderMarkdownInline(tokens = []) {
+  return tokens.map((token) => {
+    if (token.type === 'strong') return `\\textbf{${renderMarkdownInline(token.tokens)}}`
+    if (token.type === 'em') return `\\emph{${renderMarkdownInline(token.tokens)}}`
+    if (token.type === 'codespan') return `\\texttt{${escapeLatex(token.text)}}`
+    if (token.type === 'link') return `\\href{${escapeLatex(token.href)}}{${renderMarkdownInline(token.tokens)}}`
+    if (token.type === 'br') return '\\\\{}'
+    if (Array.isArray(token.tokens)) return renderMarkdownInline(token.tokens)
+    return escapeLatex(token.text || token.raw || '')
+  }).join('')
+}
+
+function renderMarkdownList(token, depth = 0) {
+  const environment = token.ordered ? 'enumerate' : 'itemize'
+  const options = depth > 0 ? '[leftmargin=1.4em]' : ''
+  const items = token.items.map((item) => {
+    const parts = item.tokens.map((child) => {
+      if (child.type === 'list') return `\n${renderMarkdownList(child, depth + 1)}`
+      if (child.type === 'space') return ''
+      return renderMarkdownInline(child.tokens || Lexer.lexInline(child.text || child.raw || ''))
+    }).join('')
+    return `\\item ${parts}`
+  }).join('\n')
+  return `\\begin{${environment}}${options}\n${items}\n\\end{${environment}}`
+}
+
+function renderProjectMarkdown(summary) {
+  const source = String(summary || '').trim()
+  if (!source) return ''
+  const blocks = Lexer.lex(source)
+  return blocks.map((token) => {
+    if (token.type === 'list') return renderMarkdownList(token)
+    if (token.type === 'space') return ''
+    const inline = renderMarkdownInline(token.tokens || Lexer.lexInline(token.text || token.raw || ''))
+    return inline ? `\\begin{itemize}\n\\item ${inline}\n\\end{itemize}` : ''
+  }).filter(Boolean).join('\n')
+}
+
 // "方向：技能、技能" 中方向加粗
 function boldLabel(name) {
   const idx = name.indexOf('：')
@@ -126,9 +166,9 @@ const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
 
 \\newcommand{\\resumeProjectHeading}[2]{
     \\item
-    \\begin{tabular*}{0.97\\textwidth}{l@{\\extracolsep{\\fill}}r}
+    \\begin{tabularx}{0.97\\textwidth}{@{}>{\\raggedright\\arraybackslash}Xr@{}}
       \\small#1 & #2 \\\\
-    \\end{tabular*}\\vspace{-7pt}
+    \\end{tabularx}\\vspace{-7pt}
 }
 
 \\renewcommand\\labelitemii{$\\vcenter{\\hbox{\\tiny$\\bullet$}}$}
@@ -224,14 +264,11 @@ function renderProjects(entries) {
     .map((e) => {
       const techs = (Array.isArray(e.keywords) ? e.keywords : []).map((k) => escapeLatex(k)).join('、')
       const heading = `{${projectTitleLatex(e.name || '')}${techs ? ` $|$ \\emph{${techs}}` : ''}}{${escapeLatex(dateRange(e))}}`
-      const description = escapeLatex(e.description || '')
-      const items = parseItems(e.summary)
-      const itemLines = []
-      if (description) itemLines.push(`      \\resumeItem{\\textit{${description}}}`)
-      for (const t of items) itemLines.push(`      \\resumeItem{${escapeLatex(t)}}`)
+      const background = escapeLatex(e.description || '')
+      const points = renderProjectMarkdown(e.summary)
       return `    \\resumeProjectHeading
       ${heading}
-${itemLines.length ? `    \\resumeItemListStart\n${itemLines.join('\n')}\n    \\resumeItemListEnd` : ''}`
+${background ? `    {\\small ${background}\\par}\\vspace{1pt}\n` : ''}${points ? `    ${points}` : ''}`
     })
     .join('\n')
   return `\\section{${SECTION_TITLES.projects}}

@@ -105,9 +105,10 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputCls} ${props.className || ''}`} />
 }
 
-export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`${inputCls} min-h-[90px] resize-y ${props.className || ''}`} />
-}
+export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  (props, ref) => <textarea ref={ref} {...props} className={`${inputCls} min-h-[90px] resize-y ${props.className || ''}`} />,
+)
+Textarea.displayName = 'Textarea'
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (

@@ -156,32 +156,57 @@ def inject_profile_photo_html(text, photo):
     return text.replace('<header class="resume-header">', '<header class="resume-header">\n      ' + image, 1)
 
 
-# ModernCV 补丁：1) cvitem 正文改 raggedright 防长行溢出；2) cventry 名称与时间同一行、时间右对齐。仅 moderncv 文档注入。
+# ModernCV 补丁：正文 raggedright；名称/日期同排；背景/职位使用可换行正文。
 CVITEM_PATCH_MARK = "rm-moderncv-patches"
 CVITEM_PATCH = (
     "% " + CVITEM_PATCH_MARK + "\n"
+    "\\usepackage{tabularx}\n"
     "\\makeatletter\n"
     "\\renewcommand*{\\cvitem}[3][.25em]{%\n"
     "  \\ifstrempty{#2}{}{\\hintstyle{#2}：}\\raggedright#3%\n"
     "  \\par\\addvspace{#1}}\n"
     "\\makeatother\n"
-    "% 名称与时间同一行，时间在最右侧右对齐\n"
+    "% 名称与时间同一行；背景/职位移出表格，以正文宽度自然换行\n"
     "\\renewcommand*{\\cventry}[7][.25em]{%\n"
-    "  \\begin{tabular*}{\\maincolumnwidth}{l@{\\extracolsep{\\fill}}r}%\n"
+    "  \\begin{tabularx}{\\maincolumnwidth}{@{}>{\\raggedright\\arraybackslash}Xr@{}}%\n"
     "    \\ifboolexpr{%\n"
     "      test {\\ifstrempty{#4}}\n"
     "      and\n"
     "      test {\\ifstrempty{#5}}}%\n"
     "      {}%\n"
     "      {{\\bfseries #4} & {\\bfseries #2}\\\\}%\n"
-    "    {\\itshape #3\\ifstrempty{#6}{}{, #6}} & {}\\\\%\n"
-    "  \\end{tabular*}%\n"
+    "  \\end{tabularx}\\par%\n"
+    "  \\ifboolexpr{%\n"
+    "    test {\\ifstrempty{#3}}\n"
+    "    and\n"
+    "    test {\\ifstrempty{#6}}}%\n"
+    "    {}%\n"
+    "    {\\begin{minipage}{\\maincolumnwidth}%\n"
+    "      \\raggedright\\itshape #3\\ifstrempty{#6}{}{, #6}%\n"
+    "    \\end{minipage}\\par}%\n"
     "  \\ifx&#7&%\n"
-    "  \\else{\\\\%\n"
-    "    \\begin{minipage}{\\maincolumnwidth}%\n"
+    "  \\else\n"
+    "    \\noindent\\begin{minipage}{\\maincolumnwidth}%\n"
     "      \\small#7%\n"
-    "    \\end{minipage}}\\fi%\n"
+    "    \\end{minipage}%\n"
+    "  \\fi%\n"
     "  \\par\\addvspace{#1}}\n"
+)
+
+JAKE_SUBHEADING_PATCH_MARK = "rm-jake-subheading-patch"
+JAKE_SUBHEADING_PATCH = (
+    f"% {JAKE_SUBHEADING_PATCH_MARK}\n"
+    "\\usepackage{tabularx}\n"
+    "% 名称与时间同一行；项目背景/机构移出不可换行的表格列\n"
+    "\\renewcommand{\\resumeSubheading}[4]{%\n"
+    "  \\begin{tabularx}{\\textwidth}[t]{@{}>{\\raggedright\\arraybackslash}Xr@{}}%\n"
+    "    \\textbf{#1} & #2 \\\\%\n"
+    "  \\end{tabularx}\\par%\n"
+    "  \\begin{minipage}{\\textwidth}%\n"
+    "    \\raggedright\\itshape #3%\n"
+    "    \\ifx&#4&\\else\\hfill #4\\fi%\n"
+    "  \\end{minipage}\\par\n"
+    "}\n"
 )
 
 
@@ -209,9 +234,21 @@ def normalize_tex(text, photo=None):
     text = KEYWORDS_LABEL.sub(r"\\leavevmode\\\\\\textbf{技术栈}", text)
     text = JAKE_SKILL.sub(r"\1", text)
     text = JAKE_INTEREST.sub(r"\1", text)
-    # ModernCV：正文列改 raggedright，避免长技能行因两端对齐产生 Overfull \\hbox。
+    # ModernCV：正文列改 raggedright，名称/日期同排，背景和职位移出不可换行的表格列。
     if "moderncv" in text and CVITEM_PATCH_MARK not in text:
         text = re.sub(r"^(\\begin\{document\})", lambda m: CVITEM_PATCH + m.group(1), text, flags=re.MULTILINE)
+    # YAMLResume Jake 同样把副标题放在 l 列，长项目背景需改为表格后的普通段落。
+    if (
+        "moderncv" not in text
+        and r"\newcommand{\resumeSubheading}" in text
+        and JAKE_SUBHEADING_PATCH_MARK not in text
+    ):
+        text = re.sub(
+            r"^(\\begin\{document\})",
+            lambda m: JAKE_SUBHEADING_PATCH + m.group(1),
+            text,
+            flags=re.MULTILINE,
+        )
     # GitHub 仓库徽章：[github|owner/repo|N] → Logo + 地址 + stars 数
     if GITHUB_BADGE.search(text):
         text = GITHUB_BADGE.sub(lambda m: r" \githubbadge{" + m.group(1) + "}{" + m.group(2) + "}", text)

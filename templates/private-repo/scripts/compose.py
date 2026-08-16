@@ -116,6 +116,24 @@ def to_summary_string(summary):
     return str(summary)
 
 
+def normalize_project_summary(summary):
+    text = (to_summary_string(summary) or "").strip()
+    if not text:
+        return None
+    # 已使用 Markdown 列表时原样保留缩进；旧纯文本按行迁移为顶级项目要点。
+    if re.search(r"^\s{0,3}(?:[-+*]|\d+[.)])\s+", text, re.MULTILINE):
+        return text
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join("- " + line for line in lines) if lines else None
+
+
+def normalize_project_background(description):
+    text = str(description or "").strip()
+    if not text:
+        return None
+    return text if re.match(r"^项目背景[：:]", text) else "项目背景：" + text
+
+
 def compact_skills(items):
     # 按细分方向（tags）分组：每个方向一行“方向：技能、技能”，跨方向技能同时出现在多行。
     dir_order = []
@@ -179,14 +197,17 @@ def compose_list(block, cfg):
             item["name"] = item.pop("company")
         summary = build_summary(e, wanted)
         if summary is not None:
-            item["summary"] = to_summary_string(summary)
+            item["summary"] = normalize_project_summary(summary) if block == "projects" else to_summary_string(summary)
         elif ACHIEVEMENTS_KEY in e:
             item.pop("summary", None)
         item.pop(ACHIEVEMENTS_KEY, None)  # 成就点用完即删，不进入简历
-        # 项目 description 保留原文，简历内容不能因组合阶段被截断
-        # 其他列表型 summary（projects / education 等）同样转字符串
-        if isinstance(item.get("summary"), list):
-            item["summary"] = to_summary_string(item["summary"])
+        if block == "projects":
+            background = normalize_project_background(item.get("description"))
+            if background:
+                item["description"] = background
+            else:
+                item.pop("description", None)
+        # 项目背景保留完整原文；项目要点保留 Markdown 层级。
         out.append(item)
     # 技能/兴趣分组需要方向（tags）元数据，因此直接用原始选中条目（含 tags）
     if block == "skills":
