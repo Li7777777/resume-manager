@@ -47,7 +47,9 @@ function dateRange(e) {
   return start || end || ''
 }
 
-function joinNonEmpty(parts, sep = ' · ') {
+const EDUCATION_SEPARATOR = '\\hspace{0.4em}·\\hspace{0.4em}'
+
+function joinNonEmpty(parts, sep = EDUCATION_SEPARATOR) {
   return parts.filter((p) => p && String(p).trim()).join(sep)
 }
 
