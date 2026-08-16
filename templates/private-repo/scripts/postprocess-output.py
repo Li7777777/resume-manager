@@ -58,7 +58,7 @@ PROFILE_PHOTO_MARK = "rm-profile-photo"
 PROFILE_PHOTO_HTML_CSS = f"""
 /* {PROFILE_PHOTO_MARK} */
 .resume-header {{ position: relative; }}
-.rm-profile-photo {{ position: absolute; top: -12px; right: -32px; width: 66px; height: 88px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }}
+.rm-profile-photo {{ position: absolute; top: 0; right: 0; width: 66px; height: 88px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }}
 @media (max-width: 520px) {{
   .rm-profile-photo {{ position: static; display: block; margin: 0 auto 16px; }}
 }}
@@ -110,16 +110,16 @@ def inject_profile_photo_tex(text, photo):
         packages.append(r"\usepackage{eso-pic}")
     # ModernCV Casual 的姓名原生右对齐，照片放在相反角；其余模板右上角留白更充足。
     horizontal_position = (
-        r"\hspace*{0.2cm}%"
+        r"\hspace*{0.8cm}%"
         if r"\moderncvstyle{casual}" in text
-        else r"\hspace*{\dimexpr\paperwidth-2.0cm\relax}%"
+        else r"\hspace*{\dimexpr\paperwidth-2.6cm\relax}%"
     )
     preamble = ("\n".join(packages) + "\n" if packages else "") + (
         f"% {PROFILE_PHOTO_MARK}\n"
         "\\newcommand{\\rmprofilephoto}[1]{%\n"
         "  \\AddToShipoutPictureFG*{%\n"
         "    \\AtPageUpperLeft{%\n"
-        "      \\raisebox{-2.9cm}[0pt][0pt]{%\n"
+        "      \\raisebox{-3.2cm}[0pt][0pt]{%\n"
         f"        {horizontal_position}\n"
         "        \\includegraphics[width=1.8cm,height=2.4cm,keepaspectratio]{#1}%\n"
         "      }%\n"

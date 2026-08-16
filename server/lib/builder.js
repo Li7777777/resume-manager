@@ -151,7 +151,7 @@ const PROFILE_PHOTO_MARK = 'rm-profile-photo'
 const PROFILE_PHOTO_HTML_CSS = `
 /* ${PROFILE_PHOTO_MARK} */
 .resume-header { position: relative; }
-.rm-profile-photo { position: absolute; top: -12px; right: -32px; width: 66px; height: 88px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }
+.rm-profile-photo { position: absolute; top: 0; right: 0; width: 66px; height: 88px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }
 @media (max-width: 520px) {
   .rm-profile-photo { position: static; display: block; margin: 0 auto 16px; }
 }
@@ -174,13 +174,13 @@ function injectProfilePhotoLatex(text, photoPath) {
   ].filter(Boolean).join('\n')
   // ModernCV Casual 的姓名原生右对齐，照片放在相反角；其余模板右上角留白更充足。
   const horizontalPosition = /\\moderncvstyle\{casual\}/.test(text)
-    ? '\\hspace*{0.2cm}%'
-    : '\\hspace*{\\dimexpr\\paperwidth-2.0cm\\relax}%'
+    ? '\\hspace*{0.8cm}%'
+    : '\\hspace*{\\dimexpr\\paperwidth-2.6cm\\relax}%'
   const preamble = `${packages ? `${packages}\n` : ''}% ${PROFILE_PHOTO_MARK}
 \\newcommand{\\rmprofilephoto}[1]{%
   \\AddToShipoutPictureFG*{%
     \\AtPageUpperLeft{%
-      \\raisebox{-2.9cm}[0pt][0pt]{%
+      \\raisebox{-3.2cm}[0pt][0pt]{%
         ${horizontalPosition}
         \\includegraphics[width=1.8cm,height=2.4cm,keepaspectratio]{#1}%
       }%
