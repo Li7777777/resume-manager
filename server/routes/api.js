@@ -15,7 +15,7 @@ import { ghApi, ghDownload, parseRemoteUrl } from '../lib/github-api.js'
 import AdmZip from 'adm-zip'
 import { recordBuild, listBuilds } from '../lib/build-history.js'
 import { TEMPLATES, ENGINE_LABELS } from '../lib/templates.js'
-import { deleteProfilePhotoFiles, resolveProfilePhoto, writeProfilePhoto } from '../lib/profile-photo.js'
+import { deleteProfilePhoto, recoverProfilePhotoTransactions, replaceProfilePhoto, resolveProfilePhoto } from '../lib/profile-photo.js'
 import { getFontOptionsPayload, normalizeFontSettings } from '../lib/font-options.js'
 
 const router = express.Router()
@@ -361,7 +361,9 @@ router.get('/entries/basics/photo', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   try {
-    const photo = resolveProfilePhoto(repo, store.readCategory(repo, 'basics').photo)
+    const basics = store.readCategory(repo, 'basics')
+    recoverProfilePhotoTransactions(repo, basics.photo)
+    const photo = resolveProfilePhoto(repo, basics.photo)
     if (!photo) return res.status(404).json({ ok: false, error: '尚未上传证件照' })
     res.type(photo.mime)
     res.set('Cache-Control', 'no-store')
@@ -376,10 +378,12 @@ router.post('/entries/basics/photo', profilePhotoBody, (req, res) => {
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   try {
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new Error('请选择证件照文件')
-    const photo = writeProfilePhoto(repo, req.body)
     const basics = store.readCategory(repo, 'basics')
-    const entry = store.upsertEntry(repo, 'basics', { ...basics, photo: photo.relative })
-    res.json({ ok: true, photo: photo.relative, entry })
+    recoverProfilePhotoTransactions(repo, basics.photo)
+    const { photo, result: entry, warnings } = replaceProfilePhoto(repo, req.body, (nextPhoto) => (
+      store.upsertEntry(repo, 'basics', { ...basics, photo: nextPhoto.relative })
+    ))
+    res.json({ ok: true, photo: photo.relative, entry, warnings })
   } catch (err) {
     sendError(res, err)
   }
@@ -389,11 +393,11 @@ router.delete('/entries/basics/photo', (req, res) => {
   const repo = getRepoPath()
   if (!repo) return res.json({ ok: false, error: '未配置数据仓' })
   try {
-    deleteProfilePhotoFiles(repo)
     const basics = store.readCategory(repo, 'basics')
+    recoverProfilePhotoTransactions(repo, basics.photo)
     const { photo: ignoredPhoto, ...next } = basics
-    const entry = store.upsertEntry(repo, 'basics', next)
-    res.json({ ok: true, entry })
+    const { result: entry, warnings } = deleteProfilePhoto(repo, () => store.upsertEntry(repo, 'basics', next))
+    res.json({ ok: true, entry, warnings })
   } catch (err) {
     sendError(res, err)
   }

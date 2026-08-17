@@ -1,5 +1,5 @@
 // 通用 UI 组件库（Tailwind 深色主题）
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { X, Plus, Loader2 } from 'lucide-react'
 
 /* ---------- 按钮 ---------- */
@@ -132,22 +132,71 @@ export function Modal({
   children: React.ReactNode
   wide?: boolean
 }) {
+  const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => { onCloseRef.current = onClose }, [onClose])
+
   useEffect(() => {
     if (!open) return
-    const fn = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', fn)
-    return () => window.removeEventListener('keydown', fn)
-  }, [open, onClose])
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const frame = window.requestAnimationFrame(() => {
+      const focusable = dialogRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      )
+      ;(focusable || dialogRef.current)?.focus()
+    })
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCloseRef.current()
+        return
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return
+      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      )].filter((element) => element.offsetParent !== null)
+      if (!focusable.length) {
+        event.preventDefault()
+        dialogRef.current.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', keydown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('keydown', keydown)
+      document.body.style.overflow = previousOverflow
+      previousFocus?.focus()
+    }
+  }, [open])
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden="true" onClick={() => onCloseRef.current()} />
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className={`relative max-h-[90vh] w-full ${wide ? 'max-w-3xl' : 'max-w-xl'} overflow-y-auto rounded-xl border border-zinc-700/60 bg-zinc-900 shadow-2xl shadow-black/60`}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-zinc-900/95 px-5 py-3.5 backdrop-blur">
-          <h3 className="text-sm font-semibold text-zinc-100">{title}</h3>
-          <button className="text-zinc-500 hover:text-zinc-200" onClick={onClose}>
+          <h3 id={titleId} className="text-sm font-semibold text-zinc-100">{title}</h3>
+          <button type="button" aria-label="关闭弹窗" className="text-zinc-500 hover:text-zinc-200" onClick={() => onCloseRef.current()}>
             <X size={18} />
           </button>
         </div>

@@ -53,7 +53,7 @@
 
 ```yaml
 name: 张三            # 姓名
-photo: assets/profile-photo.jpg  # 可选；基础信息页上传后自动写入，支持 JPEG/PNG
+photo: assets/profile-photo.jpg  # 可选；基础信息页上传后在浏览器裁剪为标准一寸 JPEG（295×413 / 300 DPI），再自动写入
 headline: 资深前端工程师
 phone: "138-0000-0000"
 email: zhangsan@example.com
@@ -190,7 +190,7 @@ variants:
 - 专业技能按细分方向（tags）分组：每个方向输出一行“方向：技能、技能”，跨方向技能同时出现在多行；优先罗列 `keywords`，为空时使用条目 `name`；yamlresume 模板自动追加的等级文字与正文列调整在构建后移除；
 - 兴趣爱好合并成一行，以 `、` 直接罗列，不输出冒号；
 - 项目 `description` 作为项目背景保留完整内容，组合输出自动补成“项目背景：xxx”，并在项目要点列表之前以无项目符号正文显示；项目 `summary` 按 Markdown 渲染，保留多级列表、加粗和斜体，旧纯文本自动兼容为顶级列表；LaTeX 默认隐藏原始 URL，改为项目名称超链接；GitHub 项目名称后可附加 GitHub Logo、`owner/repo` 地址和 star 数徽章；
-- `basics.photo` 是仓内证件照路径（固定为 `assets/profile-photo.jpg` 或 `.png`）；组合器生成 YAML 时剥离该管理字段，再由 Jake 原版渲染器或 TeX/HTML 后处理注入不占正文排版宽度的独立页首浮层，避免违反 YAMLResume 的严格 basics schema，也不压缩原有文字；
+- `basics.photo` 是仓内证件照路径（固定为 `assets/profile-photo.jpg` 或 `.png`）；管理端选择最大 20 MB、50MP 的 JPEG/PNG 原图后，在浏览器中以固定 5:7 比例拖动、缩放并裁剪为标准一寸 295×413 px / 300 DPI 白底 JPEG，只有裁剪结果会上传和写入私有仓，取消裁剪不修改现有照片；组合器生成 YAML 时剥离该管理字段，再由 Jake 原版渲染器或 TeX/HTML 后处理注入不占正文排版宽度的独立页首浮层，避免违反 YAMLResume 的严格 basics schema，也不压缩原有文字；
 - `summary` 统一转字符串（数组 → `- 项` 列表）；
 - 空章节自动省略；`endDate` 空值输出为空（表示"至今"）；
 - 生成文件写入 `resumes/<variant>.yml`，带"自动生成，请勿手改"头注释。

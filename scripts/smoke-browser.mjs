@@ -1,4 +1,5 @@
 // 浏览器冒烟测试：应用外壳、类型分支、PDF 时间线、定制/YAML 同步工作区与窄屏布局
+import fs from 'node:fs'
 import puppeteer from 'puppeteer-core'
 
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
@@ -86,6 +87,43 @@ const entriesDrag = await page.evaluate(() => {
 })
 const entriesDragOk = entriesDrag.cards >= 2 && entriesDrag.indexed === entriesDrag.cards && entriesDrag.hint
 console.log('信息管理:', entriesDragOk)
+
+console.log('=== 证件照裁剪 ===')
+const photoFixture = 'C:/Users/Tech7/AppData/Local/Temp/rm-smoke-photo-crop.png'
+const photoData = await page.evaluate(() => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 900
+  canvas.height = 600
+  const context = canvas.getContext('2d')
+  context.fillStyle = '#2563eb'
+  context.fillRect(0, 0, 450, 600)
+  context.fillStyle = '#dc2626'
+  context.fillRect(450, 0, 450, 600)
+  return canvas.toDataURL('image/png').split(',')[1]
+})
+fs.writeFileSync(photoFixture, Buffer.from(photoData, 'base64'))
+await page.evaluate(() => {
+  const tab = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('基础信息'))
+  if (tab instanceof HTMLButtonElement) tab.click()
+})
+await sleep(300)
+const photoInput = await page.$('input[type="file"]')
+await photoInput?.uploadFile(photoFixture)
+await page.waitForSelector('[data-photo-crop-dialog]', { timeout: 10000 })
+const photoCropUiOk = await page.evaluate(() => (
+  document.body.innerText.includes('标准一寸')
+  && document.body.innerText.includes('25 × 35 mm')
+  && document.body.innerText.includes('295 × 413 px')
+  && !!document.querySelector('[aria-label="证件照裁剪区域"]')
+  && !!document.querySelector('input[aria-label="照片缩放"]')
+))
+await page.evaluate(() => {
+  const cancel = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === '取消')
+  if (cancel instanceof HTMLButtonElement) cancel.click()
+})
+await page.waitForSelector('[data-photo-crop-dialog]', { hidden: true })
+fs.rmSync(photoFixture, { force: true })
+console.log('证件照裁剪:', photoCropUiOk)
 
 console.log('=== 简历定制与 YAML ===')
 const customizer = await visit('customizer', 'rm-smoke-customizer.png')
@@ -224,6 +262,6 @@ console.log('窄屏:', mobileOk)
 if (errors.length) console.log('浏览器错误:', errors.slice(0, 5))
 await browser.close()
 
-const ok = shellOk && typesOk && pdfOk && entriesDragOk && customizerOk && selectionFlow.available && selectionFlow.selected && selectionFlow.restored && legacyOk && mobileOk && errors.length === 0
+const ok = shellOk && typesOk && pdfOk && entriesDragOk && photoCropUiOk && customizerOk && selectionFlow.available && selectionFlow.selected && selectionFlow.restored && legacyOk && mobileOk && errors.length === 0
 console.log(ok ? 'ALL_RENDER_OK' : 'RENDER_ISSUE')
 process.exit(ok ? 0 : 1)

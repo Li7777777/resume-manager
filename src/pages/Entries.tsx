@@ -32,6 +32,8 @@ import { api } from '../api'
 import type { Category, Entry } from '../types'
 import { useToast } from '../toast'
 import { Card, Button, Modal, Field, Input, Textarea, Select, TagChip, TagInput, EmptyState, Spinner } from '../components/ui'
+import ProfilePhotoCropper from '../components/ProfilePhotoCropper'
+import { inspectPhotoFile, loadPhotoImage, MAX_SOURCE_PHOTO_BYTES } from '../lib/profile-photo-crop'
 
 // 学位与技能等级：显示中文、存储 YAMLResume schema 英文枚举（翻译会导致简历校验失败）
 const DEGREES = ['Middle School', 'High School', 'Diploma', 'Associate', 'Bachelor', 'Master', 'Doctor']
@@ -830,46 +832,88 @@ function CategoryManagerModal({
 function BasicsForm({ initial, onSave }: { initial: Entry; onSave: (e: Entry) => void }) {
   const toast = useToast()
   const inputRef = useRef<HTMLInputElement>(null)
+  const mountedRef = useRef(true)
   const [form, setForm] = useState<Entry>(() => ({ ...initial }))
+  const [preparingPhoto, setPreparingPhoto] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [pendingPhotoSource, setPendingPhotoSource] = useState<string | null>(null)
   const [photoRevision, setPhotoRevision] = useState(() => Date.now())
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }))
   const photo = typeof form.photo === 'string' ? form.photo : ''
+  const photoBusy = preparingPhoto || uploadingPhoto
 
-  const uploadPhoto = async (file?: File) => {
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  useEffect(() => {
+    if (!pendingPhotoSource) return
+    return () => URL.revokeObjectURL(pendingPhotoSource)
+  }, [pendingPhotoSource])
+
+  const selectPhoto = async (file?: File) => {
     if (!file) return
     if (!['image/jpeg', 'image/png'].includes(file.type)) {
       toast('warn', '证件照仅支持 JPEG 或 PNG')
+      if (inputRef.current) inputRef.current.value = ''
       return
     }
-    if (file.size > 4 * 1024 * 1024) {
-      toast('warn', '证件照不能超过 4 MB')
+    if (file.size > MAX_SOURCE_PHOTO_BYTES) {
+      toast('warn', '证件照原图不能超过 20 MB')
+      if (inputRef.current) inputRef.current.value = ''
       return
     }
+
+    let source: string | null = null
+    let retained = false
+    setPreparingPhoto(true)
+    try {
+      await inspectPhotoFile(file)
+      if (!mountedRef.current) return
+      source = URL.createObjectURL(file)
+      await loadPhotoImage(source)
+      if (!mountedRef.current) return
+      setPendingPhotoSource(source)
+      retained = true
+    } catch (error: any) {
+      if (mountedRef.current) toast('error', error.message)
+    } finally {
+      if (source && !retained) URL.revokeObjectURL(source)
+      if (mountedRef.current) {
+        setPreparingPhoto(false)
+        if (inputRef.current) inputRef.current.value = ''
+      }
+    }
+  }
+
+  const uploadCroppedPhoto = async (file: File) => {
     setUploadingPhoto(true)
     try {
-      const result = await api.upload<{ photo: string }>('/api/entries/basics/photo', file)
+      const result = await api.upload<{ photo: string; warnings?: string[] }>('/api/entries/basics/photo', file)
       set('photo', result.photo)
       setPhotoRevision(Date.now())
+      setPendingPhotoSource(null)
       toast('success', photo ? '证件照已更换' : '证件照已上传')
+      if (result.warnings?.length) toast('warn', result.warnings.join('；'))
     } catch (error: any) {
       toast('error', error.message)
     } finally {
       setUploadingPhoto(false)
-      if (inputRef.current) inputRef.current.value = ''
     }
   }
 
   const removePhoto = async () => {
     setUploadingPhoto(true)
     try {
-      await api.del('/api/entries/basics/photo')
+      const result = await api.del<{ warnings?: string[] }>('/api/entries/basics/photo')
       setForm((current) => {
         const { photo: ignoredPhoto, ...next } = current
         return next
       })
       setPhotoRevision(Date.now())
       toast('success', '证件照已删除')
+      if (result.warnings?.length) toast('warn', result.warnings.join('；'))
     } catch (error: any) {
       toast('error', error.message)
     } finally {
@@ -879,9 +923,17 @@ function BasicsForm({ initial, onSave }: { initial: Entry; onSave: (e: Entry) =>
 
   return (
     <div className="space-y-4">
-      <Field label="证件照" hint="JPEG / PNG，最大 4 MB">
+      {pendingPhotoSource && (
+        <ProfilePhotoCropper
+          source={pendingPhotoSource}
+          uploading={uploadingPhoto}
+          onCancel={() => setPendingPhotoSource(null)}
+          onUpload={uploadCroppedPhoto}
+        />
+      )}
+      <Field label="证件照" hint="JPEG / PNG，原图最大 20 MB · 选择后裁剪为标准一寸">
         <div className="flex flex-wrap items-end gap-4">
-          <div className="flex aspect-[3/4] w-28 shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-700 bg-zinc-950">
+          <div className="flex aspect-[5/7] w-28 shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-700 bg-zinc-950">
             {photo ? (
               <img
                 key={photoRevision}
@@ -899,13 +951,13 @@ function BasicsForm({ initial, onSave }: { initial: Entry; onSave: (e: Entry) =>
               type="file"
               accept="image/jpeg,image/png,.jpg,.jpeg,.png"
               className="hidden"
-              onChange={(event) => void uploadPhoto(event.target.files?.[0])}
+              onChange={(event) => void selectPhoto(event.target.files?.[0])}
             />
-            <Button type="button" loading={uploadingPhoto} onClick={() => inputRef.current?.click()}>
+            <Button type="button" loading={photoBusy} onClick={() => inputRef.current?.click()}>
               <Upload size={14} /> {photo ? '更换照片' : '上传照片'}
             </Button>
             {photo && (
-              <Button type="button" variant="danger" disabled={uploadingPhoto} onClick={() => void removePhoto()}>
+              <Button type="button" variant="danger" disabled={photoBusy} onClick={() => void removePhoto()}>
                 <Trash2 size={14} /> 删除照片
               </Button>
             )}

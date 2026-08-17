@@ -15,6 +15,10 @@ resumes/*.md
 resumes/*.docx
 resumes/*.synctex.gz
 
+# 证件照事务临时/备份文件（进程中断后的恢复产物，下次操作自动清理）
+assets/.profile-photo-*.tmp
+assets/.profile-photo-*.bak
+
 # 系统/编辑器文件
 .DS_Store
 Thumbs.db

@@ -40,6 +40,7 @@
 | `npm run build` | 构建前端到 `dist/` |
 | `npm start` | 生产：单进程托管 dist + API（`NODE_ENV=production`） |
 | `npm run typecheck` | 前端 TS 检查（`tsc --noEmit`） |
+| `npm run smoke:photo` | 自动创建临时数据仓，验收一寸裁剪输出、响应式、错误输入、4 MB 服务端限制、原子回滚及横/竖旧图 PDF cover；自动查找 Edge/Chrome/Chromium，也可用 `EDGE_PATH` 指定 |
 
 后端无构建步骤（纯 ESM JS）。Node >= 20。
 
@@ -79,7 +80,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 | GET | `/api/entries/:cat` | 单分类 |
 | POST | `/api/entries/:cat` | 新增（basics 为整对象替换） |
 | GET | `/api/entries/basics/photo` | 读取当前证件照（仅仓内固定路径，no-store） |
-| POST | `/api/entries/basics/photo` | 上传/更换 JPEG 或 PNG 证件照（原始图片请求体，最大 4 MB） |
+| POST | `/api/entries/basics/photo` | 上传/更换裁剪后的 JPEG 或 PNG 证件照（请求体最大 4 MB，解析图片结构和尺寸后原子替换；当前 UI 固定输出 295×413 / 300 DPI JPEG） |
 | DELETE | `/api/entries/basics/photo` | 删除证件照文件并清除 basics.photo |
 | PUT | `/api/entries/:cat/reorder` | 按 id 顺序重排分类条目（写回 YAML 数组顺序） |
 | PUT | `/api/entries/:cat/:id` | 更新（按 id） |
@@ -160,7 +161,7 @@ Git 看板    ──/api/git/*────────────►  git-servi
 - `generateAll(repo, only?)`：组合并写出 `resumes/<name>.yml`（含头部注释，null → 空值）。
 - 字段映射：`company → name`；`achievements → summary`（按标签过滤）；列表 summary 转字符串；剥除元数据。
 - PDF/HTML 紧凑输出：技能按细分方向（tags）分组为“方向：技能、技能”每方向一行，兴趣合并为单行；项目 description 组合为无项目符号的“项目背景：xxx”，summary 按 Markdown 多级列表渲染并保留加粗/斜体，旧纯文本兼容为顶级列表；LaTeX 原始 URL 改为项目名链接；`server/lib/system-fonts.js` 枚举当前操作系统字体，`server/lib/font-options.js` 与私有仓 `scripts/font_options.py` 对安全字体家族名维护一致的旧值迁移和跨平台回退，组合器写合法 `typography.fontFamily`，`builder.js` / `postprocess-output.py` 再分别设置 LaTeX CJK 字体和 HTML Unicode 字体范围；未选字体时保留 Microsoft YaHei 优先的现有中文行为。后处理同时移除 yamlresume 模板强加的等级文本，并让 ModernCV/Jake 的标题首列和项目背景按正文宽度自然换行。
-- 证件照：基础信息页把 JPEG/PNG 保存到私有仓 `assets/profile-photo.*`，`basics.photo` 只记录仓内路径；组合器剥离该字段以保持 YAMLResume schema 合法，`builder.js` / `postprocess-output.py` 再将照片作为不占正文排版宽度的独立页首浮层注入 ModernCV、Jake 和 HTML，Jake 原版也复用同一浮层逻辑；桌面/PDF 保持原文字几何，窄屏 HTML 将照片独立置于标题上方。
+- 证件照：基础信息页选择最大 20 MB、50MP 的 JPEG/PNG 原图后先在浏览器内打开固定 5:7 裁剪器，支持鼠标/触摸拖动、键盘移动、滚轮/滑杆缩放和重置，确认时转为标准一寸 295×413 px / 300 DPI 白底 JPEG；原图不上传、不落盘，取消不改现有照片。裁剪结果保存到私有仓 `assets/profile-photo.*`，`basics.photo` 只记录仓内路径；组合器剥离该字段以保持 YAMLResume schema 合法，`builder.js` / `postprocess-output.py` 再将照片以相同 5:7 比例作为不占正文排版宽度的独立页首浮层注入 ModernCV、Jake 和 HTML，Jake 原版也复用同一浮层逻辑；桌面/PDF 保持原文字几何，窄屏 HTML 将照片独立置于标题上方。
 - 自定义模板 `jake-original`（Jake 原版）：`server/lib/jake-original.js` 从组合后的 YAML 直接生成 jakegut/resume.tex 风格 LaTeX（居中头部 + `\titlerule` 分节 + tabular* 日期右对齐 + 项目单行标题），`buildVariant` 检测到该模板时跳过 yamlresume 直接用 xelatex 编译。
 - GitHub star 徽章：`server/lib/github-stars.js` 解析项目 URL，在项目名后追加 GitHub Logo + `owner/repo` 地址 + star 数徽章。**仅「保存发布正式版」时拉取 GitHub API 并写本机缓存** `~/.resume-manager/github-stars.json`（预览/组合只读缓存，不访问网络）；0 star 仍显示地址但不显示数量；项目背景 description 保留完整内容；设置页可关（`starsEnabled`，默认开）。
 - 与 `templates/private-repo/scripts/compose.py` 行为一致——**改动任一实现必须同步另一份**，
@@ -177,7 +178,8 @@ Git 看板    ──/api/git/*────────────►  git-servi
 7. Git 看板：改文件 → 状态出现 → 提交 → 推送（测试用一次性临时私有仓）；
 8. 设置连接空目录：生成骨架 → 目录结构核对 → `yamlresume validate` 通过；
 9. PDF 输出：生成包含长项目描述、技能和兴趣的 ModernCV 简历，确认 `.log` 无 `Overfull/Underfull`，技能按方向分组（如 `Agent：xxx、xxx`）分行、兴趣单行且均无模板等级/冒号；项目 `cventry` 中的“关键字”已改名为“技术栈”并另起一行，不被后处理误伤；项目/教育名称与日期同一行、日期右对齐；
-10. 字体输出：确认 `/api/font-options` 返回系统字体全集中的中文/拉丁可用家族，搜索选择和强制重新扫描生效；用含空格、连字符及下划线的系统字体名构建 ModernCV Banking/Casual/Classic、Jake、Jake Original、Calm、VS Code；PDF 用 `pdffonts` 核对两类字体嵌入，HTML 用浏览器平台字体信息核对中英字形分别命中，旧短 ID 自动迁移，恶意字体名被清除，JS/Python 组合与最终 TeX/HTML 保持一致；并发发布同一类型的两组字体，确认两个归档产物互不污染。
+10. 字体输出：确认 `/api/font-options` 返回系统字体全集中的中文/拉丁可用家族，搜索选择和强制重新扫描生效；用含空格、连字符及下划线的系统字体名构建 ModernCV Banking/Casual/Classic、Jake、Jake Original、Calm、VS Code；PDF 用 `pdffonts` 核对两类字体嵌入，HTML 用浏览器平台字体信息核对中英字形分别命中，旧短 ID 自动迁移，恶意字体名被清除，JS/Python 组合与最终 TeX/HTML 保持一致；并发发布同一类型的两组字体，确认两个归档产物互不污染；
+11. 证件照裁剪：选择横图和竖图分别进入裁剪器，确认固定显示“一寸 / 25 × 35 mm / 295 × 413 px / 300 DPI”；拖动、方向键、缩放滑杆、滚轮与重置均生效，取消后仓内文件及 `basics.photo` 不变，确认后只保存 295×413 / 300 DPI JPEG；在 390/1024/1440px 视口检查弹窗无横向溢出，再构建 7 个模板并核对 HTML/LaTeX/PDF 中照片保持 5:7、PDF 图片未拉伸且正文几何不变。
 
 ## 8. 隐私红线（评审时检查）
 

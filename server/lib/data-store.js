@@ -360,7 +360,14 @@ export function writeCategory(repoPath, category, entries) {
     : entries && typeof entries === 'object'
       ? Object.fromEntries(Object.entries(entries).filter(([key]) => key !== 'notes'))
       : entries
-  fs.writeFileSync(file, yaml.dump(persisted, { noRefs: true, lineWidth: -1, sortKeys: false }), 'utf8')
+  const content = yaml.dump(persisted, { noRefs: true, lineWidth: -1, sortKeys: false })
+  const temporary = `${file}.${crypto.randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(temporary, content, { encoding: 'utf8', flag: 'wx' })
+    fs.renameSync(temporary, file)
+  } finally {
+    fs.rmSync(temporary, { force: true })
+  }
 }
 
 export function getEntry(repoPath, category, id) {
