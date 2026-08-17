@@ -80,22 +80,24 @@ export function Field({
   label,
   hint,
   required,
+  plain,
   children,
 }: {
   label: string
   hint?: string
   required?: boolean
+  /** 不渲染为 <label>：用于内部含按钮/文件输入的字段，避免点击标签时被转发到第一个控件 */
+  plain?: boolean
   children: React.ReactNode
 }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 flex items-baseline justify-between text-xs font-medium text-zinc-400">
-        <span>{label}{required && <span className="ml-0.5 text-red-400">*</span>}</span>
-        {hint && <span className="text-[11px] text-zinc-600">{hint}</span>}
-      </span>
-      {children}
-    </label>
+  const title = (
+    <span className="mb-1.5 flex items-baseline justify-between text-xs font-medium text-zinc-400">
+      <span>{label}{required && <span className="ml-0.5 text-red-400">*</span>}</span>
+      {hint && <span className="text-[11px] text-zinc-600">{hint}</span>}
+    </span>
   )
+  if (plain) return <div className="block">{title}{children}</div>
+  return <label className="block">{title}{children}</label>
 }
 
 const inputCls =

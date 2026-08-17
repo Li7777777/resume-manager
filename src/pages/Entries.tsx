@@ -931,9 +931,9 @@ function BasicsForm({ initial, onSave }: { initial: Entry; onSave: (e: Entry) =>
           onUpload={uploadCroppedPhoto}
         />
       )}
-      <Field label="证件照" hint="JPEG / PNG，原图最大 20 MB · 选择后裁剪为标准一寸">
+      <Field label="证件照" hint="JPEG / PNG，原图最大 20 MB · 选择后裁剪为标准一寸" plain>
         <div className="flex flex-wrap items-end gap-4">
-          <div className="flex aspect-[5/7] w-28 shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-700 bg-zinc-950">
+          <div data-photo-preview className="flex aspect-[5/7] w-28 shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-700 bg-zinc-950">
             {photo ? (
               <img
                 key={photoRevision}
@@ -953,7 +953,7 @@ function BasicsForm({ initial, onSave }: { initial: Entry; onSave: (e: Entry) =>
               className="hidden"
               onChange={(event) => void selectPhoto(event.target.files?.[0])}
             />
-            <Button type="button" loading={photoBusy} onClick={() => inputRef.current?.click()}>
+            <Button type="button" data-photo-upload loading={photoBusy} onClick={() => inputRef.current?.click()}>
               <Upload size={14} /> {photo ? '更换照片' : '上传照片'}
             </Button>
             {photo && (

@@ -198,6 +198,18 @@ try {
   })
   await page.waitForSelector('input[type="file"]')
 
+  // 回归：点击按钮外的区域（预览框）不应打开文件选择器；只有点击“上传照片”按钮才触发。
+  let chooserCount = 0
+  page.on('filechooser', () => { chooserCount += 1 })
+  await page.click('[data-photo-preview]')
+  await sleep(300)
+  const outsideDoesNotOpen = chooserCount === 0
+  const chooserPromise = page.waitForFileChooser({ timeout: 2500 }).catch(() => null)
+  await page.click('[data-photo-upload]')
+  const chooser = await chooserPromise
+  const buttonOpensChooser = !!chooser
+  if (chooser) await chooser.cancel()
+
   const uploadFixture = async (file) => {
     const input = await page.$('input[type="file"]')
     await input.uploadFile(file)
@@ -432,6 +444,7 @@ try {
 
   const result = {
     initial,
+    clickTargeting: { outsideDoesNotOpen, buttonOpensChooser },
     cancelPreserved,
     viewports,
     cropRatio,
@@ -461,6 +474,7 @@ try {
   console.log(JSON.stringify(result, null, 2))
 
   const passed = Object.values(initial).every(Boolean)
+    && outsideDoesNotOpen && buttonOpensChooser
     && cancelPreserved
     && viewports.every((item) => !item.overflow && item.dialogInside && item.cropInside)
     && Math.abs(cropRatio - 5 / 7) < 0.01
