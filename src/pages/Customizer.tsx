@@ -1,5 +1,6 @@
 // 简历定制：按当前简历类型组织内容、选择模板，并在本页构建预览
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   GripVertical,
   Trash2,
@@ -95,51 +96,175 @@ interface SystemFontPickerProps {
 
 function SystemFontPicker({ kind, label, value, options, disabled, onChange }: SystemFontPickerProps) {
   const [input, setInput] = useState(value)
-  const listId = `system-fonts-${kind}`
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(0)
+  const [anchor, setAnchor] = useState<{ left: number; top: number; width: number } | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => setInput(value), [value])
+  useEffect(() => { if (!open) setQuery('') }, [open])
 
-  const commitExactMatch = (candidate: string) => {
-    const normalized = candidate.trim()
-    const match = options.find((option) => option.id.localeCompare(normalized, undefined, { sensitivity: 'base' }) === 0)
-    if (!match) return false
-    setInput(match.id)
-    if (match.id !== value) onChange(match.id)
-    return true
+  const filtered = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase()
+    if (!q) return options
+    return options.filter((option) => option.id.toLocaleLowerCase().includes(q))
+  }, [query, options])
+
+  useEffect(() => setHighlight(0), [open, query])
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (rootRef.current?.contains(target) || listRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    const onScroll = (event: Event) => {
+      if (listRef.current?.contains(event.target as Node)) return
+      setOpen(false)
+    }
+    const onResize = () => setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onResize)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    listRef.current?.querySelector<HTMLElement>(`[data-option-index="${highlight}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [highlight, open])
+
+  const openDropdown = () => {
+    if (disabled) return
+    setQuery('')
+    const rect = inputRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const width = Math.min(Math.max(rect.width, 264), window.innerWidth - 16)
+    const spaceBelow = window.innerHeight - rect.bottom
+    const openUp = spaceBelow < 344 && rect.top > 344
+    const top = openUp ? rect.top - 344 - 6 : rect.bottom + 6
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+    setAnchor({ left, top, width })
+    setOpen(true)
+  }
+
+  const select = (id: string) => {
+    setInput(id)
+    setQuery('')
+    setOpen(false)
+    if (id !== value) onChange(id)
+  }
+
+  const commit = () => {
+    const match = options.find((option) => option.id.toLocaleLowerCase() === input.trim().toLocaleLowerCase())
+    setQuery('')
+    if (match) select(match.id)
+    else setInput(value)
+  }
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      if (!open) openDropdown()
+      else setHighlight((current) => Math.min(current + 1, filtered.length - 1))
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      if (!open) openDropdown()
+      else setHighlight((current) => Math.max(current - 1, 0))
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      if (open && filtered[highlight]) select(filtered[highlight].id)
+      else commit()
+    } else if (event.key === 'Escape') {
+      if (open) {
+        setOpen(false)
+        return
+      }
+      setInput(value)
+      inputRef.current?.blur()
+    } else if (event.key === 'Tab') {
+      setOpen(false)
+    }
   }
 
   return (
-    <div className="relative min-w-0">
+    <div ref={rootRef} className="relative min-w-0">
       <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600" />
       <input
-        type="search"
-        list={listId}
+        ref={inputRef}
+        type="text"
         value={input}
         disabled={disabled}
         draggable={false}
-        data-font-picker={kind}
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
         aria-label={label}
+        data-font-picker={kind}
         autoComplete="off"
         spellCheck={false}
-        onChange={(event) => setInput(event.target.value)}
-        onBlur={() => {
-          if (!commitExactMatch(input)) setInput(value)
+        onFocus={openDropdown}
+        onClick={openDropdown}
+        onChange={(event) => {
+          const next = event.target.value
+          setInput(next)
+          setQuery(next)
+          setHighlight(0)
         }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault()
-            if (!commitExactMatch(input)) setInput(value)
-          } else if (event.key === 'Escape') {
-            setInput(value)
-            event.currentTarget.blur()
-          }
-        }}
+        onBlur={commit}
+        onKeyDown={onKeyDown}
         className="h-9 w-full min-w-0 rounded-md border border-zinc-700 bg-zinc-900 py-2 pl-8 pr-2 text-xs text-zinc-200 outline-none transition placeholder:text-zinc-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-50"
         placeholder={`搜索${label}`}
       />
-      <datalist id={listId}>
-        {options.map((option) => <option key={option.id} value={option.id}>{option.description}</option>)}
-      </datalist>
+      {open && anchor && createPortal(
+        <div
+          ref={listRef}
+          role="listbox"
+          aria-label={`${label}列表`}
+          style={{ position: 'fixed', left: anchor.left, top: anchor.top, width: anchor.width, maxHeight: 344, zIndex: 60 }}
+          className="overflow-auto rounded-md border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black/60"
+        >
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/95 px-3 py-2 backdrop-blur">
+            <span className="text-[11px] text-zinc-400">共 {filtered.length} 个字体</span>
+            <span className="shrink-0 text-[10px] text-zinc-600">↑↓ 选择 · Enter 确认 · Esc 关闭</span>
+          </div>
+          {filtered.length ? filtered.map((option, index) => {
+            const selected = option.id === value
+            return (
+              <button
+                type="button"
+                key={option.id}
+                role="option"
+                aria-selected={selected}
+                data-option-index={index}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  select(option.id)
+                }}
+                onMouseEnter={() => setHighlight(index)}
+                className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition ${index === highlight ? 'bg-zinc-800' : ''}`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className={`block truncate text-xs ${selected ? 'font-medium text-indigo-300' : 'text-zinc-200'}`}>{option.id}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-zinc-500">{option.description}</span>
+                </span>
+                <span className="shrink-0 text-sm text-zinc-300" style={{ fontFamily: option.cssFamilies.join(', ') }}>{option.sample}</span>
+              </button>
+            )
+          }) : (
+            <div className="px-3 py-6 text-center text-xs text-zinc-500">没有匹配的字体</div>
+          )}
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

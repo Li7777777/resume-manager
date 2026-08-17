@@ -157,6 +157,32 @@ const fontLibraryOk = await page.evaluate(async () => {
       && new Set(group.options.map((option) => option.id)).size === group.options.length)
 })
 console.log('字体组件库:', fontLibraryOk)
+// 字体下拉必须完整列出系统字体（此前原生 datalist 只显示少数匹配项）
+const fontComboboxOk = await (async () => {
+  const data = await page.evaluate(async () => (await (await fetch('/api/font-options')).json()))
+  const latinGroup = (data.groups || []).find((group) => group.kind === 'latin')
+  const expected = latinGroup?.options.length || 0
+  const existed = await page.$('[data-font-component="latin"]')
+  if (!existed) {
+    await page.click('[data-font-library="latin"]')
+    await page.waitForSelector('[data-font-component="latin"]', { timeout: 5000 })
+  }
+  await page.click('[data-font-component="latin"] [data-font-picker="latin"]')
+  await page.waitForSelector('[role="listbox"]', { timeout: 5000 })
+  const count = await page.evaluate(() => [...document.querySelectorAll('[role="listbox"] [role="option"]')].length)
+  await page.keyboard.press('Escape')
+  await sleep(200)
+  if (!existed) {
+    await page.evaluate(() => {
+      const remove = [...document.querySelectorAll('[data-font-component="latin"] button')]
+        .find((button) => button.getAttribute('aria-label')?.includes('移除'))
+      if (remove instanceof HTMLButtonElement) remove.click()
+    })
+    await sleep(300)
+  }
+  return count === expected && expected > 0
+})()
+console.log('字体下拉完整列表:', fontComboboxOk)
 await page.evaluate(() => {
   const category = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('项目经历'))
   if (category instanceof HTMLButtonElement) category.click()
@@ -262,6 +288,6 @@ console.log('窄屏:', mobileOk)
 if (errors.length) console.log('浏览器错误:', errors.slice(0, 5))
 await browser.close()
 
-const ok = shellOk && typesOk && pdfOk && entriesDragOk && photoCropUiOk && customizerOk && selectionFlow.available && selectionFlow.selected && selectionFlow.restored && legacyOk && mobileOk && errors.length === 0
+const ok = shellOk && typesOk && pdfOk && entriesDragOk && photoCropUiOk && customizerOk && fontComboboxOk && selectionFlow.available && selectionFlow.selected && selectionFlow.restored && legacyOk && mobileOk && errors.length === 0
 console.log(ok ? 'ALL_RENDER_OK' : 'RENDER_ISSUE')
 process.exit(ok ? 0 : 1)
