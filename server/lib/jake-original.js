@@ -80,7 +80,10 @@ function renderMarkdownInline(tokens = []) {
 
 function renderMarkdownList(token, depth = 0) {
   const environment = token.ordered ? 'enumerate' : 'itemize'
-  const options = depth > 0 ? '[leftmargin=1.4em]' : ''
+  // 显式管理列表间距，避免依赖模板中的负间距把项目标题、背景和要点压在一起。
+  const options = depth > 0
+    ? '[leftmargin=1.4em, topsep=1pt, itemsep=1pt, parsep=0pt, partopsep=0pt]'
+    : '[leftmargin=1.4em, topsep=2pt, itemsep=1pt, parsep=0pt, partopsep=0pt]'
   const items = token.items.map((item) => {
     const parts = item.tokens.map((child) => {
       if (child.type === 'list') return `\n${renderMarkdownList(child, depth + 1)}`
@@ -142,10 +145,26 @@ const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
 \\raggedright
 \\setlength{\\tabcolsep}{0in}
 
-\\definecolor{rmbadgeleft}{HTML}{24292F}
+\\definecolor{rmbadgeborder}{HTML}{D0D7DE}
+\\definecolor{rmbadgeleft}{HTML}{FFFFFF}
 \\definecolor{rmbadgeright}{HTML}{FFFFFF}
+\\definecolor{rmbadgetext}{HTML}{24292F}
 % GitHub 徽章：Logo + owner/repo 地址 + star 数量
-\\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\hspace{0.3em}\\raisebox{0.6pt}[0pt][0pt]{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.5}{6.5}\\selectfont\\faGithub\\ \\texttt{#1}}}\\if\\relax\\detokenize{#2}\\relax\\else\\colorbox{rmbadgeright}{\\textcolor{black}{\\fontsize{6.8}{6.8}\\selectfont\\faStar\\ #2}}\\fi}\\hspace{0.2em}\\endgroup}
+% 保留徽章的真实高度/深度，让所在行按内容自然撑开；不能伪装成 0pt 高盒子。
+\\newcommand{\\githubbadge}[2]{%
+  \\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\setlength{\\fboxrule}{0.35pt}%
+  \\hspace{0.3em}\\raisebox{0.6pt}{%
+    \\fcolorbox{rmbadgeborder}{rmbadgeleft}{%
+      \\fontsize{6.5}{6.5}\\selectfont\\strut
+      \\textcolor{rmbadgetext}{\\faGithub\\ \\texttt{#1}}%
+      \\if\\relax\\detokenize{#2}\\relax
+      \\else
+        \\hspace{0.45em}{\\color{rmbadgeborder}\\vrule width 0.35pt height 1.1ex depth 0.25ex}\\hspace{0.45em}%
+        \\textcolor{rmbadgetext}{\\faStar\\ #2}%
+      \\fi
+    }%
+  }%
+  \\hspace{0.2em}\\endgroup}
 
 % Sections formatting
 \\titleformat{\\section}{
@@ -164,17 +183,20 @@ const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
     \\end{tabular*}\\vspace{-7pt}
 }
 
-\\newcommand{\\resumeProjectHeading}[2]{
-    \\item
-    \\begin{tabularx}{0.97\\textwidth}{@{}>{\\raggedright\\arraybackslash}Xr@{}}
-      \\small#1 & #2 \\\\
-    \\end{tabularx}\\vspace{-7pt}
+\\newcommand{\\resumeProjectHeading}[2]{%
+  \\item
+  % 这里位于 itemize 内部，必须使用当前列表的真实行宽；X 列负责长标题自然换行。
+  \\begin{tabularx}{\\linewidth}[t]{@{}>{\\raggedright\\arraybackslash}Xr@{}}
+    {\\small #1} & {\\small #2} \\\\
+  \\end{tabularx}\\par
 }
 
 \\renewcommand\\labelitemii{$\\vcenter{\\hbox{\\tiny$\\bullet$}}$}
 
 \\newcommand{\\resumeSubHeadingListStart}{\\begin{itemize}[leftmargin=0.15in, label={}]}
 \\newcommand{\\resumeSubHeadingListEnd}{\\end{itemize}}
+\\newcommand{\\resumeProjectListStart}{\\begin{itemize}[leftmargin=0.15in, label={}, topsep=3pt, itemsep=4pt, parsep=0pt, partopsep=0pt]}
+\\newcommand{\\resumeProjectListEnd}{\\end{itemize}}
 \\newcommand{\\resumeItemListStart}{\\begin{itemize}}
 \\newcommand{\\resumeItemListEnd}{\\end{itemize}\\vspace{-5pt}}
 `
@@ -268,13 +290,13 @@ function renderProjects(entries) {
       const points = renderProjectMarkdown(e.summary)
       return `    \\resumeProjectHeading
       ${heading}
-${background ? `    {\\small ${background}\\par}\\vspace{1pt}\n` : ''}${points ? `    ${points}` : ''}`
+${background ? `    {\\small ${background}\\par}\n` : ''}${points ? `    ${points}` : ''}`
     })
     .join('\n')
   return `\\section{${SECTION_TITLES.projects}}
-\\resumeSubHeadingListStart
+\\resumeProjectListStart
 ${body}
-\\resumeSubHeadingListEnd`
+\\resumeProjectListEnd`
 }
 
 function renderSkills(entries) {

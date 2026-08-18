@@ -44,14 +44,31 @@ GITHUB_BADGE_TEX = (
     "\\providecommand{\\faGithub}{GitHub}\\providecommand{\\faStar}{*}}\n"
     "\\makeatletter\n"
     "\\@ifpackageloaded{xcolor}{\n"
-    "  \\definecolor{rmbadgeleft}{HTML}{24292F}\n"
+    "  \\definecolor{rmbadgeborder}{HTML}{D0D7DE}\n"
+    "  \\definecolor{rmbadgeleft}{HTML}{FFFFFF}\n"
     "  \\definecolor{rmbadgeright}{HTML}{FFFFFF}\n"
+    "  \\definecolor{rmbadgetext}{HTML}{24292F}\n"
     "}{\n"
-    "  \\definecolor{rmbadgeleft}{rgb}{0.141,0.161,0.184}\n"
+    "  \\definecolor{rmbadgeborder}{rgb}{0.816,0.843,0.867}\n"
+    "  \\definecolor{rmbadgeleft}{rgb}{1,1,1}\n"
     "  \\definecolor{rmbadgeright}{rgb}{1,1,1}\n"
+    "  \\definecolor{rmbadgetext}{rgb}{0.141,0.161,0.184}\n"
     "}\n"
     "\\makeatother\n"
-    '\\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\hspace{0.3em}\\raisebox{0.6pt}[0pt][0pt]{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.5}{6.5}\\selectfont\\faGithub\\ \\texttt{#1}}}\\if\\relax\\detokenize{#2}\\relax\\else\\colorbox{rmbadgeright}{\\textcolor{black}{\\fontsize{6.8}{6.8}\\selectfont\\faStar\\ #2}}\\fi}\\hspace{0.2em}\\endgroup}\n'
+    '\\newcommand{\\githubbadge}[2]{%\n'
+    '  \\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\setlength{\\fboxrule}{0.35pt}%\n'
+    '  \\hspace{0.3em}\\raisebox{0.6pt}{%\n'
+    '    \\fcolorbox{rmbadgeborder}{rmbadgeleft}{%\n'
+    '      \\fontsize{6.5}{6.5}\\selectfont\\strut\n'
+    '      \\textcolor{rmbadgetext}{\\faGithub\\ \\texttt{#1}}%\n'
+    '      \\if\\relax\\detokenize{#2}\\relax\n'
+    '      \\else\n'
+    '        \\hspace{0.45em}{\\color{rmbadgeborder}\\vrule width 0.35pt height 1.1ex depth 0.25ex}\\hspace{0.45em}%\n'
+    '        \\textcolor{rmbadgetext}{\\faStar\\ #2}%\n'
+    '      \\fi\n'
+    '    }%\n'
+    '  }%\n'
+    '  \\hspace{0.2em}\\endgroup}\n'
 )
 
 
@@ -59,7 +76,7 @@ PROFILE_PHOTO_MARK = "rm-profile-photo"
 PROFILE_PHOTO_HTML_CSS = f"""
 /* {PROFILE_PHOTO_MARK} */
 .resume-header {{ position: relative; }}
-.rm-profile-photo {{ position: absolute; top: 0; right: 0; width: 66px; height: 92.4px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }}
+.rm-profile-photo {{ position: absolute; top: 0; right: 18px; width: 66px; height: 92.4px; object-fit: cover; object-position: center top; border: 1px solid rgba(127,127,127,.35); border-radius: 2px; }}
 @media (max-width: 520px) {{
   .rm-profile-photo {{ position: static; display: block; margin: 0 auto 16px; }}
 }}
@@ -69,17 +86,20 @@ PROFILE_PHOTO_HTML_CSS = f"""
 def github_badge_html(repo, stars):
     github_logo = '<svg aria-hidden="true" viewBox="0 0 16 16" width="11" height="11" fill="currentColor" style="vertical-align:middle;margin-right:4px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.2.46.46.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>'
     star_logo = '<svg aria-hidden="true" viewBox="0 0 16 16" width="10" height="10" fill="currentColor" style="vertical-align:middle;margin-right:4px;"><path d="m8 0 2.47 5.01 5.53.81-4 3.9.94 5.51L8 12.63l-4.94 2.6L4 9.72 0 5.82l5.53-.81L8 0z"/></svg>'
-    right = (
-        '<span style="display:inline-block;background:#fff;color:#000;padding:4px 6px;'
-        'border:1px solid #d0d7de;border-left:0;border-radius:0 3px 3px 0;">'
+    repo_part = (
+        '<span style="display:inline-flex;align-items:center;padding:2px 5px;">'
+        + github_logo + repo + '</span>'
+    )
+    stars_part = (
+        '<span style="display:inline-flex;align-items:center;padding:2px 5px;'
+        'border-left:1px solid #d0d7de;">'
         + star_logo + stars + '</span>' if stars else ''
     )
     return (
-        '<span style="display:inline-block;margin-left:8px;vertical-align:0.1em;'
+        '<span style="display:inline-flex;align-items:stretch;margin-left:8px;vertical-align:0.1em;'
+        'background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:3px;overflow:hidden;'
         'font-family:Verdana,Geneva,DejaVu Sans,sans-serif;font-size:10px;line-height:1;'
-        'white-space:nowrap;"><span style="display:inline-block;background:#24292f;'
-        'color:#fff;padding:4px 6px;border-radius:3px 0 0 3px;">'
-        + github_logo + repo + '</span>' + right + '</span>'
+        'white-space:nowrap;">' + repo_part + stars_part + '</span>'
     )
 
 
@@ -235,7 +255,7 @@ def inject_profile_photo_tex(text, photo):
     horizontal_position = (
         r"\hspace*{0.8cm}%"
         if r"\moderncvstyle{casual}" in text
-        else r"\hspace*{\dimexpr\paperwidth-2.6cm\relax}%"
+        else r"\hspace*{\dimexpr\paperwidth-3.3cm\relax}%"
     )
     preamble = ("\n".join(packages) + "\n" if packages else "") + (
         f"% {PROFILE_PHOTO_MARK}\n"
