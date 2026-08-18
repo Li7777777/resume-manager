@@ -51,7 +51,7 @@ GITHUB_BADGE_TEX = (
     "  \\definecolor{rmbadgeright}{rgb}{1,1,1}\n"
     "}\n"
     "\\makeatother\n"
-    '\\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1.6pt}\\hspace{0.35em}\\raisebox{1pt}{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.8}{8}\\selectfont\\faGithub\\ \\texttt{#1}}}\\if\\relax\\detokenize{#2}\\relax\\else\\colorbox{rmbadgeright}{\\textcolor{black}{\\fontsize{7}{8.2}\\selectfont\\faStar\\ #2}}\\fi}\\hspace{0.25em}\\endgroup}\n'
+    '\\newcommand{\\githubbadge}[2]{\\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\hspace{0.3em}\\raisebox{0.6pt}[0pt][0pt]{\\colorbox{rmbadgeleft}{\\textcolor{white}{\\fontsize{6.5}{6.5}\\selectfont\\faGithub\\ \\texttt{#1}}}\\if\\relax\\detokenize{#2}\\relax\\else\\colorbox{rmbadgeright}{\\textcolor{black}{\\fontsize{6.8}{6.8}\\selectfont\\faStar\\ #2}}\\fi}\\hspace{0.2em}\\endgroup}\n'
 )
 
 
