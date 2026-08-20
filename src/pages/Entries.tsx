@@ -197,6 +197,14 @@ function normalizeProjectImport(obj: unknown): Entry {
   return entry
 }
 
+// 解析粘贴的 JSON：兼容 ```json 代码块与裸 JSON（便于直接粘贴酥化页复制的内容）
+function parsePastedJson(text: string): unknown {
+  const fence = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/)
+  const candidate = (fence ? fence[1] : text).trim()
+  if (!candidate) throw new Error('内容为空')
+  return JSON.parse(candidate)
+}
+
 export default function Entries() {
   const toast = useToast()
   const [categories, setCategories] = useState<{ key: string; label: string; visible: boolean }[]>(DEFAULT_CATEGORIES.map((c) => ({ key: c.key, label: c.label, visible: true })))
@@ -212,6 +220,7 @@ export default function Entries() {
   const [isNew, setIsNew] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
   const [tagManageOpen, setTagManageOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [dropSide, setDropSide] = useState<'before' | 'after'>('before')
@@ -350,25 +359,17 @@ export default function Entries() {
     }
   }
 
-  // 导入 JSON：选择文件 → 校验 → 新增项目经历条目
-  const importJson = () => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'application/json,.json'
-    input.onchange = async () => {
-      const file = input.files?.[0]
-      if (!file) return
-      try {
-        const text = await file.text()
-        const entry = normalizeProjectImport(JSON.parse(text))
-        await api.post('/api/entries/projects', entry)
-        toast('success', '已导入项目')
-        load()
-      } catch (e: any) {
-        toast('error', `导入失败：${e.message}`)
-      }
+  // 导入 JSON：弹窗粘贴 → 校验 → 新增项目经历条目（成功返回 true，由弹窗关闭）
+  const importJson = async (text: string): Promise<boolean> => {
+    try {
+      const entry = normalizeProjectImport(parsePastedJson(text))
+      await api.post('/api/entries/projects', entry)
+      toast('success', '已导入项目')
+      return true
+    } catch (e: any) {
+      toast('error', `导入失败：${e.message}`)
+      return false
     }
-    input.click()
   }
 
   const titleOf = (e: Entry) =>
@@ -471,7 +472,7 @@ export default function Entries() {
           </button>
         </div>
         {category === 'projects' && (
-          <Button variant="secondary" onClick={importJson} title="导入酥化导出的 JSON">
+          <Button variant="secondary" onClick={() => setImportOpen(true)} title="粘贴酥化页复制的 JSON，导入为项目经历">
             <Upload size={15} /> 导入 JSON
           </Button>
         )}
@@ -612,6 +613,17 @@ export default function Entries() {
         open={tagManageOpen}
         onClose={() => setTagManageOpen(false)}
         onChanged={() => load()}
+      />
+
+      {/* 导入 JSON 弹窗（粘贴 → 校验 → 新增项目） */}
+      <ImportJsonModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={async (text) => {
+          const ok = await importJson(text)
+          if (ok) load()
+          return ok
+        }}
       />
     </div>
   )
@@ -754,6 +766,57 @@ function TagManagerModal({ open, onClose, onChanged }: { open: boolean; onClose:
       </div>
       <div className="mt-4 flex justify-end">
         <Button onClick={onClose}>关闭</Button>
+      </div>
+    </Modal>
+  )
+}
+
+/* ---------- 导入 JSON 弹窗 ---------- */
+function ImportJsonModal({ open, onClose, onImport }: { open: boolean; onClose: () => void; onImport: (text: string) => Promise<boolean> }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  // 每次打开时清空上次输入
+  useEffect(() => {
+    if (open) setText('')
+  }, [open])
+
+  const submit = async () => {
+    if (!text.trim() || busy) return
+    setBusy(true)
+    let ok = false
+    try {
+      ok = await onImport(text)
+    } finally {
+      setBusy(false)
+    }
+    if (ok) onClose()
+  }
+
+  return (
+    <Modal open={open} title="导入 JSON" onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-xs leading-relaxed text-zinc-500">
+          粘贴项目经历的 JSON（可直接粘贴「我要酥化」页复制的 JSON 代码块），导入后可在项目列表中编辑。
+        </p>
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault()
+              void submit()
+            }
+          }}
+          className="min-h-48 font-mono text-[13px]"
+          placeholder={'{\n  "name": "项目名称",\n  "summary": "- 要点…",\n  …\n}'}
+        />
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" loading={busy} disabled={!text.trim()} onClick={submit}>
+            导入
+          </Button>
+        </div>
       </div>
     </Modal>
   )
