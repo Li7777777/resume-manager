@@ -27,6 +27,10 @@ export interface Settings {
   gitSyncEnabled?: boolean
   // GitHub star 徽章：默认开启；仅正式发布时拉取 star 数，预览只用缓存
   starsEnabled?: boolean
+  // LLM（OpenAI 协议）：用于「我要酥化」对话
+  llmBaseUrl?: string
+  llmApiKey?: string
+  llmModel?: string
 }
 
 export type ResumeFontKind = 'cjk' | 'latin'

@@ -9,6 +9,7 @@ import {
   Settings,
   FolderGit2,
   DraftingCompass,
+  Wand2,
 } from 'lucide-react'
 import { api } from './api'
 import { ToastProvider } from './toast'
@@ -20,10 +21,12 @@ import HistoryPage from './pages/History'
 import GitBoard from './pages/GitBoard'
 import Customizer from './pages/Customizer'
 import SettingsPage from './pages/Settings'
+import Polish from './pages/Polish'
 
 const NAV = [
   { key: 'dashboard', label: '总览', icon: <LayoutDashboard size={16} /> },
   { key: 'entries', label: '信息管理', icon: <Database size={16} /> },
+  { key: 'polish', label: '我要酥化', icon: <Wand2 size={16} /> },
   { key: 'variants', label: '简历类型', icon: <GitBranch size={16} /> },
   { key: 'customizer', label: '简历定制', icon: <DraftingCompass size={16} /> },
   { key: 'pdf', label: 'PDF 预览', icon: <FileText size={16} /> },
@@ -135,9 +138,10 @@ function Shell() {
 
       {/* 主内容 */}
       <main className="min-w-0 flex-1 overflow-y-auto">
-        <div className={`p-4 sm:p-6 lg:p-8 ${page === 'customizer' ? 'h-full' : ''}`}>
+        <div className={`p-4 sm:p-6 lg:p-8 ${page === 'customizer' || page === 'polish' ? 'h-full' : ''}`}>
           {page === 'dashboard' && <Dashboard go={go} />}
           {page === 'entries' && <Entries />}
+          {page === 'polish' && <Polish />}
           {page === 'variants' && <Variants />}
           {page === 'customizer' && <Customizer />}
           {page === 'pdf' && <HistoryPage />}

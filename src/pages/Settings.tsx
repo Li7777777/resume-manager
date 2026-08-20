@@ -19,6 +19,7 @@ import {
   GitPullRequestArrow,
   FolderOpen,
   ArrowUp,
+  Bot,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Settings } from '../types'
@@ -115,6 +116,9 @@ export default function SettingsPage() {
         token: form.token,
         gitUsername: form.gitUsername,
         gitEmail: form.gitEmail,
+        llmBaseUrl: form.llmBaseUrl,
+        llmApiKey: form.llmApiKey,
+        llmModel: form.llmModel,
       })
       setForm(saved)
       toast('success', '设置已保存')
@@ -291,6 +295,39 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <div className="space-y-5">
+      {/* LLM（我要酥化） */}
+      <Card title="LLM · 我要酥化" desc="「我要酥化」对话使用 OpenAI 协议的大模型，配置仅保存在本机">
+        <div className="space-y-4">
+          <Field label="Base URL" hint="OpenAI 兼容接口地址，如 https://api.openai.com/v1">
+            <Input
+              value={form.llmBaseUrl || ''}
+              onChange={(e) => setForm({ ...form, llmBaseUrl: e.target.value })}
+              placeholder="https://api.openai.com/v1"
+              className="font-mono"
+            />
+          </Field>
+          <Field label="API Key" hint="仅保存在本机，读取/返回时打码">
+            <div className="relative">
+              <KeyRound size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
+              <Input
+                type="password"
+                value={form.llmApiKey || ''}
+                onChange={(e) => setForm({ ...form, llmApiKey: e.target.value })}
+                placeholder="sk-xxx（留空表示已填过则保持不变）"
+                className="pl-9 font-mono"
+              />
+            </div>
+          </Field>
+          <Field label="模型" hint="如 gpt-4o-mini / gpt-4o / deepseek-chat 等">
+            <Input
+              value={form.llmModel || ''}
+              onChange={(e) => setForm({ ...form, llmModel: e.target.value })}
+              placeholder="gpt-4o-mini"
+            />
+          </Field>
+        </div>
+      </Card>
+
       {/* Git 同步开关 */}
       <Card title="Git 同步" desc="控制 Git 同步看板与 GitHub 配置的展示与使用">
         <div className="flex items-start justify-between gap-4">

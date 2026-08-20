@@ -14,6 +14,9 @@ export const SETTINGS_DEFAULTS = {
   githubPdfBuild: false,
   gitSyncEnabled: true,
   starsEnabled: true,
+  // LLM（OpenAI 协议）：用于「我要酥化」对话；apiKey 无默认值，由用户在设置页填写
+  llmBaseUrl: 'https://api.openai.com/v1',
+  llmModel: 'gpt-4o-mini',
 }
 
 export function getSettings() {

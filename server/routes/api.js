@@ -1,5 +1,6 @@
 // API 路由：信息管理 / 组合 / 构建 / YAML 编辑 / Git 看板 / 模板初始化 / 设置
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import express from 'express'
 import yaml from 'js-yaml'
@@ -122,11 +123,11 @@ router.use('/github', (req, res, next) => {
 
 router.get('/settings', (req, res) => {
   const s = getSettings()
-  res.json({ ok: true, settings: { ...s, token: s.token ? '••••••' : '' } })
+  res.json({ ok: true, settings: { ...s, token: s.token ? '••••••' : '', llmApiKey: s.llmApiKey ? '••••••' : '' } })
 })
 
 router.put('/settings', (req, res) => {
-  const { repoPath, token, gitUsername, gitEmail, localPdfBuild, githubPdfBuild, gitSyncEnabled, starsEnabled } = req.body || {}
+  const { repoPath, token, gitUsername, gitEmail, localPdfBuild, githubPdfBuild, gitSyncEnabled, starsEnabled, llmBaseUrl, llmApiKey, llmModel } = req.body || {}
   const patch = {}
   if (typeof repoPath === 'string') patch.repoPath = repoPath
   if (typeof token === 'string' && token !== '••••••') patch.token = token
@@ -136,8 +137,97 @@ router.put('/settings', (req, res) => {
   if (typeof githubPdfBuild === 'boolean') patch.githubPdfBuild = githubPdfBuild
   if (typeof gitSyncEnabled === 'boolean') patch.gitSyncEnabled = gitSyncEnabled
   if (typeof starsEnabled === 'boolean') patch.starsEnabled = starsEnabled
+  if (typeof llmBaseUrl === 'string') patch.llmBaseUrl = llmBaseUrl
+  if (typeof llmApiKey === 'string' && llmApiKey !== '••••••') patch.llmApiKey = llmApiKey
+  if (typeof llmModel === 'string') patch.llmModel = llmModel
   const saved = saveSettings(patch)
-  res.json({ ok: true, settings: { ...saved, token: saved.token ? '••••••' : '' } })
+  res.json({ ok: true, settings: { ...saved, token: saved.token ? '••••••' : '', llmApiKey: saved.llmApiKey ? '••••••' : '' } })
+})
+
+/* ---------- 我要酥化：/asu 技能 + OpenAI 协议 LLM 对话 ---------- */
+// 读取已安装的 /asu 技能内容（去掉 YAML frontmatter），作为系统提示词预设注入
+function loadAsuSkillPrompt() {
+  const candidates = [
+    path.join(os.homedir(), '.agents', 'skills', 'asu', 'SKILL.md'),
+    path.join(os.homedir(), '.pi', 'agent', 'skills', 'asu', 'SKILL.md'),
+  ]
+  for (const file of candidates) {
+    try {
+      if (fs.existsSync(file)) {
+        const raw = fs.readFileSync(file, 'utf8')
+        return raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
+      }
+    } catch {
+      /* 继续尝试下一个候选 */
+    }
+  }
+  return null
+}
+
+router.post('/polish/chat', async (req, res) => {
+  const settings = getSettings()
+  const apiKey = settings.llmApiKey
+  if (!apiKey) {
+    return res.status(400).json({ ok: false, error: '未配置 LLM API Key，请先到「设置」页填写' })
+  }
+  const baseUrl = String(settings.llmBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
+  const model = String(settings.llmModel || 'gpt-4o-mini')
+  const messages = Array.isArray(req.body?.messages) ? req.body.messages.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string') : []
+  if (!messages.length) {
+    return res.status(400).json({ ok: false, error: '消息为空' })
+  }
+
+  const skillPrompt = loadAsuSkillPrompt()
+  const systemPrompt = skillPrompt
+    ? `你是「中文求职经历酥化」助手，请严格遵循以下技能规范完成用户请求：\n\n${skillPrompt}`
+    : '你是「中文求职经历酥化」助手，帮助用户把真实经历改写成强定位、强证据、可追问的简历内容。不虚构头衔、公司、项目、技术栈或数据。'
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  if (typeof res.flushHeaders === 'function') res.flushHeaders()
+
+  const write = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`)
+
+  try {
+    const upstream = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, stream: true, messages: [{ role: 'system', content: systemPrompt }, ...messages] }),
+    })
+    if (!upstream.ok || !upstream.body) {
+      const errText = await upstream.text().catch(() => '')
+      write({ error: `LLM 请求失败（HTTP ${upstream.status}）：${errText.slice(0, 300)}` })
+      return res.end()
+    }
+    const reader = upstream.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        const t = line.trim()
+        if (!t.startsWith('data:')) continue
+        const data = t.slice(5).trim()
+        if (data === '[DONE]') continue
+        try {
+          const json = JSON.parse(data)
+          const delta = json?.choices?.[0]?.delta?.content || ''
+          if (delta) write({ content: delta })
+        } catch {
+          /* 忽略非 JSON 行 */
+        }
+      }
+    }
+    write({ done: true })
+  } catch (err) {
+    write({ error: String(err?.message || err) })
+  }
+  res.end()
 })
 
 /* ---------- GitHub 凭据自动检测 ---------- */
