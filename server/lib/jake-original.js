@@ -1,4 +1,5 @@
 import { Lexer } from 'marked'
+import { brandLabel } from './brand-icons.js'
 
 // Jake Gut 原版模板渲染器：从组合后的简历 YAML 直接生成 jakegut/resume.tex 风格 LaTeX
 // 参考：https://github.com/jakegut/resume —— 单栏 ATS 友好排版：
@@ -165,6 +166,16 @@ const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
     }%
   }%
   \\hspace{0.2em}\\endgroup}
+% 品牌徽章：非 GitHub 链接的品牌名（lobe-icons 的 SVG 无法嵌入 xelatex，用文字徽章回退）
+\\newcommand{\\brandbadge}[1]{%
+  \\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\setlength{\\fboxrule}{0.35pt}%
+  \\hspace{0.3em}\\raisebox{0.6pt}{%
+    \\fcolorbox{gray!60}{white}{%
+      \\fontsize{6.5}{6.5}\\selectfont\\strut
+      \\textcolor{gray!70}{#1}%
+    }%
+  }%
+  \\hspace{0.2em}\\endgroup}
 
 % Sections formatting
 \\titleformat{\\section}{
@@ -273,10 +284,19 @@ ${body}
 // 项目名中的「[github|owner/repo|4.2k]」标记 → GitHub Logo + 地址 + stars 数
 function projectTitleLatex(name) {
   const raw = String(name || '')
-  const match = raw.match(/\s*\[github\|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)?\]/)
-  const base = match ? `${raw.slice(0, match.index)}${raw.slice((match.index || 0) + match[0].length)}`.trim() : raw
-  const title = `\\textbf{${escapeLatex(base)}}${match ? `\\githubbadge{${match[1]}}{${match[2] || ''}}` : ''}`
-  return match ? `\\href{https://github.com/${match[1]}}{${title}}` : title
+  const github = raw.match(/\s*\[github\|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)?\]/)
+  const brand = raw.match(/\s*\[brand\|([a-z0-9-]+)\]/)
+  let base = raw
+  let badge = ''
+  if (github) {
+    base = `${raw.slice(0, github.index)}${raw.slice((github.index || 0) + github[0].length)}`.trim()
+    badge = `\\githubbadge{${github[1]}}{${github[2] || ''}}`
+  } else if (brand) {
+    base = `${raw.slice(0, brand.index)}${raw.slice((brand.index || 0) + brand[0].length)}`.trim()
+    badge = `\\brandbadge{${escapeLatex(brandLabel(brand[1]))}}`
+  }
+  const title = `\\textbf{${escapeLatex(base)}}${badge}`
+  return github ? `\\href{https://github.com/${github[1]}}{${title}}` : title
 }
 
 function renderProjects(entries) {

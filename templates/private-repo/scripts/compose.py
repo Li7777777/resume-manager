@@ -20,6 +20,7 @@ import sys
 import yaml
 
 from font_options import get_typography_font_family, normalize_font_settings
+from brand_icons import detect_url_brand
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(ROOT, "data")
@@ -244,6 +245,9 @@ def compose_list(block, cfg):
     # GitHub star 徽章：与 server/lib/github-stars.js 行为一致，读本机缓存注入项目名
     if block == "projects":
         inject_github_stars(out)
+    # 非 GitHub 品牌链接：自动选择 lobe-icons 品牌 logo
+    if block == "projects":
+        inject_url_brands(out)
     return out
 
 
@@ -312,6 +316,17 @@ def inject_github_stars(items):
         if "[github|" in str(it.get("name") or ""):
             continue
         it["name"] = "%s [github|%s|%s]" % (it["name"], owner_repo, badge)
+
+
+def inject_url_brands(items):
+    """非 GitHub 的品牌链接（OpenAI/Claude/DeepSeek 等）追加品牌 logo 标记"""
+    for it in items:
+        name = str(it.get("name") or "")
+        if "[github|" in name or "[brand|" in name:
+            continue
+        brand = detect_url_brand(it.get("url"))
+        if brand:
+            it["name"] = "%s [brand|%s]" % (name, brand["iconId"])
 
 
 def apply_layout_fonts(layout, fonts):

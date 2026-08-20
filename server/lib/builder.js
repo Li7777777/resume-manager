@@ -8,6 +8,7 @@ import { generateAll, loadVariantsDoc } from './compose.js'
 import { renderJakeOriginal } from './jake-original.js'
 import { readCategory } from './data-store.js'
 import { resolveProfilePhoto } from './profile-photo.js'
+import { brandLabel, brandIconSvg } from './brand-icons.js'
 import {
   getHtmlFontConfiguration,
   getLatexFontFamilies,
@@ -127,6 +128,13 @@ function normalizeGroupedLatex(text, photoPath = null, fonts = {}) {
       next = next.replace(/^(\\begin\{document\})/m, GITHUB_BADGE_TEX + '$1')
     }
   }
+  // 品牌徽章：[brand|iconId] → 品牌名徽章（lobe-icons SVG 无法嵌入 xelatex，用文字回退）
+  if (/\[brand\|[a-z0-9-]+\]/.test(next)) {
+    next = next.replace(/\s*\[brand\|([a-z0-9-]+)\]/g, (_, iconId) => ` \\brandbadge{${brandLabel(iconId)}}`)
+    if (!next.includes(BRAND_BADGE_MARK)) {
+      next = next.replace(/^(\\begin\{document\})/m, BRAND_BADGE_TEX + '$1')
+    }
+  }
   return injectProfilePhotoLatex(next, photoPath)
 }
 
@@ -223,6 +231,19 @@ const GITHUB_BADGE_TEX = `${GITHUB_BADGE_MARK}
   \\hspace{0.2em}\\endgroup}
 `
 
+const BRAND_BADGE_MARK = '% rm-brand-badge'
+const BRAND_BADGE_TEX = `% rm-brand-badge
+\newcommand{\brandbadge}[1]{%
+  \leavevmode\begingroup\setlength{\fboxsep}{1pt}\setlength{\fboxrule}{0.35pt}%
+  \hspace{0.3em}\raisebox{0.6pt}{%
+    \fcolorbox{gray!60}{white}{%
+      \fontsize{6.5}{6.5}\selectfont\strut
+      \textcolor{gray!70}{#1}%
+    }%
+  }%
+  \hspace{0.2em}\endgroup}
+`
+
 function normalizeGroupedHtml(text, photo = null, fonts = {}, template = 'calm') {
   let next = text.replace(
     /(<div class="resume-skill-name">[^<]*)<span class="resume-skill-level">[^<]*<\/span>/g,
@@ -240,6 +261,10 @@ function normalizeGroupedHtml(text, photo = null, fonts = {}, template = 'calm')
     /\s*\[github\|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\|([0-9]+(?:\.[0-9]+)?[km]?)?\]/g,
     (_, repo, n) => githubBadgeHtml(repo, n || ''),
   )
+  next = next.replace(/\s*\[brand\|([a-z0-9-]+)\]/g, (_, iconId) => {
+    const svg = brandIconSvg(iconId)
+    return svg ? ` ${brandLogoHtml(svg)}` : ` ${brandLabel(iconId)}`
+  })
   return injectProfilePhotoHtml(next, photo)
 }
 
@@ -250,6 +275,14 @@ function githubBadgeHtml(repo, stars) {
   const repoPart = `<span style="display:inline-flex;align-items:center;padding:2px 5px;">${githubLogo}${repo}</span>`
   const starsPart = stars ? `<span style="display:inline-flex;align-items:center;padding:2px 5px;border-left:1px solid #d0d7de;">${starLogo}${stars}</span>` : ''
   return `<span style="display:inline-flex;align-items:stretch;margin-left:8px;vertical-align:0.1em;background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:3px;overflow:hidden;font-family:Verdana,Geneva,DejaVu Sans,sans-serif;font-size:10px;line-height:1;white-space:nowrap;">${repoPart}${starsPart}</span>`
+}
+
+// 品牌 logo：把 lobe-icons 的 SVG 调整为徽章内联尺寸与对齐
+function brandLogoHtml(svg) {
+  return svg
+    .replace('height="1em"', 'height="12"')
+    .replace('width="1em"', 'width="12"')
+    .replace(/style=\"[^\"]*\"/, 'style=\"vertical-align:middle;margin-right:4px;\"')
 }
 
 const PROFILE_PHOTO_MARK = 'rm-profile-photo'

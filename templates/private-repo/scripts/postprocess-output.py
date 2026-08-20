@@ -11,6 +11,9 @@ from font_options import (
     get_latex_font_families,
     normalize_font_settings,
 )
+from brand_icons import brand_icon_svg, brand_label
+
+
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "resumes"
@@ -66,6 +69,22 @@ GITHUB_BADGE_TEX = (
     '        \\hspace{0.45em}{\\color{rmbadgeborder}\\vrule width 0.35pt height 1.1ex depth 0.25ex}\\hspace{0.45em}%\n'
     '        \\textcolor{rmbadgetext}{\\faStar\\ #2}%\n'
     '      \\fi\n'
+    '    }%\n'
+    '  }%\n'
+    '  \\hspace{0.2em}\\endgroup}\n'
+)
+
+
+BRAND_BADGE = re.compile(r"\s*\[brand\|([a-z0-9-]+)\]")
+BRAND_BADGE_MARK = "rm-brand-badge"
+BRAND_BADGE_TEX = (
+    "% " + BRAND_BADGE_MARK + "\n"
+    '\\newcommand{\\brandbadge}[1]{%\n'
+    '  \\leavevmode\\begingroup\\setlength{\\fboxsep}{1pt}\\setlength{\\fboxrule}{0.35pt}%\n'
+    '  \\hspace{0.3em}\\raisebox{0.6pt}{%\n'
+    '    \\fcolorbox{gray!60}{white}{%\n'
+    '      \\fontsize{6.5}{6.5}\\selectfont\\strut\n'
+    '      \\textcolor{gray!70}{#1}%\n'
     '    }%\n'
     '  }%\n'
     '  \\hspace{0.2em}\\endgroup}\n'
@@ -237,6 +256,15 @@ def get_profile_photo():
         return photo, relative, mime
     except (OSError, ValueError, yaml.YAMLError):
         return None
+
+
+def brand_logo_html(icon_id):
+    svg = brand_icon_svg(icon_id)
+    if not svg:
+        return " " + brand_label(icon_id)
+    svg = svg.replace('height="1em"', 'height="12"').replace('width="1em"', 'width="12"')
+    svg = re.sub(r'style="[^"]*"', 'style="vertical-align:middle;margin-right:4px;"', svg)
+    return " " + svg
 
 
 def inject_profile_photo_tex(text, photo):
@@ -411,6 +439,17 @@ def normalize_tex(text, photo=None, fonts=None):
                 text,
                 flags=re.MULTILINE,
             )
+    # 品牌徽章：[brand|iconId] → 品牌名徽章（lobe-icons SVG 无法嵌入 xelatex，用文字回退）
+    if BRAND_BADGE.search(text):
+        text = BRAND_BADGE.sub(lambda m: r" \brandbadge{" + brand_label(m.group(1)) + "}", text)
+        if BRAND_BADGE_MARK not in text:
+            text = re.sub(
+                r"^(\\begin\{document\})",
+                lambda m: BRAND_BADGE_TEX + m.group(1),
+                text,
+                flags=re.MULTILINE,
+            )
+
     return inject_profile_photo_tex(text, photo)
 
 
@@ -427,6 +466,8 @@ def normalize_html(text, photo=None, fonts=None, template="calm"):
     text = HTML_KEYWORDS_LABEL.sub("<span>技术栈</span>", text)
     # GitHub 仓库徽章：Logo + owner/repo + stars 数
     text = GITHUB_BADGE.sub(lambda m: github_badge_html(m.group(1), m.group(2) or ""), text)
+    # 品牌徽章：lobe-icons SVG logo（内联，无远程依赖）
+    text = BRAND_BADGE.sub(lambda m: brand_logo_html(m.group(1)), text)
     return inject_profile_photo_html(text, photo)
 
 

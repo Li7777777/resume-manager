@@ -8,6 +8,7 @@ import { readCategory, dataFile, META_KEYS } from './data-store.js'
 import { getSettings } from '../config.js'
 import { loadStarsCache, parseGithubRepoUrl, formatStarCount } from './github-stars.js'
 import { getTypographyFontFamily, normalizeFontSettings } from './font-options.js'
+import { detectUrlBrand } from './brand-icons.js'
 
 const ACHIEVEMENTS_KEY = 'achievements'
 const VARIANTS_FILE = (repo) => path.join(repo, 'scripts', 'variants.yml')
@@ -197,6 +198,8 @@ function composeList(repo, block, cfg) {
   if (block === 'interests') return compactInterests(selected)
   // GitHub star 徽章：正式发布前已刷新缓存，组合时统一读缓存（预览不发起网络请求）
   if (block === 'projects' && getSettings().starsEnabled !== false) injectGithubStars(out)
+  // 非 GitHub 品牌链接：自动选择 lobe-icons 品牌 logo
+  if (block === 'projects') injectUrlBrands(out)
   return out
 }
 
@@ -213,6 +216,16 @@ function injectGithubStars(items) {
     if (count > 0 && !badge) continue
     if (String(it.name || '').includes('[github|')) continue
     it.name = `${it.name} [github|${ownerRepo}|${badge}]`
+  }
+}
+
+// 非 GitHub 的品牌链接（OpenAI/Claude/DeepSeek 等）追加品牌 logo 标记
+function injectUrlBrands(items) {
+  for (const it of items) {
+    const name = String(it.name || '')
+    if (name.includes('[github|') || name.includes('[brand|')) continue
+    const brand = detectUrlBrand(it.url)
+    if (brand) it.name = `${name} [brand|${brand.iconId}]`
   }
 }
 
