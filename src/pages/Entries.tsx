@@ -172,6 +172,31 @@ function emptyEntry(cat: string): Entry {
   return e
 }
 
+// 导入 JSON → 项目经历条目：校验并只保留已知字段
+function normalizeProjectImport(obj: unknown): Entry {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('JSON 必须是对象')
+  const o = obj as Record<string, unknown>
+  const name = typeof o.name === 'string' ? o.name.trim() : ''
+  if (!name) throw new Error('缺少项目名称（name）')
+  const entry: Entry = { name, tags: [] }
+  if (typeof o.source === 'string' && o.source.trim()) entry.source = o.source.trim()
+  if (typeof o.role === 'string' && o.role.trim()) entry.role = o.role.trim()
+  if (typeof o.background === 'string' && o.background.trim()) entry.background = o.background.trim()
+  if (typeof o.summary === 'string' && o.summary.trim()) entry.summary = o.summary.trim()
+  if (typeof o.url === 'string' && o.url.trim()) entry.url = o.url.trim()
+  if (typeof o.startDate === 'string' && o.startDate.trim()) entry.startDate = o.startDate.trim()
+  if (typeof o.endDate === 'string') entry.endDate = o.endDate.trim()
+  if (typeof o.stage === 'string' && o.stage.trim()) entry.stage = o.stage.trim()
+  if (Array.isArray(o.tech)) entry.tech = (o.tech as unknown[]).filter((t) => typeof t === 'string' && (t as string).trim()).map((t) => (t as string).trim())
+  if (Array.isArray(o.tags)) entry.tags = (o.tags as unknown[]).filter((t) => typeof t === 'string' && (t as string).trim()).map((t) => (t as string).trim())
+  if (Array.isArray(o.achievements)) {
+    entry.achievements = (o.achievements as any[])
+      .filter((a) => a && typeof a === 'object' && typeof a.text === 'string' && a.text.trim())
+      .map((a) => ({ text: a.text.trim(), tags: Array.isArray(a.tags) ? a.tags.filter((t: unknown) => typeof t === 'string') : [] }))
+  }
+  return entry
+}
+
 export default function Entries() {
   const toast = useToast()
   const [categories, setCategories] = useState<{ key: string; label: string; visible: boolean }[]>(DEFAULT_CATEGORIES.map((c) => ({ key: c.key, label: c.label, visible: true })))
@@ -325,6 +350,27 @@ export default function Entries() {
     }
   }
 
+  // 导入 JSON：选择文件 → 校验 → 新增项目经历条目
+  const importJson = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'application/json,.json'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      try {
+        const text = await file.text()
+        const entry = normalizeProjectImport(JSON.parse(text))
+        await api.post('/api/entries/projects', entry)
+        toast('success', '已导入项目')
+        load()
+      } catch (e: any) {
+        toast('error', `导入失败：${e.message}`)
+      }
+    }
+    input.click()
+  }
+
   const titleOf = (e: Entry) =>
     category === 'work'
       ? (e.company as string) || (e.name as string)
@@ -424,6 +470,11 @@ export default function Entries() {
             <Tags size={13} /> 管理标签
           </button>
         </div>
+        {category === 'projects' && (
+          <Button variant="secondary" onClick={importJson} title="导入酥化导出的 JSON">
+            <Upload size={15} /> 导入 JSON
+          </Button>
+        )}
         <Button variant="primary" onClick={() => { setEditing(emptyEntry(category)); setIsNew(true) }}>
           <Plus size={15} /> 新增
         </Button>

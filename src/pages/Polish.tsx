@@ -1,15 +1,32 @@
 // 我要酥化：基于 /asu 技能的对话式经历酥化（LLM 使用 OpenAI 协议，配置在设置页）
 import React, { useEffect, useRef, useState } from 'react'
-import { Sparkles, Send, Trash2, Loader2, Settings as SettingsIcon, Wand2, Square } from 'lucide-react'
+import { Sparkles, Send, Trash2, Loader2, Settings as SettingsIcon, Wand2, Square, Download } from 'lucide-react'
 import { Button } from '../components/ui'
 import { loadSettings } from '../settings'
+import { useToast } from '../toast'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
 }
 
+// 从回复文本中提取 JSON（优先 ```json 代码块，回退到裸 JSON）
+function extractJson(text: string): Record<string, unknown> | null {
+  const fence = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/)
+  const candidate = fence ? fence[1] : text
+  const start = candidate.indexOf('{')
+  const end = candidate.lastIndexOf('}')
+  if (start < 0 || end <= start) return null
+  try {
+    const parsed = JSON.parse(candidate.slice(start, end + 1))
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
 export default function Polish() {
+  const toast = useToast()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -110,6 +127,22 @@ export default function Polish() {
   const stop = () => abortRef.current?.abort()
   const clear = () => setMessages([])
 
+  // 一键导出：从最后一条助手回复提取 JSON 并下载
+  const exportJson = () => {
+    const last = [...messages].reverse().find((m) => m.role === 'assistant' && m.content)
+    if (!last) return toast('warn', '暂无可导出的内容')
+    const obj = extractJson(last.content)
+    if (!obj) return toast('error', '未在回复中找到 JSON，请让模型输出 JSON 代码块')
+    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'project.json'
+    a.click()
+    URL.revokeObjectURL(url)
+    toast('success', '已导出 project.json')
+  }
+
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -120,9 +153,14 @@ export default function Polish() {
           <p className="mt-0.5 text-xs text-zinc-500">基于 /asu 技能，把真实经历改写成强定位、强证据的简历内容</p>
         </div>
         {messages.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={clear} disabled={streaming}>
-            <Trash2 size={13} /> 清空对话
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button variant="ghost" size="sm" onClick={exportJson} disabled={streaming}>
+              <Download size={13} /> 导出 JSON
+            </Button>
+            <Button variant="ghost" size="sm" onClick={clear} disabled={streaming}>
+              <Trash2 size={13} /> 清空对话
+            </Button>
+          </div>
         )}
       </div>
 
