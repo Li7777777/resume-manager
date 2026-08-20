@@ -56,8 +56,8 @@ def strip_meta(item):
     """去掉元数据键，返回纯简历字段"""
     if not isinstance(item, dict):
         return item
-    # subtitle/stage 为管理端字段（副标题/阶段），schema 无此字段，不进简历
-    return {k: v for k, v in item.items() if k not in META_KEYS and k != "subtitle" and k != "stage" and not k.startswith("_")}
+    # subtitle/source/role/stage 为管理端字段，schema 无此字段，不进简历
+    return {k: v for k, v in item.items() if k not in META_KEYS and k not in ("subtitle", "source", "role", "stage") and not k.startswith("_")}
 
 
 def tag_overlap(item_tags, wanted_tags):
@@ -87,10 +87,10 @@ def select_entries(entries, cfg):
     return result
 
 
-def build_summary(entry, wanted_tags):
-    """成就点 -> summary（按标签过滤）；无成就点则保留原 summary"""
+def collect_achievements(entry, wanted_tags):
+    """成就点 -> markdown 列表（按标签过滤）；无成就点返回 None"""
     if ACHIEVEMENTS_KEY not in entry:
-        return entry.get("summary")
+        return None
     items = []
     for a in entry[ACHIEVEMENTS_KEY]:
         if isinstance(a, dict):
@@ -104,6 +104,13 @@ def build_summary(entry, wanted_tags):
     if not items:
         return None
     return "\n".join("- " + t for t in items)
+
+
+def build_summary(entry, wanted_tags):
+    """成就点 -> summary（按标签过滤）；无成就点则保留原 summary"""
+    if ACHIEVEMENTS_KEY not in entry:
+        return entry.get("summary")
+    return collect_achievements(entry, wanted_tags)
 
 
 def to_summary_string(summary):
@@ -197,18 +204,36 @@ def compose_list(block, cfg):
         # 字段别名：work 章节的 schema 字段名是 name（数据里用 company 更自然）
         if "company" in item and "name" not in item:
             item["name"] = item.pop("company")
-        summary = build_summary(e, wanted)
-        if summary is not None:
-            item["summary"] = normalize_project_summary(summary) if block == "projects" else to_summary_string(summary)
-        elif ACHIEVEMENTS_KEY in e:
-            item.pop("summary", None)
-        item.pop(ACHIEVEMENTS_KEY, None)  # 成就点用完即删，不进入简历
         if block == "projects":
+            # 字段映射：数据 background → schema description；数据 tech → schema keywords
+            if "background" in item:
+                item["description"] = item.pop("background")
+            if "tech" in item:
+                item["keywords"] = item.pop("tech")
+            summary = normalize_project_summary(e.get("summary"))
+            achievements = collect_achievements(e, wanted)
+            parts = []
+            if summary:
+                parts.append(summary)
+            if achievements:
+                parts.append("**成果**\n" + achievements)
+            if parts:
+                item["summary"] = "\n\n".join(parts)
+            else:
+                item.pop("summary", None)
+            item.pop(ACHIEVEMENTS_KEY, None)
             background = normalize_project_background(item.get("description"))
             if background:
                 item["description"] = background
             else:
                 item.pop("description", None)
+        else:
+            summary = build_summary(e, wanted)
+            if summary is not None:
+                item["summary"] = to_summary_string(summary)
+            elif ACHIEVEMENTS_KEY in e:
+                item.pop("summary", None)
+            item.pop(ACHIEVEMENTS_KEY, None)
         # 项目背景保留完整原文；项目要点保留 Markdown 层级。
         out.append(item)
     # 技能/兴趣分组需要方向（tags）元数据，因此直接用原始选中条目（含 tags）

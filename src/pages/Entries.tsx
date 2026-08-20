@@ -132,14 +132,16 @@ const FIELDS: Record<Category, FieldDef[]> = {
   ],
   projects: [
     { key: 'name', label: '项目名称', type: 'text', required: true },
-    { key: 'subtitle', label: '副标题', type: 'text', hint: '如赛事 / 机构 / 来源' },
-    { key: 'description', label: '项目背景', type: 'textarea', hint: '用一两句话说明项目要解决的问题、使用场景或业务背景' },
+    { key: 'source', label: '来源/机构', type: 'text', hint: '赛事 / 机构 / 期刊 / 公司' },
+    { key: 'role', label: '我的角色/职责', type: 'text', hint: '独立负责 / 核心参与 / 团队协作 / 二作 / 待确认' },
+    { key: 'background', label: '项目背景', type: 'textarea', hint: '用一两句话说明项目要解决的问题、使用场景或业务背景' },
     { key: 'stage', label: '阶段', type: 'select', options: ['本科', '硕士'] },
     { key: 'url', label: '链接', type: 'text' },
     { key: 'startDate', label: '开始时间', type: 'text' },
     { key: 'endDate', label: '结束时间', type: 'text' },
-    { key: 'keywords', label: '细分标签', type: 'tags', hint: '技术栈/技术点' },
-    { key: 'summary', label: '项目要点', type: 'markdown', hint: '支持 Markdown 多级列表' },
+    { key: 'tech', label: '技术栈', type: 'tags', hint: '技术栈/技术点' },
+    { key: 'summary', label: '项目要点', type: 'markdown', hint: '每条按「动作 → 系统能力 → 业务价值」组织；支持 Markdown 多级列表' },
+    { key: 'achievements', label: '结果证据', type: 'achievements', hint: '可量化/可核验的成果，每条可打标签' },
     { key: 'tags', label: '方向标签', type: 'tags' },
   ],
   skills: [
@@ -165,6 +167,7 @@ const FIELDS: Record<Category, FieldDef[]> = {
 function emptyEntry(cat: string): Entry {
   const e: Entry = { tags: [] }
   if (cat === 'work') e.achievements = []
+  if (cat === 'projects') e.achievements = []
   if (cat === 'basics') e.summary = []
   return e
 }
@@ -328,7 +331,7 @@ export default function Entries() {
       : category === 'education'
         ? (e.institution as string) || (e.name as string)
         : category === 'projects'
-          ? (e.name as string) || (e.subtitle as string) || '未命名'
+          ? (e.name as string) || (e.source as string) || '未命名'
           : (e.name as string) || '未命名'
   const subOf = (e: Entry) => {
     if (category === 'work') return `${e.position || ''} · ${e.startDate || ''} ~ ${e.endDate || '至今'}`
@@ -337,7 +340,7 @@ export default function Entries() {
       const parts: string[] = []
       if (e.startDate) parts.push(String(e.startDate))
       if (e.stage) parts.push(String(e.stage))
-      if (e.description) parts.push(`项目背景：${String(e.description).replace(/^项目背景[：:]\s*/, '')}`)
+      if (e.background) parts.push(`项目背景：${String(e.background).replace(/^项目背景[：:]\s*/, '')}`)
       return parts.join(' · ')
     }
     if (category === 'skills') return (LEVEL_LABELS[(e.level as string) || ''] || (e.level as string) || '') as string
@@ -508,9 +511,9 @@ export default function Entries() {
                   ))}
                 </div>
               )}
-              {((e.keywords as string[]) || []).length > 0 && (
+              {((category === 'projects' ? (e.tech as string[]) : (e.keywords as string[])) || []).length > 0 && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                  {(e.keywords as string[]).map((k) => (
+                  {((category === 'projects' ? (e.tech as string[]) : (e.keywords as string[])) || []).map((k) => (
                     <span key={k} className="rounded-full border border-dashed border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-500">
                       {k}
                     </span>
@@ -1135,11 +1138,21 @@ function EntryModal({
   onClose: () => void
   onSave: (e: Entry) => void
 }) {
-  const [form, setForm] = useState<Entry>(() => ({
-    ...entry,
-    tags: Array.isArray(entry.tags) ? [...entry.tags] : [],
-    keywords: Array.isArray(entry.keywords) ? [...(entry.keywords as string[])] : [],
-  }))
+  const [form, setForm] = useState<Entry>(() => {
+    const base: Entry = {
+      ...entry,
+      tags: Array.isArray(entry.tags) ? [...entry.tags] : [],
+    }
+    if (category === 'projects') {
+      base.tech = Array.isArray(entry.tech)
+        ? [...(entry.tech as string[])]
+        : Array.isArray(entry.keywords) ? [...(entry.keywords as string[])] : []
+      base.achievements = Array.isArray(entry.achievements) ? [...(entry.achievements as any[])] : []
+    } else {
+      base.keywords = Array.isArray(entry.keywords) ? [...(entry.keywords as string[])] : []
+    }
+    return base
+  })
   const [saving, setSaving] = useState(false)
   const toast = useToast()
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }))
@@ -1172,7 +1185,7 @@ function EntryModal({
           <TagInput
             value={(value as string[]) || []}
             onChange={(v) => set(f.key, v)}
-            suggestions={f.key === 'keywords' ? subTags : allTags}
+            suggestions={f.key === 'keywords' || f.key === 'tech' ? subTags : allTags}
           />
         )
       case 'summary':

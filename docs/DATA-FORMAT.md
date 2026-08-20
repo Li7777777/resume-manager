@@ -93,18 +93,22 @@ summary:              # 字符串数组或字符串（markdown 列表）
   tags: []
 
 # projects
-- name: 微前端改造平台      # 项目名称（可从内容提取；无则留空，展示时用 subtitle 兜底）
-  subtitle: 公司内部赛事     # 副标题（赛事/机构/来源；管理端字段，不进简历，组稿时剥除）
-  description: 解决多个子应用独立交付时的依赖冲突与发布协作问题
+- name: 微前端改造平台      # 项目名称（可从内容提取；无则留空，展示时用 source 兜底）
+  source: 公司内部赛事      # 来源/机构/赛事/期刊（管理端字段，不进简历，组稿时剥除）
+  role: 独立负责            # 我的角色/职责边界（独立负责/核心参与/团队协作/二作/待确认；管理端字段，不进简历）
+  background: 解决多个子应用独立交付时的依赖冲突与发布协作问题  # 项目背景（组合时映射为 schema 的 description）
   stage: 本科               # 阶段（本科/硕士等；管理端字段，不进简历，组稿时剥除）
   url: ...
   startDate: "2022-01"
   endDate: "2022-12"
-  keywords: [qiankun, Monorepo]
+  tech: [qiankun, Monorepo] # 技术栈（组合时映射为 schema 的 keywords）
   summary: |                # Markdown 项目要点；缩进两个空格可创建下一级
     - 设计统一的应用注册与生命周期协议
       - 支持异常隔离和独立回退
     - **优化**公共依赖加载，首屏体积降低 35%
+  achievements:             # ★ 结果证据：可量化/可核验的成果，逐条可打标签（组合时并入 summary 的「成果」小节）
+    - text: 首屏体积降低 35%
+      tags: [frontend]
   tags: [frontend]
 ```
 
@@ -189,7 +193,7 @@ variants:
 - `work.company` → `name`；`achievements` → `summary`（markdown 列表字符串）；
 - 专业技能按细分方向（tags）分组：每个方向输出一行“方向：技能、技能”，跨方向技能同时出现在多行；优先罗列 `keywords`，为空时使用条目 `name`；yamlresume 模板自动追加的等级文字与正文列调整在构建后移除；
 - 兴趣爱好合并成一行，以 `、` 直接罗列，不输出冒号；
-- 项目 `description` 作为项目背景保留完整内容，组合输出自动补成“项目背景：xxx”，并在项目要点列表之前以无项目符号正文显示；项目 `summary` 按 Markdown 渲染，保留多级列表、加粗和斜体，旧纯文本自动兼容为顶级列表；LaTeX 默认隐藏原始 URL，改为项目名称超链接；GitHub 项目名称后可附加 GitHub Logo、`owner/repo` 地址和 star 数徽章；
+- 项目 `background` 作为项目背景保留完整内容（组合时映射为 schema 的 `description`），组合输出自动补成“项目背景：xxx”，并在项目要点列表之前以无项目符号正文显示；项目 `summary` 按 Markdown 渲染，保留多级列表、加粗和斜体，旧纯文本自动兼容为顶级列表；项目 `tech` 映射为 schema 的 `keywords`（技术栈）；项目 `achievements` 按方向标签过滤后以「成果」加粗小节并入 `summary`；`source/role/stage` 为管理端字段，组稿时剥除；LaTeX 默认隐藏原始 URL，改为项目名称超链接；GitHub 项目名称后可附加 GitHub Logo、`owner/repo` 地址和 star 数徽章；
 - `basics.photo` 是仓内证件照路径（固定为 `assets/profile-photo.jpg` 或 `.png`）；管理端选择最大 20 MB、50MP 的 JPEG/PNG 原图后，在浏览器中以固定 5:7 比例拖动、缩放并裁剪为标准一寸 295×413 px / 300 DPI 白底 JPEG，只有裁剪结果会上传和写入私有仓，取消裁剪不修改现有照片；组合器生成 YAML 时剥离该管理字段，再由 Jake 原版渲染器或 TeX/HTML 后处理注入不占正文排版宽度的独立页首浮层，避免违反 YAMLResume 的严格 basics schema，也不压缩原有文字；
 - `summary` 统一转字符串（数组 → `- 项` 列表）；
 - 空章节自动省略；`endDate` 空值输出为空（表示"至今"）；

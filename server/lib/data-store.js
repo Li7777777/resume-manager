@@ -169,7 +169,12 @@ export function libTags(repo) {
   return readRepoTags(repo).tags
 }
 
-// 细分标签库：tags.yml 的 subtags；首次读取从现有条目 keywords 聚合生成。
+// 细分标签字段：projects 用 tech（技术栈），其余分类用 keywords；projects 同时兼容旧数据 keywords。
+function subtagKeys(category) {
+  return category === 'projects' ? ['tech', 'keywords'] : ['keywords']
+}
+
+// 细分标签库：tags.yml 的 subtags；首次读取从现有条目 keywords/tech 聚合生成。
 export function libSubTags(repo) {
   const fromFile = readRepoTags(repo)
   if (fromFile !== null) return fromFile.subtags
@@ -177,7 +182,9 @@ export function libSubTags(repo) {
   for (const cat of getCategories(repo)) {
     if (cat.key === 'basics') continue
     for (const e of readCategory(repo, cat.key)) {
-      for (const k of e.keywords || []) if (typeof k === 'string' && k.trim()) seen.add(k.trim())
+      for (const field of subtagKeys(cat.key)) {
+        for (const k of e[field] || []) if (typeof k === 'string' && k.trim()) seen.add(k.trim())
+      }
     }
   }
   const subtags = [...seen]
@@ -247,8 +254,8 @@ export function deleteTag(repo, tag) {
   return affected
 }
 
-// 全条目重命名细分标签（同步 keywords），返回受影响条目数
-// 细分标签对应条目 keywords 字段（展示用，不参与组稿筛选）
+// 全条目重命名细分标签（同步 keywords/tech），返回受影响条目数
+// 细分标签对应条目细分字段（projects=tech，其余=keywords；展示用，不参与组稿筛选）
 export function renameSubTag(repo, from, to) {
   let affected = 0
   for (const cat of getCategories(repo)) {
@@ -256,9 +263,11 @@ export function renameSubTag(repo, from, to) {
     if (cat.key === 'basics') continue
     let changed = false
     for (const e of entries) {
-      if (Array.isArray(e.keywords) && e.keywords.includes(from)) {
-        e.keywords = [...new Set(e.keywords.map((k) => (k === from ? to : k)))]
-        changed = true
+      for (const field of subtagKeys(cat.key)) {
+        if (Array.isArray(e[field]) && e[field].includes(from)) {
+          e[field] = [...new Set(e[field].map((k) => (k === from ? to : k)))]
+          changed = true
+        }
       }
     }
     if (changed) {
@@ -273,7 +282,7 @@ export function renameSubTag(repo, from, to) {
   return affected
 }
 
-// 全条目删除细分标签（同步 keywords），返回受影响条目数
+// 全条目删除细分标签（同步 keywords/tech），返回受影响条目数
 export function deleteSubTag(repo, tag) {
   let affected = 0
   for (const cat of getCategories(repo)) {
@@ -281,9 +290,11 @@ export function deleteSubTag(repo, tag) {
     if (cat.key === 'basics') continue
     let changed = false
     for (const e of entries) {
-      if (Array.isArray(e.keywords) && e.keywords.includes(tag)) {
-        e.keywords = e.keywords.filter((k) => k !== tag)
-        changed = true
+      for (const field of subtagKeys(cat.key)) {
+        if (Array.isArray(e[field]) && e[field].includes(tag)) {
+          e[field] = e[field].filter((k) => k !== tag)
+          changed = true
+        }
       }
     }
     if (changed) {
@@ -402,12 +413,12 @@ export function upsertEntry(repoPath, category, entry) {
     writeCategory(repoPath, category, list)
   }
   // 条目中新出现的标签自动加入标签库（方向→tags、细分→subtags）
-  syncEntryTagsToLibrary(repoPath, entry)
+  syncEntryTagsToLibrary(repoPath, category, entry)
   return { ...next, ...(notes ? { notes } : {}) }
 }
 
 // 条目保存后，把不在库中的方向标签/细分标签自动加入标签库
-function syncEntryTagsToLibrary(repoPath, entry) {
+function syncEntryTagsToLibrary(repoPath, category, entry) {
   if (!entry || typeof entry !== 'object') return
   const dirTags = Array.isArray(entry.tags) ? entry.tags.filter((t) => typeof t === 'string' && t.trim()) : []
   if (dirTags.length) {
@@ -415,7 +426,11 @@ function syncEntryTagsToLibrary(repoPath, entry) {
     const missing = dirTags.filter((t) => !lib.includes(t))
     if (missing.length) saveLibTags(repoPath, [...lib, ...missing])
   }
-  const subTags = Array.isArray(entry.keywords) ? entry.keywords.filter((k) => typeof k === 'string' && k.trim()) : []
+  const subTags = []
+  for (const field of subtagKeys(category)) {
+    const list = Array.isArray(entry[field]) ? entry[field].filter((k) => typeof k === 'string' && k.trim()) : []
+    for (const k of list) if (!subTags.includes(k)) subTags.push(k)
+  }
   if (subTags.length) {
     const lib = libSubTags(repoPath)
     const missing = subTags.filter((k) => !lib.includes(k))
@@ -467,8 +482,10 @@ export function allEntries(repoPath) {
       for (const t of e.tags || []) {
         tagCount[t] = (tagCount[t] || 0) + 1
       }
-      for (const k of e.keywords || []) {
-        subTagCount[k] = (subTagCount[k] || 0) + 1
+      for (const field of subtagKeys(cat.key)) {
+        for (const k of e[field] || []) {
+          subTagCount[k] = (subTagCount[k] || 0) + 1
+        }
       }
     }
   }

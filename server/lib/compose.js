@@ -77,8 +77,8 @@ function selectEntries(entries, cfg) {
   return result
 }
 
-function buildSummary(entry, wanted) {
-  if (!(ACHIEVEMENTS_KEY in entry)) return entry.summary
+function collectAchievements(entry, wanted) {
+  if (!(ACHIEVEMENTS_KEY in entry)) return null
   const items = []
   for (const a of entry[ACHIEVEMENTS_KEY] || []) {
     if (a && typeof a === 'object') {
@@ -90,6 +90,11 @@ function buildSummary(entry, wanted) {
     }
   }
   return items.length ? items.map((t) => `- ${t}`).join('\n') : null
+}
+
+function buildSummary(entry, wanted) {
+  if (!(ACHIEVEMENTS_KEY in entry)) return entry.summary
+  return collectAchievements(entry, wanted)
 }
 
 function compactSkills(items) {
@@ -151,20 +156,38 @@ function composeList(repo, block, cfg) {
   for (const e of selected) {
     const item = {}
     for (const [k, v] of Object.entries(e)) {
-      // subtitle/stage 为管理端字段（副标题/阶段），schema 无此字段，不进简历
-      if (k !== 'subtitle' && k !== 'stage' && !META_KEYS.has(k) && !k.startsWith('_') && k !== ACHIEVEMENTS_KEY) item[k] = v
+      // subtitle/source/role/stage 为管理端字段（副标题/来源/职责/阶段），schema 无此字段，不进简历
+      if (k !== 'subtitle' && k !== 'source' && k !== 'role' && k !== 'stage' && !META_KEYS.has(k) && !k.startsWith('_') && k !== ACHIEVEMENTS_KEY) item[k] = v
     }
     // 字段别名：work 章节 schema 字段名是 name（数据里用 company 更自然）
     if ('company' in item && !('name' in item)) {
       item.name = item.company
       delete item.company
     }
-    const summary = buildSummary(e, wanted)
-    if (summary != null) item.summary = block === 'projects' ? normalizeProjectSummary(summary) : toSummaryString(summary)
     if (block === 'projects') {
+      // 字段映射：数据 background → schema description；数据 tech → schema keywords
+      if ('background' in item) {
+        item.description = item.background
+        delete item.background
+      }
+      if ('tech' in item) {
+        item.keywords = item.tech
+        delete item.tech
+      }
+      const summary = normalizeProjectSummary(e.summary)
+      const achievements = collectAchievements(e, wanted)
+      if (summary || achievements) {
+        item.summary = [summary, achievements ? `**成果**\n${achievements}` : null].filter(Boolean).join('\n\n')
+      } else {
+        delete item.summary
+      }
       const background = normalizeProjectBackground(item.description)
       if (background) item.description = background
       else delete item.description
+    } else {
+      const summary = buildSummary(e, wanted)
+      if (summary != null) item.summary = toSummaryString(summary)
+      else if (ACHIEVEMENTS_KEY in e) delete item.summary
     }
     // 项目背景保留完整原文；项目要点保留 Markdown 层级。
     out.push(item)
