@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import express from 'express'
 import yaml from 'js-yaml'
-import { getSettings, saveSettings, getRepoPath } from '../config.js'
+import { getSettings, saveSettings, getRepoPath, CONFIG_DIR_PATH } from '../config.js'
 import * as store from '../lib/data-store.js'
 import * as compose from '../lib/compose.js'
 import { refreshGithubStars } from '../lib/github-stars.js'
@@ -145,6 +145,48 @@ router.put('/settings', (req, res) => {
 })
 
 /* ---------- 我要酥化：/asu 技能 + OpenAI 协议 LLM 对话 ---------- */
+// 酥化对话历史持久化：~/.resume-manager/polish-history.json（本机文件，不入仓、不含令牌）
+const POLISH_HISTORY_FILE = path.join(CONFIG_DIR_PATH, 'polish-history.json')
+
+function readPolishHistory() {
+  try {
+    const data = JSON.parse(fs.readFileSync(POLISH_HISTORY_FILE, 'utf8'))
+    return Array.isArray(data?.messages) ? data.messages.filter(
+      (m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string',
+    ) : []
+  } catch {
+    return []
+  }
+}
+
+function writePolishHistory(messages) {
+  fs.mkdirSync(CONFIG_DIR_PATH, { recursive: true })
+  fs.writeFileSync(POLISH_HISTORY_FILE, JSON.stringify({ messages }, null, 2))
+}
+
+router.get('/polish/history', (req, res) => {
+  res.json({ ok: true, messages: readPolishHistory() })
+})
+
+router.put('/polish/history', (req, res) => {
+  const messages = Array.isArray(req.body?.messages) ? req.body.messages.filter(
+    (m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string',
+  ) : []
+  // 上限 200 条，超出时丢弃最早的消息，防止文件无限膨胀
+  const trimmed = messages.slice(-200)
+  writePolishHistory(trimmed)
+  res.json({ ok: true, messages: trimmed })
+})
+
+router.delete('/polish/history', (req, res) => {
+  try {
+    fs.unlinkSync(POLISH_HISTORY_FILE)
+  } catch {
+    /* 文件不存在视为已清空 */
+  }
+  res.json({ ok: true, messages: [] })
+})
+
 // 读取已安装的 /asu 技能内容（去掉 YAML frontmatter），作为系统提示词预设注入
 function loadAsuSkillPrompt() {
   const candidates = [
@@ -214,7 +256,7 @@ router.post('/polish/chat', async (req, res) => {
 
   const skillPrompt = loadAsuSkillPrompt()
   // 输出格式：适配「项目经历」字段，最后输出一个可直接 JSON.parse 的代码块，便于一键导出/导入
-  const jsonInstruction = '\n\n## 输出格式要求\n\n当用户提供经历并要求酥化时，在给出建议后，必须在最后输出一个 JSON 代码块，字段与「项目经历」条目一致，便于一键导入：\n\n```json\n{\n  "name": "项目名称",\n  "source": "来源/机构（赛事/期刊/公司，无则留空字符串）",\n  "role": "我的角色/职责（独立负责/核心参与/团队协作/二作/待确认）",\n  "background": "一两句话：要解决的问题 + 业务场景",\n  "summary": "项目要点（Markdown 列表，每条按 动作→系统能力→业务价值 组织）",\n  "achievements": [{"text": "可量化/可核验的成果", "tags": []}],\n  "tech": ["技术栈"],\n  "tags": ["方向标签"],\n  "url": "链接（无则空字符串）",\n  "startDate": "YYYY-MM",\n  "endDate": "进行中留空字符串"\n}\n```\n\n注意：JSON 中不要包含注释或多余文字，保证可直接被 JSON.parse 解析。'
+  const jsonInstruction = '\n\n## 输出格式要求\n\n当用户提供经历并要求酥化时，在给出建议后，必须在最后输出一个 JSON 代码块，字段与「项目经历」条目一致，便于一键导入。要求：\n\n1. JSON 必须包含以下全部字段；无法从经历确定的值用空字符串或空数组占位，不要编造；\n2. tags 固定输出 []（不填写方向标签）；\n3. role 能从经历判断就填具体值（独立负责/核心参与/团队协作/二作），判断不了填「待确认」。\n\n```json\n{\n  "name": "项目名称（必填，从经历提炼）",\n  "source": "来源/机构/赛事/期刊（不知道则空字符串）",\n  "role": "独立负责 / 核心参与 / 团队协作 / 二作 / 待确认",\n  "background": "一两句话：要解决的问题 + 业务场景",\n  "summary": "项目要点（Markdown 列表，每条按 动作→系统能力→业务价值 组织）",\n  "achievements": [{"text": "可量化/可核验的成果", "tags": []}],\n  "tech": ["技术栈（从经历提取，无则空数组）"],\n  "tags": [],\n  "url": "链接（不知道则空字符串）",\n  "startDate": "YYYY-MM（从经历推断，不知道则空字符串）",\n  "endDate": "进行中留空字符串"\n}\n```\n\n注意：JSON 中不要包含注释或多余文字，保证可直接被 JSON.parse 解析。'
   const systemPrompt = skillPrompt
     ? `你是「中文求职经历酥化」助手，请严格遵循以下技能规范完成用户请求：\n\n${skillPrompt}${jsonInstruction}`
     : `你是「中文求职经历酥化」助手，帮助用户把真实经历改写成强定位、强证据、可追问的简历内容。不虚构头衔、公司、项目、技术栈或数据。${jsonInstruction}`
