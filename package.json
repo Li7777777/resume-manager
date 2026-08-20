@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@lobehub/icons-static-svg": "^1.94.0",
     "adm-zip": "^0.6.0",
     "diff": "^9.0.0",
     "express": "^4.22.2",
