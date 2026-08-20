@@ -164,6 +164,41 @@ function loadAsuSkillPrompt() {
   return null
 }
 
+// 把 fetch 失败（含 cause 链）格式化成可读的错误信息
+function formatFetchError(err) {
+  const parts = []
+  if (err?.message && err.message !== 'fetch failed') parts.push(err.message)
+  const c = err?.cause
+  if (c) {
+    if (c.code) parts.push(c.code)
+    if (c.message && !c.message.includes(c.code || '')) parts.push(c.message)
+    if (c.syscall) parts.push(`(${c.syscall})`)
+    const nested = c.cause
+    if (nested && typeof nested === 'object') {
+      if (nested.code && nested.code !== c.code) parts.push(nested.code)
+      if (nested.message && !nested.message.includes(nested.code || '')) parts.push(nested.message)
+    }
+  }
+  return parts.length ? parts.join(' ') : String(err?.message || err)
+}
+
+// 从上游返回体提取可读错误（优先 JSON error.message；非 JSON 去掉 HTML 标签压缩）
+function extractApiError(text, fallback) {
+  const trimmed = String(text || '').trim()
+  if (trimmed) {
+    try {
+      const json = JSON.parse(trimmed)
+      if (typeof json?.error?.message === 'string' && json.error.message) return json.error.message
+      if (typeof json?.message === 'string' && json.message) return json.message
+    } catch {
+      /* 非 JSON */
+    }
+    const noTags = trimmed.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    if (noTags) return noTags.slice(0, 200)
+  }
+  return fallback
+}
+
 router.post('/polish/chat', async (req, res) => {
   const settings = getSettings()
   const apiKey = settings.llmApiKey
@@ -199,7 +234,8 @@ router.post('/polish/chat', async (req, res) => {
     })
     if (!upstream.ok || !upstream.body) {
       const errText = await upstream.text().catch(() => '')
-      write({ error: `LLM 请求失败（HTTP ${upstream.status}）：${errText.slice(0, 300)}` })
+      const detail = extractApiError(errText, '')
+      write({ error: `LLM 请求失败（HTTP ${upstream.status}）${detail ? `：${detail}` : ''}` })
       return res.end()
     }
     const reader = upstream.body.getReader()
@@ -227,9 +263,47 @@ router.post('/polish/chat', async (req, res) => {
     }
     write({ done: true })
   } catch (err) {
-    write({ error: String(err?.message || err) })
+    write({ error: `请求 LLM 失败：${formatFetchError(err)}` })
   }
   res.end()
+})
+
+// 测试 LLM 连接：非流式发一条短消息，返回成功或详细错误（设置页「测试连接」用）
+router.post('/polish/test', async (req, res) => {
+  const settings = getSettings()
+  if (!settings.llmApiKey) {
+    return res.json({ ok: false, error: '未配置 LLM API Key' })
+  }
+  const baseUrl = String(settings.llmBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
+  const model = String(settings.llmModel || 'gpt-4o-mini')
+  const skillPrompt = loadAsuSkillPrompt()
+  const systemPrompt = skillPrompt
+    ? `你是「中文求职经历酥化」助手，请严格遵循以下技能规范完成用户请求：\n\n${skillPrompt}`
+    : '你是「中文求职经历酥化」助手。'
+  try {
+    const upstream = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.llmApiKey}` },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        max_tokens: 32,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: '回复「OK」即可。' },
+        ],
+      }),
+    })
+    if (!upstream.ok) {
+      const errText = await upstream.text().catch(() => '')
+      return res.json({ ok: false, error: `HTTP ${upstream.status}：${extractApiError(errText, errText.slice(0, 200))}` })
+    }
+    const data = await upstream.json().catch(() => null)
+    const reply = data?.choices?.[0]?.message?.content || ''
+    res.json({ ok: true, reply: String(reply).trim().slice(0, 100), model })
+  } catch (err) {
+    res.json({ ok: false, error: `连接失败：${formatFetchError(err)}` })
+  }
 })
 
 /* ---------- GitHub 凭据自动检测 ---------- */

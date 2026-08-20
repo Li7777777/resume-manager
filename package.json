@@ -26,7 +26,8 @@
     "marked": "^18.0.9",
     "pngjs": "^7.0.0",
     "react-easy-crop": "^6.2.3",
-    "react-pdf": "^10.4.1"
+    "react-pdf": "^10.4.1",
+    "undici": "^8.10.0"
   },
   "devDependencies": {
     "@codemirror/lang-yaml": "^6.1.3",

@@ -41,6 +41,8 @@ export default function SettingsPage() {
   const [detecting, setDetecting] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
+  const [llmTesting, setLlmTesting] = useState(false)
+  const [llmTestResult, setLlmTestResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [dirPickerOpen, setDirPickerOpen] = useState(false)
@@ -191,6 +193,21 @@ export default function SettingsPage() {
     }
   }
 
+  // 测试 LLM 连接（「我要酥化」用），显示详细错误便于诊断
+  const testLlm = async () => {
+    setLlmTesting(true)
+    setLlmTestResult(null)
+    try {
+      const r = await api.post<{ ok?: boolean; reply?: string; model?: string; error?: string }>('/api/polish/test', {})
+      if (r.ok === false) setLlmTestResult({ ok: false, text: r.error || '测试失败' })
+      else setLlmTestResult({ ok: true, text: `连接成功（${r.model || '?'}）：${r.reply || 'OK'}` })
+    } catch (e: any) {
+      setLlmTestResult({ ok: false, text: e.message })
+    } finally {
+      setLlmTesting(false)
+    }
+  }
+
   // 连接数据仓：目录不存在/为空 → 自动生成模板骨架 + git init；已有内容 → 不生成直接连接
   const connect = async () => {
     if (!form.repoPath || !form.repoPath.trim()) return toast('warn', '请先填写数仓路径')
@@ -325,6 +342,16 @@ gh repo create resume-data --private --source . --remote origin --push`}</pre>
               placeholder="gpt-4o-mini"
             />
           </Field>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" loading={llmTesting} onClick={testLlm} disabled={!form.llmApiKey}>
+              <RefreshCw size={13} /> 测试连接
+            </Button>
+          </div>
+          {llmTestResult && (
+            <div className={`rounded-lg border px-3 py-2 text-xs leading-relaxed ${llmTestResult.ok ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-red-500/30 bg-red-500/5 text-red-300'}`}>
+              {llmTestResult.ok ? '✅ ' : '❌ '}{llmTestResult.text}
+            </div>
+          )}
         </div>
       </Card>
 
