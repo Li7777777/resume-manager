@@ -181,9 +181,9 @@ function composeList(repo, block, cfg) {
         const parts = []
         if (summary) parts.push(summary)
         if (achievements) {
-          // 「成果」作为上级要点，证据条目缩进为子级，形成清晰层级（避免独立的孤立 bullet）
-          const nested = achievements.split('\n').map((line) => `  ${line}`).join('\n')
-          parts.push(`- **成果**\n${nested}`)
+          // 「成果：内容」同一行直连，不再换行；多条成果逐条以「成果：」前缀
+          const items = achievements.split('\n').map((line) => line.replace(/^-\s*/, '')).filter(Boolean)
+          parts.push(items.map((t) => `- **成果**：${t}`).join('\n'))
         }
         item.summary = parts.join('\n\n')
       } else {
