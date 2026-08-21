@@ -1294,7 +1294,7 @@ export default function Customizer() {
         fill
         actions={
           <div className="flex flex-wrap items-center justify-end gap-1.5">
-            {previewUrl && <a href={previewUrl} target="_blank" rel="noreferrer" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-indigo-300" title="新窗口打开"><ExternalLink size={13} /></a>}
+            {previewUrl && <button type="button" onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')} title="新窗口打开" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-indigo-300"><ExternalLink size={13} /></button>}
             <Button
               size="sm"
               variant="secondary"
