@@ -1,6 +1,6 @@
 // 通用 UI 组件库（Tailwind 深色主题）
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { X, Plus, Loader2 } from 'lucide-react'
+import { X, Plus, Loader2, GripVertical } from 'lucide-react'
 
 /* ---------- 按钮 ---------- */
 export function Button({
@@ -264,6 +264,8 @@ export function TagInput({
   placeholder?: string
 }) {
   const [draft, setDraft] = useState('')
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
   const add = (t: string) => {
     const tag = t.trim()
     if (tag && !value.includes(tag)) onChange([...value, tag])
@@ -273,11 +275,50 @@ export function TagInput({
     () => suggestions.filter((s) => !value.includes(s) && s.includes(draft.trim())),
     [suggestions, value, draft],
   )
+  // 拖动排序：把 from 位置的标签移动到 to 位置（顺序会体现在简历渲染中）
+  const reorder = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= value.length || to >= value.length) return
+    const next = [...value]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    onChange(next)
+  }
+  const clearDrag = () => {
+    setDragIndex(null)
+    setOverIndex(null)
+  }
   return (
     <div className="rounded-lg border border-zinc-700/70 bg-zinc-900 px-2.5 py-1.5 focus-within:border-indigo-500">
       <div className="flex flex-wrap items-center gap-1.5">
-        {value.map((t) => (
-          <TagChip key={t} tag={t} onRemove={() => onChange(value.filter((x) => x !== t))} />
+        {value.map((t, i) => (
+          <span
+            key={`${t}-${i}`}
+            draggable
+            onDragStart={(e) => {
+              setDragIndex(i)
+              e.dataTransfer.effectAllowed = 'move'
+              e.dataTransfer.setData('text/plain', t)
+            }}
+            onDragOver={(e) => {
+              e.preventDefault()
+              if (overIndex !== i) setOverIndex(i)
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              if (dragIndex !== null) reorder(dragIndex, i)
+              clearDrag()
+            }}
+            onDragEnd={clearDrag}
+            title="拖动调整顺序"
+            className={`inline-flex cursor-grab items-center gap-0.5 rounded-full active:cursor-grabbing ${
+              dragIndex === i ? 'opacity-40' : ''
+            } ${
+              overIndex === i && dragIndex !== null && dragIndex !== i ? 'ring-2 ring-indigo-400/70' : ''
+            }`}
+          >
+            <GripVertical size={11} className="shrink-0 text-zinc-500" />
+            <TagChip tag={t} onRemove={() => onChange(value.filter((x) => x !== t))} />
+          </span>
         ))}
         <input
           value={draft}
