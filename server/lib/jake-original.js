@@ -186,12 +186,26 @@ const PREAMBLE = `\\documentclass[a4paper,11pt]{article}
 % Custom commands
 \\newcommand{\\resumeItem}[1]{\\item\\small{{#1 \\vspace{-2pt}}}}
 
-\\newcommand{\\resumeSubheading}[4]{
+\\newcommand{\\resumeSubheading}[4]{%
   \\vspace{-2pt}\\item
-    \\begin{tabular*}{0.97\\textwidth}[t]{l@{\\extracolsep{\\fill}}r}
-      \\textbf{#1} & #2 \\\\
-      \\textit{\\small#3} & \\textit{\\small #4} \\\\
-    \\end{tabular*}\\vspace{-7pt}
+    \\if\\relax\\detokenize{#3}\\relax
+      \\if\\relax\\detokenize{#4}\\relax
+        \\begin{tabular*}{0.97\\textwidth}[t]{l@{\\extracolsep{\\fill}}r}
+          \\textbf{#1} & #2 \\\\%
+        \\end{tabular*}%
+      \\else
+        \\begin{tabular*}{0.97\\textwidth}[t]{l@{\\extracolsep{\\fill}}r}
+          \\textbf{#1} & #2 \\\\%
+          \\textit{\\small #4} & \\\\%
+        \\end{tabular*}%
+      \\fi
+    \\else
+      \\begin{tabular*}{0.97\\textwidth}[t]{l@{\\extracolsep{\\fill}}r}
+        \\textbf{#1} & #2 \\\\%
+        \\textit{\\small#3} & \\textit{\\small #4} \\\\%
+      \\end{tabular*}%
+    \\fi
+    \\vspace{-7pt}%
 }
 
 \\newcommand{\\resumeProjectHeading}[2]{%
