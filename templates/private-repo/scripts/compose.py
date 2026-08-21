@@ -217,7 +217,9 @@ def compose_list(block, cfg):
             if summary:
                 parts.append(summary)
             if achievements:
-                parts.append("**成果**\n" + achievements)
+                # 「成果」作为上级要点，证据条目缩进为子级，形成清晰层级
+                nested = "\n".join("  " + line for line in achievements.split("\n"))
+                parts.append("- **成果**\n" + nested)
             if parts:
                 item["summary"] = "\n\n".join(parts)
             else:

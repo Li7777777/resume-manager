@@ -178,7 +178,14 @@ function composeList(repo, block, cfg) {
       const summary = normalizeProjectSummary(e.summary)
       const achievements = collectAchievements(e, wanted)
       if (summary || achievements) {
-        item.summary = [summary, achievements ? `**成果**\n${achievements}` : null].filter(Boolean).join('\n\n')
+        const parts = []
+        if (summary) parts.push(summary)
+        if (achievements) {
+          // 「成果」作为上级要点，证据条目缩进为子级，形成清晰层级（避免独立的孤立 bullet）
+          const nested = achievements.split('\n').map((line) => `  ${line}`).join('\n')
+          parts.push(`- **成果**\n${nested}`)
+        }
+        item.summary = parts.join('\n\n')
       } else {
         delete item.summary
       }
