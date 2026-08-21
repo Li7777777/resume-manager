@@ -217,9 +217,12 @@ def compose_list(block, cfg):
             if summary:
                 parts.append(summary)
             if achievements:
-                # 「成果：内容」同一行直连，不再换行；多条成果逐条以「成果：」前缀
+                # 只出现一个「成果」：第一条与「成果：」同行，后续成果以缩进续行段落呈现（渲染为换行顶头）
                 items = [re.sub(r"^-\s*", "", line) for line in achievements.split("\n") if line.strip()]
-                parts.append("\n".join("- **成果**：" + t for t in items))
+                block = "- **成果**：" + items[0]
+                for t in items[1:]:
+                    block += "  \n  " + t
+                parts.append(block)
             if parts:
                 item["summary"] = "\n\n".join(parts)
             else:

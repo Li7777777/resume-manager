@@ -181,9 +181,11 @@ function composeList(repo, block, cfg) {
         const parts = []
         if (summary) parts.push(summary)
         if (achievements) {
-          // 「成果：内容」同一行直连，不再换行；多条成果逐条以「成果：」前缀
+          // 只出现一个「成果」：第一条与「成果：」同行，后续成果用 markdown 硬换行（行尾两空格）顶头续行
           const items = achievements.split('\n').map((line) => line.replace(/^-\s*/, '')).filter(Boolean)
-          parts.push(items.map((t) => `- **成果**：${t}`).join('\n'))
+          let block = `- **成果**：${items[0]}`
+          for (let i = 1; i < items.length; i++) block += `  \n  ${items[i]}`
+          parts.push(block)
         }
         item.summary = parts.join('\n\n')
       } else {
