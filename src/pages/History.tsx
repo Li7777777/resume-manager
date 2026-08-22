@@ -73,6 +73,7 @@ export default function HistoryPage() {
   const [yamlFile, setYamlFile] = useState(YAML_SNAPSHOT_FILES[0].path)
   const [yamlContent, setYamlContent] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
+  const [onlyReleases, setOnlyReleases] = useState(false)
 
   const selectItem = async (item: TimelineItem, typeName = selectedType) => {
     setSelected(item)
@@ -222,7 +223,17 @@ export default function HistoryPage() {
         <code className="text-xs text-indigo-300">{branch || '—'}</code>
         <Badge tone={branchExists ? 'emerald' : 'amber'}>{branchExists ? '分支时间线' : '分支尚未创建'}</Badge>
         <span className="text-xs text-zinc-600">此页面只显示正式版与 Git 版本；临时预览不会进入时间轴。</span>
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={() => loadHistory(selectedType, true)} title="刷新时间线">
+        <label className="ml-auto flex cursor-pointer select-none items-center gap-1.5 text-xs text-zinc-400 transition hover:text-zinc-200">
+          <input
+            type="checkbox"
+            checked={onlyReleases}
+            onChange={(e) => setOnlyReleases(e.target.checked)}
+            className="h-3.5 w-3.5 accent-indigo-500"
+          />
+          <PackageCheck size={13} className="text-indigo-400" />
+          只看正式发布版
+        </label>
+        <Button size="sm" variant="ghost" onClick={() => loadHistory(selectedType, true)} title="刷新时间线">
           <RefreshCw size={13} />
         </Button>
       </div>
@@ -234,11 +245,11 @@ export default function HistoryPage() {
               <Spinner label="加载分支时间线…" />
             ) : !branchExists ? (
               <EmptyState title="类型分支尚未创建" desc="在「简历类型」页创建该类型分支后，这里会显示独立时间线。" />
-            ) : items.length === 0 ? (
-              <EmptyState title="该分支暂无版本记录" />
+            ) : (onlyReleases ? items.filter((item) => item.kind === 'release') : items).length === 0 ? (
+              <EmptyState title={onlyReleases ? '暂无正式发布版' : '该分支暂无版本记录'} />
             ) : (
               <ol className="max-h-[calc(100vh-260px)] overflow-auto p-3">
-                {items.map((item, index) => {
+                {(onlyReleases ? items.filter((item) => item.kind === 'release') : items).map((item, index) => {
                   const active = selected?.id === item.id
                   const title = item.kind === 'release' ? '本机正式版' : item.short || ''
                   const desc = item.kind === 'release' ? item.headMessage : item.message
