@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { ChevronLeft, ChevronRight, Loader2, ZoomIn, ZoomOut, FileWarning } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, ZoomIn, ZoomOut, FileWarning, Download } from 'lucide-react'
 import { Button } from './ui'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
@@ -57,6 +57,25 @@ export default function PdfViewer({ url, fitPage = false }: { url: string; fitPa
     : standardWidth
   const pageWidth = (fitPage ? fittedWidth : standardWidth) * scale
 
+  // 下载 PDF：抓取为 blob 触发下载，文件名取 URL 末段
+  const downloadPdf = async () => {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const objUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const name = decodeURIComponent(url.split('/').pop()?.split('?')[0] || 'resume.pdf')
+      a.href = objUrl
+      a.download = name.endsWith('.pdf') ? name : `${name}.pdf`
+      a.click()
+      URL.revokeObjectURL(objUrl)
+    } catch {
+      // 抓取失败回退：新窗口打开
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   if (error) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/5 py-14 text-sm text-red-300">
@@ -89,6 +108,10 @@ export default function PdfViewer({ url, fitPage = false }: { url: string; fitPa
             <span className="min-w-[44px] text-center text-xs text-zinc-400">{Math.round(scale * 100)}%</span>
             <Button size="sm" variant="ghost" onClick={() => setScale((s) => Math.min(2.2, +(s + 0.2).toFixed(2)))}>
               <ZoomIn size={14} />
+            </Button>
+            <div className="mx-1 h-4 w-px shrink-0 bg-zinc-700" />
+            <Button size="sm" variant="secondary" onClick={downloadPdf} title="下载 PDF">
+              <Download size={13} /> 下载
             </Button>
           </div>
         </div>
