@@ -223,24 +223,25 @@ export default function HistoryPage() {
         <code className="text-xs text-indigo-300">{branch || '—'}</code>
         <Badge tone={branchExists ? 'emerald' : 'amber'}>{branchExists ? '分支时间线' : '分支尚未创建'}</Badge>
         <span className="text-xs text-zinc-600">此页面只显示正式版与 Git 版本；临时预览不会进入时间轴。</span>
-        <label className="ml-auto flex cursor-pointer select-none items-center gap-1.5 text-xs text-zinc-400 transition hover:text-zinc-200">
-          <input
-            type="checkbox"
-            checked={onlyReleases}
-            onChange={(e) => setOnlyReleases(e.target.checked)}
-            className="h-3.5 w-3.5 accent-indigo-500"
-          />
-          <PackageCheck size={13} className="text-indigo-400" />
-          只看正式发布版
-        </label>
-        <Button size="sm" variant="ghost" onClick={() => loadHistory(selectedType, true)} title="刷新时间线">
+        <Button size="sm" variant="ghost" className="ml-auto" onClick={() => loadHistory(selectedType, true)} title="刷新时间线">
           <RefreshCw size={13} />
         </Button>
       </div>
 
       <div className="flex gap-5">
         <div className="w-80 shrink-0">
-          <Card title="版本时间轴" desc={branch || '按类型分支分类'} pad={false}>
+          <Card title="版本时间轴" desc={branch || '按类型分支分类'} pad={false} actions={
+            <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-zinc-400 transition hover:text-zinc-200">
+              <input
+                type="checkbox"
+                checked={onlyReleases}
+                onChange={(e) => setOnlyReleases(e.target.checked)}
+                className="h-3.5 w-3.5 accent-indigo-500"
+              />
+              <PackageCheck size={13} className="text-indigo-400" />
+              只看正式发布版
+            </label>
+          }>
             {loading ? (
               <Spinner label="加载分支时间线…" />
             ) : !branchExists ? (
