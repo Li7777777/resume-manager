@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { api } from '../api'
 import { useToast } from '../toast'
-import { Badge, Button, Card, EmptyState, Select, Spinner, relativeTime } from '../components/ui'
+import { Badge, Button, Card, EmptyState, Select, Spinner, Switch, relativeTime } from '../components/ui'
 import PdfViewer from '../components/PdfViewer'
 import { YamlEditor } from '../components/YamlEditor'
 
@@ -231,16 +231,10 @@ export default function HistoryPage() {
       <div className="flex gap-5">
         <div className="w-80 shrink-0">
           <Card title="版本时间轴" desc={branch || '按类型分支分类'} pad={false} actions={
-            <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-zinc-400 transition hover:text-zinc-200">
-              <input
-                type="checkbox"
-                checked={onlyReleases}
-                onChange={(e) => setOnlyReleases(e.target.checked)}
-                className="h-3.5 w-3.5 accent-indigo-500"
-              />
-              <PackageCheck size={13} className="text-indigo-400" />
+            <div className="flex items-center gap-2 text-xs text-zinc-400">
+              <Switch checked={onlyReleases} onChange={(v) => setOnlyReleases(v)} />
               只看正式发布版
-            </label>
+            </div>
           }>
             {loading ? (
               <Spinner label="加载分支时间线…" />
