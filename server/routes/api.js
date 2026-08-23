@@ -348,6 +348,38 @@ router.post('/polish/test', async (req, res) => {
   }
 })
 
+// 项目要点 AI 润色：基于酥化规范（不含 JSON 要求），返回纯 Markdown 要点列表
+router.post('/polish/polish-summary', async (req, res) => {
+  const settings = getSettings()
+  const apiKey = settings.llmApiKey
+  if (!apiKey) return res.json({ ok: false, error: '未配置 LLM API Key，请先到「设置」页填写' })
+  const baseUrl = String(settings.llmBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
+  const model = String(settings.llmModel || 'gpt-4o-mini')
+  const text = String(req.body?.text || '').trim()
+  if (!text) return res.json({ ok: false, error: '项目要点为空' })
+  const skillPrompt = loadAsuSkillPrompt()
+  const systemPrompt = skillPrompt
+    ? `你是「中文求职经历酥化」助手，请严格遵循以下技能规范：\n\n${skillPrompt}`
+    : '你是「中文求职经历酥化」助手。'
+  const userPrompt = `请对下面的「项目要点」进行润色，要求：\n1. 以「小技术点 → 宏观项目」的个人贡献视角撰写：每条先落到一个具体的小技术点或动作，再说明它如何支撑或优化整个项目；\n2. 每条按「动作 → 系统能力 → 业务价值」组织；\n3. 保持真实、不虚构；\n4. 直接输出润色后的 Markdown 要点列表（每条以 - 开头，支持二级缩进），不要输出 JSON，不要输出解释或标题。\n\n当前项目要点：\n${text}`
+  try {
+    const upstream = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, stream: false, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }] }),
+    })
+    if (!upstream.ok) {
+      const errText = await upstream.text().catch(() => '')
+      return res.json({ ok: false, error: `HTTP ${upstream.status}：${extractApiError(errText, errText.slice(0, 200))}` })
+    }
+    const data = await upstream.json().catch(() => null)
+    const result = data?.choices?.[0]?.message?.content || ''
+    res.json({ ok: true, result: String(result).trim() })
+  } catch (err) {
+    res.json({ ok: false, error: `连接失败：${formatFetchError(err)}` })
+  }
+})
+
 /* ---------- GitHub 凭据自动检测 ---------- */
 // 先尝试从系统环境获取（GITHUB_TOKEN/GH_TOKEN 环境变量、gh CLI 登录态），
 // 获取不到时由前端引导用户创建 Token（设置页内置教程与链接）。

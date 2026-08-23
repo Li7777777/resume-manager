@@ -27,6 +27,9 @@ import {
   GripVertical,
   ImagePlus,
   Upload,
+  Sparkles,
+  RefreshCw,
+  Check,
 } from 'lucide-react'
 import { api } from '../api'
 import type { Category, Entry } from '../types'
@@ -1271,6 +1274,35 @@ function EntryModal({
   const toast = useToast()
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }))
 
+  // AI 润色项目要点（基于酥化规范，无 JSON）
+  const [polishOpen, setPolishOpen] = useState(false)
+  const [polishLoading, setPolishLoading] = useState(false)
+  const [polishResult, setPolishResult] = useState('')
+  const currentSummary = () =>
+    Array.isArray(form.summary) ? (form.summary as string[]).join('\n') : (form.summary as string) || ''
+
+  const runPolish = async () => {
+    const current = currentSummary()
+    if (!current.trim()) return toast('warn', '请先填写项目要点')
+    setPolishLoading(true)
+    setPolishOpen(true)
+    try {
+      const r = await api.post<{ ok?: boolean; result?: string; error?: string }>('/api/polish/polish-summary', { text: current })
+      if (r.ok === false) throw new Error(r.error || '润色失败')
+      setPolishResult(r.result || '')
+    } catch (e: any) {
+      setPolishResult(`[错误] ${e.message}`)
+    } finally {
+      setPolishLoading(false)
+    }
+  }
+
+  const applyPolish = () => {
+    set('summary', polishResult)
+    setPolishOpen(false)
+    toast('success', '已应用 AI 润色结果')
+  }
+
   // 学位/等级：显示中文，存储 schema 英文枚举
   const optionLabel = (f: FieldDef, o: string) => {
     if (f.key === 'degree') return DEGREE_LABELS[o] || o
@@ -1347,13 +1379,42 @@ function EntryModal({
       <div className="space-y-4">
         {(FIELDS[category as Category] || GENERIC_FIELDS).map((f) => (
           f.type === 'markdown' ? (
-            <MarkdownListEditor
-              key={f.key}
-              label={f.label}
-              hint={f.hint}
-              value={Array.isArray(form[f.key]) ? (form[f.key] as string[]).join('\n') : (form[f.key] as string) || ''}
-              onChange={(value) => set(f.key, value)}
-            />
+            category === 'projects' && f.key === 'summary' ? (
+              <div key={f.key}>
+                <MarkdownListEditor
+                  label={f.label}
+                  hint={f.hint}
+                  value={currentSummary()}
+                  onChange={(value) => set(f.key, value)}
+                />
+                <div className="mt-1.5 flex items-center gap-2">
+                  <Button size="sm" variant="ghost" loading={polishLoading} onClick={runPolish} title="基于酥化规范润色项目要点">
+                    <Sparkles size={12} /> AI 润色
+                  </Button>
+                </div>
+                {polishOpen && (
+                  <div className="mt-2 rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-3">
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-indigo-300">AI 润色结果（可编辑）</span>
+                      <div className="flex gap-1.5">
+                        <Button size="sm" variant="ghost" loading={polishLoading} onClick={runPolish}><RefreshCw size={12} /> 重新生成</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setPolishOpen(false)}>取消</Button>
+                        <Button size="sm" variant="primary" disabled={polishLoading} onClick={applyPolish}><Check size={12} /> 应用</Button>
+                      </div>
+                    </div>
+                    <MarkdownListEditor label="" value={polishResult} onChange={setPolishResult} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <MarkdownListEditor
+                key={f.key}
+                label={f.label}
+                hint={f.hint}
+                value={Array.isArray(form[f.key]) ? (form[f.key] as string[]).join('\n') : (form[f.key] as string) || ''}
+                onChange={(value) => set(f.key, value)}
+              />
+            )
           ) : (
             <Field key={f.key} label={f.label} hint={f.hint} required={f.required}>
               {renderField(f)}
