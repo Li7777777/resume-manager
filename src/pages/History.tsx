@@ -265,7 +265,7 @@ export default function HistoryPage() {
                           {itemBadge(item)}
                         </div>
                         <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{desc || '—'}</p>
-                        <p className="mt-0.5 text-[10px] text-zinc-600">{item.kind === 'release' ? '本机发布' : item.author} · {relativeTime(item.timestamp * 1000)}</p>
+                        <p className="mt-0.5 text-[10px] text-zinc-600">{item.kind === 'release' ? '本机发布' : item.author} · {relativeTime(item.timestamp)}</p>
                       </button>
                     </li>
                   )
