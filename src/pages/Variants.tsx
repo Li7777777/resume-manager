@@ -53,6 +53,21 @@ export default function Variants() {
     }
   }
 
+  // 刷新：先拉取远程（更新远程分支状态），再重载类型列表；拉取失败时仍显示本地最新状态
+  const refreshAll = async () => {
+    setBusy('__refresh__')
+    try {
+      await api.post('/api/git/fetch', {})
+      await load()
+      toast('success', '已刷新（含远程状态）')
+    } catch (err: any) {
+      await load()
+      toast('warn', `远程拉取失败：${err.message}；已显示本地状态`)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   if (types === null) return <Spinner label="加载简历类型…" />
 
   return (
@@ -65,8 +80,8 @@ export default function Variants() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="ghost" onClick={load} title="刷新类型状态">
-            <RefreshCw size={14} />
+          <Button size="sm" variant="ghost" loading={busy === '__refresh__'} onClick={refreshAll} title="拉取远程并刷新类型状态">
+            <RefreshCw size={14} className={busy === '__refresh__' ? 'animate-spin' : ''} />
           </Button>
           <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus size={15} /> 新增类型
