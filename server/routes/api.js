@@ -862,12 +862,29 @@ router.post('/resume-types/:name/ensure-branch', async (req, res) => {
   if (!gitSyncGuard(res)) return
   const name = String(req.params.name || '')
   try {
-    const doc = compose.loadVariantsDoc(repo)
-    const variant = doc.variants?.[name]
-    if (!variant) return res.json({ ok: false, error: `简历类型 ${name} 不存在` })
-    const branch = typeBranch(repo, name)
-    const result = await gitSvc.createBranch(repo, branch)
-    res.json({ ok: true, name, branch, created: result.created })
+    const response = await withRepositoryOperationLock(repo, async () => {
+      const branch = typeBranch(repo, name)
+      const branches = await gitSvc.listBranches(repo)
+      const created = !branches.local.includes(branch)
+      if (created) await gitSvc.createBranch(repo, branch)
+      // 分支新建或配置缺失时补上默认配置（如 variants.yml 被分支切换/还原后丢失）
+      const doc = compose.loadVariantsDoc(repo)
+      if (!doc.variants?.[name]) {
+        doc.variants[name] = {
+          blocks: {
+            basics: { include: true },
+            education: { include: 'all' },
+            projects: { include: 'all' },
+            skills: { include: 'all' },
+          },
+          sectionOrder: ['basics', 'education', 'projects', 'skills'],
+          layout: { engine: 'latex', template: doc.defaults?.layout?.template || 'moderncv-banking' },
+        }
+        compose.saveVariantsDoc(repo, doc)
+      }
+      return { ok: true, name, branch, created }
+    })
+    res.json(response)
   } catch (err) {
     sendError(req, res, err)
   }
@@ -880,8 +897,7 @@ router.post('/resume-types/:name/checkout', async (req, res) => {
   const name = String(req.params.name || '')
   try {
     const response = await withRepositoryOperationLock(repo, async () => {
-      const doc = compose.loadVariantsDoc(repo)
-      if (!doc.variants?.[name]) return { ok: false, error: `简历类型 ${name} 不存在` }
+      // 类型→分支映射来自管理端状态；配置随分支自身携带，切换无需当前分支的 variants.yml 里有该类型
       const branch = typeBranch(repo, name)
       const branches = await gitSvc.listBranches(repo)
       if (!branches.local.includes(branch)) return { ok: false, error: `类型分支 ${branch} 尚未创建` }
