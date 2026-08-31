@@ -28,7 +28,9 @@ function safeJoin(repo, rel) {
   return abs
 }
 
-function sendError(res, err) {
+function sendError(req, res, err) {
+  // 记录 400 错误（方法 + 路径 + 原因），写入服务日志便于排查
+  console.warn(`[api][400] ${req.method} ${req.originalUrl} :: ${String(err?.message || err)}`)
   res.status(400).json({ ok: false, error: String(err?.message || err) })
 }
 
@@ -434,7 +436,7 @@ router.get('/categories', (req, res) => {
   try {
     res.json({ ok: true, categories: store.getCategories(repo) })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -472,7 +474,7 @@ router.put('/categories', (req, res) => {
     }
     res.json({ ok: true, categories: store.getCategories(repo) })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -494,7 +496,7 @@ router.get('/tags', (req, res) => {
     }
     res.json({ ok: true, tags, library: lib, subLibrary: subLib, subTagCount: subTagCount || {} })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -508,7 +510,7 @@ router.put('/tags/library', (req, res) => {
     const lib = store.saveLibTags(repo, tags)
     res.json({ ok: true, library: lib })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -522,7 +524,7 @@ router.put('/tags/sublibrary', (req, res) => {
     const lib = store.saveLibSubTags(repo, tags)
     res.json({ ok: true, subLibrary: lib })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -542,7 +544,7 @@ router.post('/tags/rename', (req, res) => {
     const affected = store.renameTag(repo, f, t)
     res.json({ ok: true, affected, from: f, to: t })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -556,7 +558,7 @@ router.post('/tags/delete', (req, res) => {
     const affected = store.deleteTag(repo, tag.trim())
     res.json({ ok: true, affected, tag: tag.trim() })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -576,7 +578,7 @@ router.post('/tags/sub-rename', (req, res) => {
     const affected = store.renameSubTag(repo, f, t)
     res.json({ ok: true, affected, from: f, to: t })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -590,7 +592,7 @@ router.post('/tags/sub-delete', (req, res) => {
     const affected = store.deleteSubTag(repo, tag.trim())
     res.json({ ok: true, affected, tag: tag.trim() })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -609,7 +611,7 @@ router.get('/entries/basics/photo', (req, res) => {
     res.set('Cache-Control', 'no-store')
     res.sendFile(photo.file)
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -625,7 +627,7 @@ router.post('/entries/basics/photo', profilePhotoBody, (req, res) => {
     ))
     res.json({ ok: true, photo: photo.relative, entry, warnings })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -639,7 +641,7 @@ router.delete('/entries/basics/photo', (req, res) => {
     const { result: entry, warnings } = deleteProfilePhoto(repo, () => store.upsertEntry(repo, 'basics', next))
     res.json({ ok: true, entry, warnings })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -656,7 +658,7 @@ router.get('/entries/:cat', (req, res) => {
   try {
     res.json({ ok: true, category: req.params.cat, entries: store.readCategory(repo, req.params.cat) })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -667,7 +669,7 @@ router.post('/entries/:cat', (req, res) => {
     const entry = store.upsertEntry(repo, req.params.cat, req.body || {})
     res.json({ ok: true, entry })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -682,7 +684,7 @@ router.put('/entries/:cat/reorder', (req, res) => {
     const next = store.reorderEntries(repo, req.params.cat, ids)
     res.json({ ok: true, entries: next })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -693,7 +695,7 @@ router.put('/entries/:cat/:id', (req, res) => {
     const entry = store.upsertEntry(repo, req.params.cat, { ...req.body, id: req.params.id })
     res.json({ ok: true, entry })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -705,7 +707,7 @@ router.delete('/entries/:cat/:id', (req, res) => {
     if (!deleted) return res.json({ ok: false, error: '未找到该条目，可能已删除' })
     res.json({ ok: true })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -724,7 +726,7 @@ router.get('/variants', (req, res) => {
     })
     res.json({ ok: true, variants, defaults: (yaml.load(fs.readFileSync(path.join(repo, 'scripts', 'variants.yml'), 'utf8')) || {}).defaults || {} })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -744,7 +746,7 @@ router.put('/variants', (req, res) => {
     compose.saveVariantsDoc(repo, doc)
     res.json({ ok: true })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -794,7 +796,7 @@ router.get('/resume-types', async (req, res) => {
     const types = [...byName.values()].sort((a, b) => Number(b.current) - Number(a.current) || a.name.localeCompare(b.name))
     res.json({ ok: true, types, currentBranch: branches.current })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -833,7 +835,7 @@ router.post('/resume-types', async (req, res) => {
     })
     res.json(response)
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -850,7 +852,7 @@ router.put('/resume-types/:name', (req, res) => {
     managerState.setResumeTypeMeta(repo, name, { label, branch })
     res.json({ ok: true, name, label, branch })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -867,7 +869,7 @@ router.post('/resume-types/:name/ensure-branch', async (req, res) => {
     const result = await gitSvc.createBranch(repo, branch)
     res.json({ ok: true, name, branch, created: result.created })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -888,7 +890,7 @@ router.post('/resume-types/:name/checkout', async (req, res) => {
     })
     res.json(response)
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -908,7 +910,7 @@ router.delete('/resume-types/:name', async (req, res) => {
     managerState.deleteResumeTypeMeta(repo, name)
     res.json({ ok: true, name, branch, note: '远程分支如已推送，请在 GitHub 上按需删除' })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -925,7 +927,7 @@ router.get('/files', (req, res) => {
     files.push({ path: 'scripts/variants.yml', label: '简历方向配方', exists: fs.existsSync(path.join(repo, 'scripts', 'variants.yml')) })
     res.json({ ok: true, files })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -937,7 +939,7 @@ router.get('/yaml', (req, res) => {
     if (!fs.existsSync(p)) return res.json({ ok: false, error: '文件不存在' })
     res.json({ ok: true, content: fs.readFileSync(p, 'utf8') })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -952,7 +954,7 @@ router.put('/yaml', (req, res) => {
     fs.writeFileSync(p, content, 'utf8')
     res.json({ ok: true })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -975,7 +977,7 @@ router.post('/build', async (req, res) => {
       res.json({ ok: false, error: result.output })
     }
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -998,7 +1000,7 @@ router.get('/git/status', async (req, res) => {
     const ab = await gitSvc.aheadBehind(repo, getSettings()).catch(() => ({ ahead: 0, behind: 0 }))
     res.json({ ok: true, ...s, ...ab })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1008,7 +1010,7 @@ router.get('/git/log', async (req, res) => {
   try {
     res.json({ ok: true, commits: await gitSvc.getLog(repo, Number(req.query.limit) || 20) })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1019,7 +1021,7 @@ router.get('/git/diff', async (req, res) => {
     const hunks = await gitSvc.getDiff(repo, req.query.file)
     res.json({ ok: true, hunks })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1032,7 +1034,7 @@ router.post('/git/commit', async (req, res) => {
     const oid = await withRepositoryOperationLock(repo, () => gitSvc.commitAll(repo, message.trim(), getSettings()))
     res.json({ ok: true, oid })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1043,7 +1045,7 @@ router.post('/git/fetch', async (req, res) => {
     await gitSvc.fetchRemote(repo, getSettings())
     res.json({ ok: true })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1054,7 +1056,7 @@ router.post('/git/pull', async (req, res) => {
     const r = await withRepositoryOperationLock(repo, () => gitSvc.pullRemote(repo, getSettings()))
     res.json({ ok: true, ...r })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1068,7 +1070,7 @@ router.post('/git/push', async (req, res) => {
     if (r.error) return res.json({ ok: false, error: r.error.message || String(r.error) })
     res.json({ ok: true, pushed: r.pushed, branch: r.branch || null })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1100,7 +1102,7 @@ router.get('/github/pdf-config', async (req, res) => {
       variable: PDF_BUILD_VARIABLE,
     })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1127,7 +1129,7 @@ router.post('/github/pdf-config', async (req, res) => {
     }
     res.json({ ok: true, present: true, remoteValue: value === 'true', variable: PDF_BUILD_VARIABLE })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1197,7 +1199,7 @@ router.post('/github/pdf-sync', async (req, res) => {
       branch,
     })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1275,7 +1277,7 @@ router.get('/history', async (req, res) => {
       repo: parsed?.repo || null,
     })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1337,7 +1339,7 @@ router.get('/github/history/pdf', async (req, res) => {
     }
     res.json({ ok: true, pdfs, sha, variant: variant || null, runNumber: run.run_number, cached: false })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1398,7 +1400,7 @@ router.get('/templates', (req, res) => {
     }
     res.json({ ok: true, templates: TEMPLATES, current, engineLabels: ENGINE_LABELS })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1406,7 +1408,7 @@ router.get('/font-options', async (req, res) => {
   try {
     res.json({ ok: true, groups: await getFontOptionsPayload({ refresh: req.query.refresh === '1' }) })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1441,7 +1443,7 @@ router.post('/template/apply', async (req, res) => {
     })
     res.json(response)
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1527,7 +1529,7 @@ router.get('/custom/state', (req, res) => {
     managerState.setCustomizerState(repo, state)
     res.json({ ok: true, state })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1546,7 +1548,7 @@ router.put('/custom/state', (req, res) => {
     const state = sanitizeCustomizerState(repo, { ...current, ...incoming, drafts })
     res.json({ ok: true, state: managerState.setCustomizerState(repo, state) })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1716,7 +1718,7 @@ function customizedHandler({ persist, publish }) {
       })
       res.json(response)
     } catch (err) {
-      sendError(res, err)
+      sendError(req, res, err)
     }
   }
 }
@@ -1770,7 +1772,7 @@ router.post('/project/connect', async (req, res) => {
       status,
     })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 
@@ -1807,7 +1809,7 @@ router.post('/project/init', (req, res) => {
     copy(TEMPLATE_DIR, dest)
     res.json({ ok: true, target: dest })
   } catch (err) {
-    sendError(res, err)
+    sendError(req, res, err)
   }
 })
 

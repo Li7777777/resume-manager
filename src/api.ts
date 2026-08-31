@@ -5,7 +5,17 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    // 非 2xx 时透出后端返回的具体错误原因（如「工作区有 N 个未提交改动…」）
+    let message = `HTTP ${res.status}`
+    try {
+      const d = await res.json()
+      if (d?.error) message = d.error
+    } catch {
+      /* 无 JSON 体时保留 HTTP 状态 */
+    }
+    throw new Error(message)
+  }
   let data: any
   try {
     data = await res.json()
