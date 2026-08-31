@@ -1,6 +1,6 @@
 // 简历类型页：每个类型对应一个 resume/* Git 分支
 import React, { useEffect, useState } from 'react'
-import { GitBranch, Plus, Pencil, Trash2, RefreshCw, CheckCircle2, CircleDotDashed } from 'lucide-react'
+import { GitBranch, Plus, Pencil, Trash2, RefreshCw } from 'lucide-react'
 import { api } from '../api'
 import { useToast } from '../toast'
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Spinner } from '../components/ui'
@@ -38,35 +38,6 @@ export default function Variants() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const ensureBranch = async (type: ResumeType) => {
-    setBusy(type.name)
-    try {
-      const result = await api.post<{ branch: string; created: boolean }>(
-        `/api/resume-types/${encodeURIComponent(type.name)}/ensure-branch`,
-        {},
-      )
-      toast('success', result.created ? `已创建分支 ${result.branch}` : `分支 ${result.branch} 已存在`)
-      await load()
-    } catch (err: any) {
-      toast('error', err.message)
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const checkout = async (type: ResumeType) => {
-    setBusy(type.name)
-    try {
-      await api.post(`/api/resume-types/${encodeURIComponent(type.name)}/checkout`, {})
-      toast('success', `已切换到「${type.label}」`)
-      await load()
-    } catch (err: any) {
-      toast('error', err.message)
-    } finally {
-      setBusy(null)
-    }
-  }
 
   const remove = async (type: ResumeType) => {
     if (!confirm(`确定删除简历类型「${type.label}」和本地分支 ${type.branch} 吗？\n远程分支不会自动删除。`)) return
@@ -138,28 +109,16 @@ export default function Variants() {
                 <div className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2">
                   <GitBranch size={14} className={type.current ? 'text-emerald-400' : 'text-zinc-500'} />
                   <code className="min-w-0 flex-1 truncate text-xs text-zinc-300">{type.branch}</code>
-                  {type.current ? <Badge tone="emerald">当前</Badge> : <Badge tone="zinc">未切换</Badge>}
+                  {type.current ? <Badge tone="emerald">当前</Badge> : null}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <Badge tone={type.configured ? 'sky' : 'zinc'}>{type.configured ? '配置已载入' : '分支类型'}</Badge>
                   <Badge tone={type.local ? 'indigo' : 'zinc'}>本地 {type.local ? '有' : '无'}</Badge>
                   <Badge tone={type.remote ? 'emerald' : 'zinc'}>远程 {type.remote ? '有' : '无'}</Badge>
                 </div>
-                <div className="flex justify-end gap-2">
-                  {!type.local ? (
-                    <Button size="sm" variant="secondary" loading={busy === type.name} onClick={() => ensureBranch(type)}>
-                      <CircleDotDashed size={13} /> 创建分支
-                    </Button>
-                  ) : type.current ? (
-                    <Button size="sm" disabled>
-                      <CheckCircle2 size={13} /> 正在使用
-                    </Button>
-                  ) : (
-                    <Button size="sm" variant="secondary" loading={busy === type.name} onClick={() => checkout(type)}>
-                      <GitBranch size={13} /> 切换到此类型
-                    </Button>
-                  )}
-                </div>
+                <p className="rounded-md bg-zinc-950/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-600">
+                  在「简历定制」页顶部的类型下拉框中选择该类型即可切换使用（未提交改动会自动保存）；此处仅管理类型的创建、重命名与删除。
+                </p>
               </div>
             </Card>
           ))}

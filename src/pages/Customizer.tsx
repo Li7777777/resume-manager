@@ -914,6 +914,8 @@ export default function Customizer() {
     captureCurrentDraft()
     setSelectedEntryIds([])
     try {
+      // 分支不存在时先创建（含默认配置），再切换
+      await api.post(`/api/resume-types/${encodeURIComponent(name)}/ensure-branch`, {})
       await api.post(`/api/resume-types/${encodeURIComponent(name)}/checkout`, {})
       const [typeData, variantData] = await Promise.all([
         api.get<{ types: ResumeType[] }>('/api/resume-types'),
