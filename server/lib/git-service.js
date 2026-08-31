@@ -70,6 +70,29 @@ export async function createBranch(dir, branch) {
   return { created: true, branch }
 }
 
+// 从 main 分支读取 data/ 目录下所有文件内容，写入工作区（不改变 HEAD 和 index）。
+// 用于非 main 分支上统一信息管理数据：确保所有简历类型共享 main 的信息数据。
+async function syncDataFromMain(dir) {
+  try {
+    const mainOid = await git.resolveRef({ fs, dir, ref: 'main' })
+    const { commit } = await git.readCommit({ fs, dir, oid: mainOid })
+    const { tree: rootTree } = await git.readTree({ fs, dir, oid: commit.tree })
+    const dataEntry = rootTree.find((entry) => entry.path === 'data')
+    if (!dataEntry) return
+    const { tree: dataTree } = await git.readTree({ fs, dir, oid: dataEntry.oid })
+    for (const entry of dataTree) {
+      if (entry.type !== 'blob') continue // 跳过于目录
+      const { blob } = await git.readBlob({ fs, dir, oid: entry.oid })
+      const content = Buffer.from(blob).toString('utf8')
+      const target = path.join(dir, 'data', entry.path)
+      fs.mkdirSync(path.dirname(target), { recursive: true })
+      fs.writeFileSync(target, content, 'utf8')
+    }
+  } catch {
+    // main 分支不存在或读取失败时保持当前分支的数据
+  }
+}
+
 export async function checkoutBranch(dir, branch, settings) {
   const matrix = await git.statusMatrix({ fs, dir })
   const dirty = matrix.filter(([, head, workdir, stage]) => !(head === 1 && workdir === 1 && stage === 1))
@@ -86,6 +109,12 @@ export async function checkoutBranch(dir, branch, settings) {
     }
   }
   await git.checkout({ fs, dir, ref: branch })
+  // 信息管理数据统一使用 main 分支的版本：切到非 main 分支后，
+  // 从 main 读取 data/ 目录内容覆盖工作区，确保各简历类型共享同一份信息数据，
+  // 避免分支间数据版本不一致。
+  if (branch !== 'main') {
+    await syncDataFromMain(dir)
+  }
   return branch
 }
 
