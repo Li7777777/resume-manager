@@ -140,10 +140,16 @@ function compactInterests(items) {
   return names.length ? [{ name: names.join('、'), keywords: [] }] : []
 }
 
-function composeBasics(repo) {
+function composeBasics(repo, variantHeadlines) {
   const b = { ...readCategory(repo, 'basics') }
   // photo 是管理端构建元数据；YAMLResume basics schema 不接受该字段，由渲染后处理注入。
   delete b.photo
+  // 职位头衔：变体配置的顺序/子集优先，其次全部基础头衔，拼接为单行展示
+  const headlines = (Array.isArray(variantHeadlines) && variantHeadlines.length ? variantHeadlines : Array.isArray(b.headlines) ? b.headlines : [])
+    .filter((h) => typeof h === 'string' && h.trim())
+    .map((h) => h.trim())
+  if (headlines.length) b.headline = headlines.join(' ｜ ')
+  delete b.headlines
   b.summary = toSummaryString(b.summary)
   return Object.keys(b).length ? b : null
 }
@@ -278,7 +284,7 @@ export function composeVariant(repo, name, v, defaults) {
   const content = {}
   for (const [block, cfg] of Object.entries(v.blocks || {})) {
     if (block === 'basics') {
-      const b = composeBasics(repo)
+      const b = composeBasics(repo, v.headlines)
       if (b) content.basics = b
     } else {
       const items = composeList(repo, block, cfg)

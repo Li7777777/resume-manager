@@ -67,6 +67,7 @@ export interface Variant {
   layout?: { engine?: string; template?: string; typography?: { fontSize?: string; fontFamily?: string } }
   htmlLayout?: { engine?: string; template?: string; typography?: { fontSize?: string; fontFamily?: string } }
   fonts?: ResumeFontSettings
+  headlines?: string[]
   sectionOrder?: string[]
   blocks?: Record<string, { include?: string | boolean; tags?: string[]; ids?: string[] }>
   matched?: Record<string, number>

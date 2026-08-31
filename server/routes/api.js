@@ -1507,6 +1507,9 @@ function sanitizeCustomizerState(repo, input) {
       sections,
       fonts,
       componentOrder,
+      ...(Array.isArray(value.headlines)
+        ? { headlines: [...new Set(value.headlines.filter((h) => typeof h === 'string' && h.trim()).map((h) => h.trim()))] }
+        : {}),
       updatedAt: Number.isFinite(value.updatedAt) ? value.updatedAt : Date.now(),
     }
   }
@@ -1598,6 +1601,10 @@ function resolveCustomizedVariant(repo, doc, variant, body) {
   const fonts = body.fonts === undefined
     ? normalizeFontSettings(current.fonts)
     : normalizeFontSettings(body.fonts)
+  // 职位头衔顺序/子集（按变体保存；拖拽自定制画布）
+  const headlines = Array.isArray(body.headlines)
+    ? [...new Set(body.headlines.filter((h) => typeof h === 'string' && h.trim()).map((h) => h.trim()))]
+    : undefined
   const layoutOverride = body.template === undefined
     ? {}
     : {
@@ -1616,6 +1623,7 @@ function resolveCustomizedVariant(repo, doc, variant, body) {
       fonts: Object.keys(fonts).length ? fonts : undefined,
       sectionOrder: order,
       blocks,
+      ...(headlines !== undefined ? { headlines: headlines.length ? headlines : undefined } : {}),
     },
     template,
     engine,

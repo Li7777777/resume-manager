@@ -1086,7 +1086,13 @@ function BasicsForm({ initial, onSave }: { initial: Entry; onSave: (e: Entry) =>
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="姓名" required><Input value={(form.name as string) || ''} onChange={(e) => set('name', e.target.value)} /></Field>
-        <Field label="职位头衔"><Input value={(form.headline as string) || ''} onChange={(e) => set('headline', e.target.value)} /></Field>
+        <Field label="职位头衔" hint="可添加多个；定制页可拖拽排序">
+          <TagInput
+            value={Array.isArray(form.headlines) ? (form.headlines as string[]) : (typeof form.headline === 'string' && form.headline.trim() ? [form.headline] : [])}
+            onChange={(v) => { set('headlines', v); set('headline', v[0] || '') }}
+            placeholder="+ 添加职位头衔（如 AI Agent 应用开发）"
+          />
+        </Field>
         <Field label="电话"><Input value={(form.phone as string) || ''} onChange={(e) => set('phone', e.target.value)} /></Field>
         <Field label="邮箱"><Input value={(form.email as string) || ''} onChange={(e) => set('email', e.target.value)} /></Field>
         <Field label="个人主页"><Input value={(form.url as string) || ''} onChange={(e) => set('url', e.target.value)} /></Field>

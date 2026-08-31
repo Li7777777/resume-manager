@@ -7,6 +7,7 @@ import {
   ArrowUp,
   ArrowDown,
   Layers,
+  Plus,
   FileCode2,
   CheckCircle2,
   CheckSquare2,
@@ -75,6 +76,7 @@ interface CustomizerDraft {
   sections: Section[]
   fonts?: ResumeFontSettings
   componentOrder?: string[]
+  headlines?: string[]
   updatedAt?: number
 }
 
@@ -83,6 +85,97 @@ interface CustomizerMemory {
   workspaceMode?: 'visual' | 'yaml'
   category?: string
   drafts?: Record<string, CustomizerDraft>
+}
+
+// 职位头衔选择器：拖拽排序 + 点击移除 + 添加未选头衔（顺序用于简历头部展示）
+function HeadlinePicker({
+  all,
+  value,
+  onChange,
+}: {
+  all: string[]
+  value: string[]
+  onChange: (v: string[]) => void
+}) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
+  const reorder = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= value.length || to >= value.length) return
+    const next = [...value]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    onChange(next)
+  }
+  const clearDrag = () => {
+    setDragIndex(null)
+    setOverIndex(null)
+  }
+  const remove = (i: number) => onChange(value.filter((_, idx) => idx !== i))
+  const addable = all.filter((h) => !value.includes(h))
+  return (
+    <div className="space-y-1.5">
+      {value.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {value.map((h, i) => (
+            <span
+              key={`${h}-${i}`}
+              draggable
+              onDragStart={(e) => {
+                setDragIndex(i)
+                e.dataTransfer.effectAllowed = 'move'
+                e.dataTransfer.setData('text/plain', h)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                if (overIndex !== i) setOverIndex(i)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                if (dragIndex !== null) reorder(dragIndex, i)
+                clearDrag()
+              }}
+              onDragEnd={clearDrag}
+              title="拖动调整顺序"
+              className={`inline-flex cursor-grab items-center gap-0.5 rounded-full border px-2 py-0.5 text-[11px] active:cursor-grabbing ${
+                dragIndex === i ? 'opacity-40' : ''
+              } ${
+                overIndex === i && dragIndex !== null && dragIndex !== i ? 'ring-2 ring-indigo-400/70' : ''
+              } border-indigo-500/40 bg-indigo-500/10 text-indigo-100`}
+            >
+              <GripVertical size={10} className="shrink-0 text-indigo-300/70" />
+              {h}
+              <button
+                type="button"
+                aria-label={`移除${h}`}
+                className="text-indigo-300/60 hover:text-red-400"
+                onClick={() => remove(i)}
+              >
+                <X size={10} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {addable.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 border-t border-zinc-800 pt-1.5">
+          {addable.map((h) => (
+            <button
+              key={h}
+              type="button"
+              onClick={() => onChange([...value, h])}
+              className="rounded-full border border-dashed border-zinc-600 px-2 py-0.5 text-[11px] text-zinc-400 hover:border-indigo-400 hover:text-indigo-300"
+            >
+              <Plus size={10} className="mr-0.5 inline" />
+              {h}
+            </button>
+          ))}
+        </div>
+      )}
+      {value.length === 0 && addable.length === 0 && (
+        <p className="text-[11px] text-zinc-600">暂无职位头衔，请在「信息管理 → 基础信息」添加</p>
+      )}
+    </div>
+  )
 }
 
 interface SystemFontPickerProps {
@@ -342,6 +435,7 @@ export default function Customizer() {
   const [template, setTemplate] = useState('moderncv-banking')
   const [sections, setSections] = useState<Section[]>([])
   const [fonts, setFonts] = useState<ResumeFontSettings>({})
+  const [headlines, setHeadlines] = useState<string[]>([])
   const [componentOrder, setComponentOrder] = useState<string[]>([])
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewEngine, setPreviewEngine] = useState<'latex' | 'html'>('latex')
@@ -415,6 +509,7 @@ export default function Customizer() {
     const nextFonts = { ...(variant?.fonts || {}) }
     setSections(nextSections)
     setFonts(nextFonts)
+    setHeadlines(defaultHeadlines(variant?.headlines))
     setComponentOrder(normalizeComponentOrder(undefined, nextSections, nextFonts))
     setTemplate(variant?.layout?.template || defaults.layout?.template || 'moderncv-banking')
     setPreviewUrl(null)
@@ -442,6 +537,7 @@ export default function Customizer() {
     const nextFonts = { ...(draft.fonts || {}) }
     setSections(nextSections)
     setFonts(nextFonts)
+    setHeadlines(defaultHeadlines(draft.headlines))
     setComponentOrder(normalizeComponentOrder(draft.componentOrder, nextSections, nextFonts))
     setTemplate(draft.template || source.find((item) => item.name === name)?.layout?.template || defaults.layout?.template || 'moderncv-banking')
     setPreviewUrl(null)
@@ -457,6 +553,7 @@ export default function Customizer() {
         sections: cloneSections(sections),
         fonts: { ...fonts },
         componentOrder: [...componentOrder],
+        headlines: [...headlines],
         updatedAt: Date.now(),
       },
     }
@@ -470,6 +567,7 @@ export default function Customizer() {
       sections: cloneSections(sections),
       fonts: { ...fonts },
       componentOrder: [...componentOrder],
+      headlines: [...headlines],
       updatedAt: Date.now(),
     }
     const drafts = { ...draftsRef.current, [selectedType]: draft }
@@ -544,6 +642,21 @@ export default function Customizer() {
     setComponentOrder((current) => normalizeComponentOrder(current, sections, next))
     invalidatePreview()
   }
+
+  // 职位头衔顺序（按变体保存），拖拽/增删后刷新预览
+  const commitHeadlines = (next: string[]) => {
+    setHeadlines(next)
+    invalidatePreview()
+  }
+
+  // 基础信息里维护的全部职位头衔（定制页拖拽排序/选择的对象）
+  const basicsHeadlines: string[] = Array.isArray((entries.basics as any)?.headlines)
+    ? (entries.basics as any).headlines
+    : []
+  const defaultHeadlines = (variantHeadlines?: unknown) =>
+    Array.isArray(variantHeadlines) && variantHeadlines.length
+      ? [...(variantHeadlines as string[])]
+      : [...basicsHeadlines]
 
   const addFontComponent = (kind: ResumeFontKind) => {
     if (fonts[kind]) {
@@ -737,6 +850,7 @@ export default function Customizer() {
             variant: selectedType,
             sections,
             fonts,
+            headlines,
             template: activeTemplate!.id,
           }
         : { variant: selectedType }
@@ -1266,6 +1380,15 @@ export default function Customizer() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+            {workspaceMode === 'visual' && (
+              <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-zinc-200">职位头衔</span>
+                  <span className="text-[10px] text-zinc-600">拖动调整顺序；简历头部按此顺序展示</span>
+                </div>
+                <HeadlinePicker all={basicsHeadlines} value={headlines} onChange={commitHeadlines} />
               </div>
             )}
           </div>

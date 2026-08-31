@@ -184,10 +184,16 @@ def compact_interests(items):
     return [{"name": "、".join(names), "keywords": []}] if names else []
 
 
-def compose_basics():
+def compose_basics(variant_headlines=None):
     b = strip_meta(load(os.path.join(DATA_DIR, "basics.yml")))
     # photo 是管理端构建元数据；YAMLResume basics schema 不接受该字段，由后处理注入。
     b.pop("photo", None)
+    # 职位头衔：变体配置的顺序/子集优先，其次全部基础头衔，拼接为单行展示
+    headlines = variant_headlines if isinstance(variant_headlines, list) and variant_headlines else b.get("headlines")
+    headlines = [h.strip() for h in headlines if isinstance(h, str) and h.strip()] if isinstance(headlines, list) else []
+    if headlines:
+        b["headline"] = " ｜ ".join(headlines)
+    b.pop("headlines", None)
     if isinstance(b.get("summary"), list):
         b["summary"] = to_summary_string(b["summary"])
     return b if b else None
@@ -375,7 +381,7 @@ def compose_variant(name, v, defaults):
     content = {}
     for block, cfg in (v.get("blocks") or {}).items():
         if block == "basics":
-            b = compose_basics()
+            b = compose_basics(v.get("headlines"))
             if b:
                 content["basics"] = b
         else:

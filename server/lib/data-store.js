@@ -337,6 +337,12 @@ export function readCategory(repoPath, category) {
   if (category === 'basics') {
     const note = getEntryNote(repoPath, category, 'basics')
     delete raw.notes
+    // 职位头衔迁移：headline 字符串 → headlines 数组（一次性写回）
+    if (!Array.isArray(raw.headlines)) {
+      raw.headlines = typeof raw.headline === 'string' && raw.headline.trim() ? [raw.headline.trim()] : []
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, yaml.dump(raw, { noRefs: true, lineWidth: -1, sortKeys: false }), 'utf8')
+    }
     return note ? { ...raw, notes: note } : raw
   }
   const list = Array.isArray(raw) ? raw : []
