@@ -1199,7 +1199,16 @@ export default function Customizer() {
               )}
             </div>
             {cat === 'basics' ? (
+              <>
               <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3 text-xs text-zinc-400">基础信息作为章节整体拖入布局。</div>
+              <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-900/50 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-zinc-200">职位头衔</span>
+                </div>
+                <p className="mb-2 text-[10px] leading-relaxed text-zinc-600">拖动调整顺序；简历头部按此顺序展示。</p>
+                <HeadlinePicker all={basicsHeadlines} value={headlines} onChange={commitHeadlines} />
+              </div>
+              </>
             ) : filteredListOf(cat).length === 0 ? (
               <EmptyState title={tagFilter ? `没有命中「${tagFilter}」标签的条目` : '暂无条目'} />
             ) : (
@@ -1396,15 +1405,6 @@ export default function Customizer() {
                     </div>
                   )
                 })}
-              </div>
-            )}
-            {workspaceMode === 'visual' && (
-              <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-zinc-200">职位头衔</span>
-                  <span className="text-[10px] text-zinc-600">拖动调整顺序；简历头部按此顺序展示</span>
-                </div>
-                <HeadlinePicker all={basicsHeadlines} value={headlines} onChange={commitHeadlines} />
               </div>
             )}
           </div>
