@@ -817,7 +817,7 @@ router.post('/resume-types', async (req, res) => {
       const branches = await gitSvc.listBranches(repo)
       if (branches.local.includes(branch)) return { ok: false, error: `Git 分支 ${branch} 已存在` }
       await gitSvc.createBranch(repo, branch)
-      await gitSvc.checkoutBranch(repo, branch)
+      await gitSvc.checkoutBranch(repo, branch, getSettings())
       doc.variants[name] = {
         blocks: {
           basics: { include: 'all' },
@@ -901,7 +901,7 @@ router.post('/resume-types/:name/checkout', async (req, res) => {
       const branch = typeBranch(repo, name)
       const branches = await gitSvc.listBranches(repo)
       if (!branches.local.includes(branch)) return { ok: false, error: `类型分支 ${branch} 尚未创建` }
-      await gitSvc.checkoutBranch(repo, branch)
+      await gitSvc.checkoutBranch(repo, branch, getSettings())
       return { ok: true, name, branch }
     })
     res.json(response)

@@ -70,11 +70,20 @@ export async function createBranch(dir, branch) {
   return { created: true, branch }
 }
 
-export async function checkoutBranch(dir, branch) {
+export async function checkoutBranch(dir, branch, settings) {
   const matrix = await git.statusMatrix({ fs, dir })
   const dirty = matrix.filter(([, head, workdir, stage]) => !(head === 1 && workdir === 1 && stage === 1))
   if (dirty.length > 0) {
-    throw new Error(`工作区有 ${dirty.length} 个未提交改动，请先在「Git 同步看板」提交后再切换类型`)
+    if (!settings) {
+      throw new Error(`工作区有 ${dirty.length} 个未提交改动，请先在「Git 同步看板」提交后再切换类型`)
+    }
+    // 切换类型前自动保存：信息管理/简历定制的编辑先提交到当前分支，避免改动丢失或切换被拒
+    await commitAll(dir, '自动保存：切换类型前保存修改', settings)
+    const after = await git.statusMatrix({ fs, dir })
+    const stillDirty = after.filter(([, head, workdir, stage]) => !(head === 1 && workdir === 1 && stage === 1))
+    if (stillDirty.length > 0) {
+      throw new Error(`自动保存后仍有 ${stillDirty.length} 个未提交改动，请手动处理后再切换类型`)
+    }
   }
   await git.checkout({ fs, dir, ref: branch })
   return branch
