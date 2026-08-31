@@ -916,15 +916,19 @@ router.delete('/resume-types/:name', async (req, res) => {
   if (!gitSyncGuard(res)) return
   const name = String(req.params.name || '')
   try {
-    const doc = compose.loadVariantsDoc(repo)
-    const variant = doc.variants?.[name]
-    if (!variant) return res.json({ ok: false, error: `简历类型 ${name} 不存在` })
-    const branch = typeBranch(repo, name)
-    await gitSvc.deleteBranch(repo, branch)
-    delete doc.variants[name]
-    compose.saveVariantsDoc(repo, doc)
-    managerState.deleteResumeTypeMeta(repo, name)
-    res.json({ ok: true, name, branch, note: '远程分支如已推送，请在 GitHub 上按需删除' })
+    const response = await withRepositoryOperationLock(repo, async () => {
+      const doc = compose.loadVariantsDoc(repo)
+      const branch = typeBranch(repo, name)
+      await gitSvc.deleteBranch(repo, branch)
+      // 配置可能随分支切换而缺失（如 variants.yml 只剩当前类型），存在才删
+      if (doc.variants?.[name]) {
+        delete doc.variants[name]
+        compose.saveVariantsDoc(repo, doc)
+      }
+      managerState.deleteResumeTypeMeta(repo, name)
+      return { ok: true, name, branch, note: '远程分支如已推送，请在 GitHub 上按需删除' }
+    })
+    res.json(response)
   } catch (err) {
     sendError(req, res, err)
   }
@@ -1712,6 +1716,20 @@ function customizedHandler({ persist, publish }) {
         const activeBranch = await gitSvc.currentBranchSafe(repo)
         if (activeBranch !== expectedBranch) {
           return { ok: false, error: `请先在「简历类型」页切换到 ${expectedBranch}，再定制该类型` }
+        }
+        // 类型配置随分支走：切到新分支后若该类型配置缺失（如创建时未提交），补建默认配置
+        if (!doc.variants?.[variant]) {
+          doc.variants[variant] = {
+            blocks: {
+              basics: { include: true },
+              education: { include: 'all' },
+              projects: { include: 'all' },
+              skills: { include: 'all' },
+            },
+            sectionOrder: ['basics', 'education', 'projects', 'skills'],
+            layout: { engine: 'latex', template: doc.defaults?.layout?.template || 'moderncv-banking' },
+          }
+          compose.saveVariantsDoc(repo, doc)
         }
         const resolved = resolveCustomizedVariant(repo, doc, variant, req.body || {})
         if (resolved.engine === 'latex' && getSettings().localPdfBuild === false) {
