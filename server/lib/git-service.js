@@ -201,6 +201,7 @@ export async function fetchRemote(dir, settings, remote = 'origin') {
     remote,
     ref: 'HEAD',
     singleBranch: false,
+    prune: true, // 远程已删除的分支同步清理本地远程跟踪引用，避免类型列表残留
     onAuth: authCallback(settings),
     onAuthFailure: () => ({ cancel: true }),
   })
