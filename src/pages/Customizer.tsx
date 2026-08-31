@@ -905,14 +905,28 @@ export default function Customizer() {
     }
   }
 
-  const changeType = (name: string) => {
+  // 选类型即切换分支：与「简历类型」页保持一致（未提交改动自动保存），避免两页状态不一致
+  const changeType = async (name: string) => {
     if (yamlDirty) {
       toast('warn', '请先保存或放弃 YAML 修改')
       return
     }
     captureCurrentDraft()
     setSelectedEntryIds([])
-    setSelectedType(name)
+    try {
+      await api.post(`/api/resume-types/${encodeURIComponent(name)}/checkout`, {})
+      const [typeData, variantData] = await Promise.all([
+        api.get<{ types: ResumeType[] }>('/api/resume-types'),
+        api.get<{ variants: Variant[]; defaults?: { layout?: { engine?: string; template?: string } } }>('/api/variants'),
+      ])
+      setTypes(typeData.types)
+      setVariants(variantData.variants)
+      setVariantDefaults(variantData.defaults || {})
+      setSelectedType(name)
+    } catch (e: any) {
+      toast('error', e.message)
+      return
+    }
     applyRememberedVariant(name)
     setYamlRevision((value) => value + 1)
   }
